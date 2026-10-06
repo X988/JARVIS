@@ -223,6 +223,7 @@ function TurnCard({ turn, now }: { turn: Turn; now: number }) {
       <h2 className="mt-3 text-lg font-semibold tracking-tight text-balance">{turn.decision.title}</h2>
       {turn.trace ? (
         <dl className="mt-3 grid gap-1 font-mono text-xs text-muted">
+          <div>Code: {turn.serverCode}</div>
           <div>Original: {turn.trace.original}</div>
           <div>Normalized: {turn.trace.normalized}</div>
           <div>Steps: {turn.trace.steps.join(" → ")}</div>
