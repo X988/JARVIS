@@ -1,0 +1,135 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, it } from "node:test";
+import { correlate, openIncident } from "./incidents.ts";
+import { agentMayEscalate, routeModel } from "./llm.ts";
+import { remember, searchMemory } from "./memory.ts";
+import { validatePlugin } from "./plugins.ts";
+import { due, loadTasks, runDue, saveTasks } from "./scheduler.ts";
+import { normalizeHeard, ttsMode, wakeEnabled } from "./speech.ts";
+import { acceptTelegram } from "./telegram.ts";
+import { workerAction, worktreePath } from "./workers.ts";
+
+function dir(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-plane-"));
+}
+
+describe("telegram and voice", () => {
+  it("ignores username and denies an unknown numeric id", () => {
+    const result = acceptTelegram(
+      { updateId: 1, userId: 50, username: "admin1", text: "Проверь сервер" },
+      { stateDir: dir(), allow: [100842], now: new Date("2026-10-07T08:00:00Z") },
+    );
+    assert.equal(result.accepted, false);
+    if (!result.accepted) assert.equal(result.code, "ACTOR_DENIED");
+  });
+
+  it("does not invent text for a voice message", () => {
+    const result = acceptTelegram(
+      { updateId: 2, userId: 100842, voiceFileId: "abc" },
+      { stateDir: dir(), allow: [100842], now: new Date("2026-10-07T08:00:00Z") },
+    );
+    assert.equal(result.accepted, false);
+    if (!result.accepted) assert.equal(result.code, "STT_UNAVAILABLE");
+  });
+
+  it("sends an allowed text through the pipeline and denies a drop", () => {
+    const result = acceptTelegram(
+      { updateId: 3, userId: 100842, text: "Удали базу utp" },
+      { stateDir: dir(), allow: [100842], now: new Date("2026-10-07T08:00:00Z") },
+    );
+    assert.equal(result.accepted, true);
+    if (result.accepted) assert.equal(result.result.code, "POLICY_DENIED");
+  });
+
+  it("keeps a low-confidence alias unchanged", () => {
+    assert.equal(normalizeHeard("проверь ютп", 0.4).changed, false);
+    assert.equal(normalizeHeard("проверь ютп", 0.9).text.includes("utp"), true);
+    assert.equal(wakeEnabled({}), false);
+    assert.equal(ttsMode({}), "disabled");
+  });
+});
+
+describe("memory, schedule, workers", () => {
+  it("refuses to store a credential as infrastructure memory", () => {
+    const root = dir();
+    const saved = remember(root, {
+      id: "1",
+      kind: "infrastructure",
+      at: "2026-10-01T00:00:00Z",
+      source: "operator",
+      text: "пароль sql01 хранится в сейфе",
+    });
+    assert.equal(saved.ok, false);
+  });
+
+  it("finds a past mailcow note", () => {
+    const root = dir();
+    remember(root, {
+      id: "2",
+      kind: "incident",
+      at: "2026-09-30T00:00:00Z",
+      source: "demo",
+      text: "На прошлой неделе на Mailcow кончалось место.",
+    });
+    const found = searchMemory(root, "mailcow");
+    assert.equal(found.length, 1);
+    assert.equal(found[0].source, "demo");
+  });
+
+  it("runs a due check through the callback and not around it", () => {
+    const root = dir();
+    const now = new Date("2026-10-07T06:00:00Z");
+    saveTasks(root, [
+      { id: "morning", text: "Проверь сервер", timezone: "UTC", cron: "0 6 * * *", status: "active", history: [] },
+    ]);
+    assert.equal(due(loadTasks(root)[0], now), true);
+    const fired = runDue(root, now, () => ({ code: "DRY" }));
+    assert.deepEqual(fired, [{ id: "morning", code: "DRY" }]);
+  });
+
+  it("blocks production actions from a worker", () => {
+    assert.equal(workerAction("push-main").code, "DENY");
+    assert.equal(workerAction("production-secret").code, "DENY");
+    assert.equal(workerAction("self-heal").code, "DENY");
+    assert.equal(worktreePath("/repo", "../x"), null);
+    assert.equal(worktreePath("/repo", "task-1")?.endsWith(`${path.sep}task-1`), true);
+  });
+});
+
+describe("plugins, incidents, models", () => {
+  it("rejects an unknown plugin and a shell permission", () => {
+    assert.equal(validatePlugin({ id: "ups" }).ok, false);
+    const shell = validatePlugin({
+      id: "ups",
+      version: "1",
+      description: "status",
+      inputs: [],
+      outputs: [],
+      risk: 0,
+      permissions: ["shell"],
+      supported_targets: [],
+      runbook: "ups.status",
+    });
+    assert.equal(shell.ok, false);
+  });
+
+  it("links backup pressure without starting a repair", () => {
+    const incident = openIncident({
+      id: "inc-1",
+      startedAt: "2026-10-07T06:00:00Z",
+      source: "demo",
+      target: "sql01",
+      severity: "warn",
+    });
+    assert.equal(incident.status, "open");
+    assert.match(correlate([{ title: "sql backup" }, { title: "disk io" }, { title: "1С тормозит" }]) ?? "", /связь/);
+  });
+
+  it("does not let model choice raise permission", () => {
+    assert.equal(routeModel("coding").permission, "unchanged");
+    assert.equal(agentMayEscalate(), false);
+  });
+});
