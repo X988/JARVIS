@@ -4,7 +4,6 @@ import {
   ACCOUNTS,
   ONEC_DEV,
   ONEC_READER,
-  OPERATORS,
   RISK_LABEL,
   RUNBOOKS,
   SERVERS,
@@ -19,6 +18,7 @@ import {
 import { alternativesFrom, interpretSpeech, type RawResult, type SpeechAlt, type SpeechReading } from "@/lib/jarvis/hearing";
 import { useJarvis, type Notice, type Phase, type Turn } from "@/lib/jarvis/store";
 import { WATCH_ALERTS, WATCH_HOSTS, type WatchLevel } from "@/lib/jarvis/watch";
+import { UserButton } from "@/lib/auth/gates";
 
 type SideTab = "site" | "audit" | "access";
 
@@ -481,10 +481,9 @@ export function Console() {
   const serverMode = useJarvis((state) => state.serverMode);
   const watch = useJarvis((state) => state.watch);
   const notices = useJarvis((state) => state.notices);
-  const operatorId = useJarvis((state) => state.operatorId);
+  const actorId = useJarvis((state) => state.actorId);
   const setWatch = useJarvis((state) => state.setWatch);
   const pushNotice = useJarvis((state) => state.pushNotice);
-  const setOperator = useJarvis((state) => state.setOperator);
   const ensureSession = useJarvis((state) => state.ensureSession);
   const submit = useJarvis((state) => state.submit);
   const tick = useJarvis((state) => state.tick);
@@ -506,7 +505,6 @@ export function Console() {
   const limitRef = useRef<number | null>(null);
   const candidatesRef = useRef<SpeechAlt[]>([]);
   const locked = busy || hearing !== null || listening;
-  const stranger = operatorId !== "admin1";
 
   useEffect(() => {
     const id = window.setInterval(() => tick(Date.now()), 1000);
@@ -726,26 +724,9 @@ export function Console() {
             </span>
           </div>
         </div>
-        <div className="flex gap-2 px-4 py-3">
-          {OPERATORS.map((operator) => {
-            const active = operator.id === operatorId;
-            return (
-              <button
-                key={operator.id}
-                type="button"
-                onClick={() => {
-                  setOperator(operator.id);
-                  void ensureSession();
-                }}
-                className={
-                  "min-h-11 flex-1 rounded-md border text-sm " +
-                  (active ? "border-paper bg-paper text-ink" : "border-line text-muted")
-                }
-              >
-                {operator.id === "admin1" ? "admin1" : "чужой ID"}
-              </button>
-            );
-          })}
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <p className="font-mono text-xs text-subtle">Session actor: {actorId}</p>
+          <UserButton />
         </div>
         <p className="px-4 font-mono text-xs text-subtle">
           {watch ? "MONITORING_NOT_CONFIGURED. Ниже только demo-фикстуры, не телеметрия." : "Слежение на паузе."}
@@ -760,11 +741,6 @@ export function Console() {
           ))}
         </ul>
       </header>
-      {stranger ? (
-        <p className="border-b border-line px-4 py-2 text-sm text-danger">
-          Этот Telegram ID не в allowlist. Команды будут отклонены.
-        </p>
-      ) : null}
       {!dryRun ? (
         <p className="border-b border-line bg-paper px-4 py-2 text-sm text-ink">
           Сервер в режиме REAL. Кнопка в браузере этот режим не включает.

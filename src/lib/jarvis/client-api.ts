@@ -62,17 +62,11 @@ export function unavailableDecision(reason: string): Decision {
   };
 }
 
-export async function ensureServerSession(accountId: string): Promise<{ executionMode: string; role?: string }> {
-  await fetch("/api/session", { credentials: "include" });
-  const response = await fetch("/api/session", {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json", "x-jarvis-csrf": csrf() },
-    body: JSON.stringify({ accountId }),
-  });
-  const body = (await response.json()) as { executionMode?: string; role?: string; code?: string };
+export async function ensureServerSession(): Promise<{ executionMode: string; role?: string; actorId?: string }> {
+  const response = await fetch("/api/session", { credentials: "include" });
+  const body = (await response.json()) as { executionMode?: string; role?: string; actorId?: string; code?: string };
   if (!response.ok) throw new Error(body.code || "AUTH_REQUIRED");
-  return { executionMode: body.executionMode || "dry-run", role: body.role };
+  return { executionMode: body.executionMode || "dry-run", role: body.role, actorId: body.actorId };
 }
 
 export async function postCommand(text: string, requestId: string): Promise<ServerCommand> {
@@ -80,7 +74,7 @@ export async function postCommand(text: string, requestId: string): Promise<Serv
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json", "x-jarvis-csrf": csrf() },
-    body: JSON.stringify({ text, requestId }),
+    body: JSON.stringify({ text, request_id: requestId }),
   });
   const body = (await response.json()) as Partial<ServerCommand> & { code?: string };
   if (!body.decision || !body.trace) {

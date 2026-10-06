@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { postCommand, unavailableDecision, ensureServerSession, type ServerTrace } from "@/lib/jarvis/client-api";
-import { OPERATORS, type Decision, type Operator } from "@/lib/jarvis/model";
+import { type Decision } from "@/lib/jarvis/model";
 import { WATCH_ALERTS, type WatchAlert } from "@/lib/jarvis/watch";
 
 export type Phase = "running" | "awaiting" | "done" | "denied" | "expired" | "cancelled";
@@ -55,7 +55,7 @@ export type AuditEntry = {
 export type Notice = WatchAlert & { at: number };
 
 type JarvisState = {
-  operatorId: string;
+  actorId: string;
   dryRun: boolean;
   serverMode: string;
   watch: boolean;
@@ -65,7 +65,6 @@ type JarvisState = {
   turns: Turn[];
   notices: Notice[];
   audit: AuditEntry[];
-  setOperator: (id: string) => void;
   setDryRun: (value: boolean) => void;
   setWatch: (value: boolean) => void;
   ensureSession: () => Promise<void>;
@@ -80,10 +79,6 @@ let n = 0;
 function uid(prefix: string): string {
   n += 1;
   return `${prefix}-${n}`;
-}
-
-function operatorById(id: string): Operator {
-  return OPERATORS.find((item) => item.id === id) ?? OPERATORS[0];
 }
 
 function paramsOf(decision: Decision): string {
@@ -121,7 +116,7 @@ function auditFrom(
 let lock = false;
 
 export const useJarvis = create<JarvisState>((set, get) => ({
-  operatorId: "admin1",
+  actorId: "unauthenticated",
   dryRun: true,
   serverMode: "dry-run",
   watch: true,
@@ -132,20 +127,18 @@ export const useJarvis = create<JarvisState>((set, get) => ({
   notices: [],
   audit: [],
 
-  setOperator: (id) => set({ operatorId: id }),
   setDryRun: (value) => set({ dryRun: value }),
   setWatch: (value) => set({ watch: value }),
   ensureSession: async () => {
-    const accountId = get().operatorId;
     try {
-      const session = await ensureServerSession(accountId);
-      if (get().operatorId !== accountId) {
-        await get().ensureSession();
-        return;
-      }
-      set({ serverMode: session.executionMode, dryRun: session.executionMode !== "real" });
+      const session = await ensureServerSession();
+      set({
+        serverMode: session.executionMode,
+        dryRun: session.executionMode !== "real",
+        actorId: session.actorId ?? "authenticated",
+      });
     } catch {
-      set({ serverMode: "dry-run" });
+      set({ serverMode: "dry-run", dryRun: true, actorId: "unauthenticated" });
     }
   },
 
@@ -155,7 +148,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     const alert = WATCH_ALERTS.find((item) => item.id === id);
     if (!alert) return;
     const notice: Notice = { ...alert, at: Date.now() };
-    const user = operatorById(state.operatorId).name;
+    const user = state.actorId;
     const entry: AuditEntry = {
       id: uid("aud"),
       at: notice.at,
@@ -182,7 +175,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
 
   tick: (ts) => {
     const state = get();
-    const user = operatorById(state.operatorId).name;
+    const user = state.actorId;
     const extra: AuditEntry[] = [];
     let changed = false;
     const turns = state.turns.map((turn) => {
@@ -204,7 +197,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     const turn = state.turns.find((item) => item.id === turnId);
     if (!turn || turn.phase !== "awaiting") return;
     const next: Turn = { ...turn, phase: "cancelled", hint: "Заявка отменена. Ничего не менялось." };
-    const user = operatorById(state.operatorId).name;
+    const user = state.actorId;
     set({
       turns: state.turns.map((item) => (item.id === turnId ? next : item)),
       audit: [auditFrom(next, user, "cancelled", null, turn.approval?.id ?? null), ...state.audit].slice(0, 80),
@@ -220,7 +213,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     set({ busy: true });
     try {
       const result = await postCommand(text, uid("req"));
-      const user = operatorById(get().operatorId).name;
+      const user = get().actorId;
       const phase: Phase = result.approval ? "awaiting" : result.verdict === "deny" ? "denied" : "done";
       const next: Turn = {
         ...turn,
@@ -268,7 +261,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       await get().ensureSession();
       const result = await postCommand(text, uid("req")).catch(() => null);
       const decision = result?.decision ?? unavailableDecision("Сервер политики не ответил.");
-      const user = operatorById(get().operatorId).name;
+      const user = get().actorId;
       const id = uid("turn");
       const phase: Phase = result?.approval ? "awaiting" : decision.verdict === "deny" ? "denied" : "done";
       const next: Turn = {

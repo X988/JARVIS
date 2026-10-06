@@ -9,6 +9,11 @@ export default defineConfig({
     url: "http://127.0.0.1:8080/health",
     reuseExistingServer: true,
     timeout: 120_000,
-    env: { ...process.env, EXECUTION_MODE: "dry-run", JARVIS_ALLOW_DEV_LOGIN: "1" },
+    env: {
+      ...process.env,
+      EXECUTION_MODE: "dry-run",
+      JARVIS_TEST_AUTH: "1",
+      VITE_JARVIS_TEST_AUTH: "1",
+    },
   },
 });

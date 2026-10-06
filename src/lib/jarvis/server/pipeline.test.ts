@@ -147,30 +147,39 @@ describe("server pipeline", () => {
 });
 
 describe("command http", () => {
-  it("returns AUTH_REQUIRED without a session and OK through the server", async () => {
+  it("requires a server actor and ignores forged security fields", async () => {
     process.env.JARVIS_STATE_DIR = freshDir();
-    process.env.JARVIS_ALLOW_DEV_LOGIN = "1";
-    const anon = await handleCommand(new Request("http://127.0.0.1/api/commands", { method: "POST", body: JSON.stringify({ text: "Проверь сервер" }) }));
+    process.env.JARVIS_TEST_AUTH = "1";
+    const testHeader = { "x-jarvis-test-actor": "admin1" };
+    const anon = await handleCommand(new Request("http://127.0.0.1/api/commands", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "Проверь сервер" }),
+    }));
     assert.equal((await anon.json()).code, "AUTH_REQUIRED");
-    const opened = await handleSession(new Request("http://127.0.0.1/api/session"));
+
+    const opened = await handleSession(new Request("http://127.0.0.1/api/session", { headers: testHeader }));
+    assert.equal(opened.status, 200);
     const csrf = opened.headers.getSetCookie().find((line) => line.startsWith("jarvis_csrf="))?.split(";")[0] ?? "";
     const token = decodeURIComponent(csrf.split("=")[1] ?? "");
-    const login = await handleSession(
-      new Request("http://127.0.0.1/api/session", {
-        method: "POST",
-        headers: { cookie: csrf, "x-jarvis-csrf": token, "content-type": "application/json" },
-        body: JSON.stringify({ accountId: "admin1" }),
+
+    const command = await handleCommand(new Request("http://127.0.0.1/api/commands", {
+      method: "POST",
+      headers: {
+        ...testHeader,
+        cookie: csrf,
+        "x-jarvis-csrf": token,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        text: "Проверь сервер",
+        risk: 0,
+        role: "admin",
+        policy: "ALLOW",
+        approved: true,
+        request_id: "http-1",
       }),
-    );
-    assert.equal(login.status, 200);
-    const session = login.headers.getSetCookie().find((line) => line.startsWith("jarvis_session="))?.split(";")[0] ?? "";
-    const command = await handleCommand(
-      new Request("http://127.0.0.1/api/commands", {
-        method: "POST",
-        headers: { cookie: `${csrf}; ${session}`, "x-jarvis-csrf": token, "content-type": "application/json" },
-        body: JSON.stringify({ text: "Проверь сервер", risk: 0, approved: true, requestId: "http-1" }),
-      }),
-    );
+    }));
     const body = await command.json();
     assert.equal(body.code, "OK");
     assert.equal(body.trace.runbook, "server.health");
