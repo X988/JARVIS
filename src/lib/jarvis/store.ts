@@ -6,6 +6,7 @@ import {
   type Decision,
   type Operator,
 } from "@/lib/jarvis/model";
+import { WATCH_ALERTS, type WatchAlert } from "@/lib/jarvis/watch";
 
 export type Phase = "running" | "awaiting" | "done" | "denied" | "expired" | "cancelled";
 
@@ -54,16 +55,22 @@ export type AuditEntry = {
   error: string | null;
 };
 
+export type Notice = WatchAlert & { at: number };
+
 type JarvisState = {
   operatorId: string;
   dryRun: boolean;
+  watch: boolean;
   busy: boolean;
   now: number;
   seq: number;
   turns: Turn[];
+  notices: Notice[];
   audit: AuditEntry[];
   setOperator: (id: string) => void;
   setDryRun: (value: boolean) => void;
+  setWatch: (value: boolean) => void;
+  pushNotice: (id: string) => void;
   submit: (raw: string, source: "text" | "voice", heard?: string) => Promise<void>;
   reply: (turnId: string, phrase: string) => void;
   cancel: (turnId: string) => void;
@@ -128,14 +135,48 @@ let lock = false;
 export const useJarvis = create<JarvisState>((set, get) => ({
   operatorId: "admin1",
   dryRun: true,
+  watch: true,
   busy: false,
   now: 0,
   seq: 17,
   turns: [],
+  notices: [],
   audit: [],
 
   setOperator: (id) => set({ operatorId: id }),
   setDryRun: (value) => set({ dryRun: value }),
+  setWatch: (value) => set({ watch: value }),
+
+  pushNotice: (id) => {
+    const state = get();
+    if (!state.watch || state.notices.some((item) => item.id === id)) return;
+    const alert = WATCH_ALERTS.find((item) => item.id === id);
+    if (!alert) return;
+    const notice: Notice = { ...alert, at: Date.now() };
+    const user = operatorById(state.operatorId).name;
+    const entry: AuditEntry = {
+      id: uid("aud"),
+      at: notice.at,
+      user,
+      source: "watch",
+      request: notice.title,
+      intent: "watch",
+      tool: "watch_hosts",
+      target: notice.host,
+      parameters: notice.area,
+      risk: 0,
+      approvalId: null,
+      template: "—",
+      result: "watch_report",
+      exitCode: null,
+      durationMs: null,
+      error: null,
+    };
+    set({
+      notices: [...state.notices, notice],
+      audit: [entry, ...state.audit].slice(0, 80),
+    });
+  },
 
   tick: (ts) => {
     const state = get();
@@ -208,20 +249,21 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       });
       return;
     }
+    const ticket = turn.decision.normalized === "provision_1c_admin";
     const next: Turn = {
       ...turn,
       replies,
       phase: "done",
       step: 4,
-      executed: true,
+      executed: !ticket,
       showFindings: true,
-      hint: null,
+      hint: ticket ? "Заявка закрыта. Учётка в каталоге не появилась." : null,
       exitCode: 0,
       durationMs: turn.decision.durationMs,
     };
     set({
       turns: state.turns.map((item) => (item.id === turnId ? next : item)),
-      audit: [auditFrom(next, user, "simulated_ok", null, turn.approval.id), ...state.audit].slice(0, 80),
+      audit: [auditFrom(next, user, ticket ? "ticket_only" : "simulated_ok", null, turn.approval.id), ...state.audit].slice(0, 80),
     });
   },
 
@@ -272,7 +314,8 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       }
       const user = operator.name;
       const readSnapshot = decision.verdict === "allow" && !decision.mutation;
-      const needsApproval = decision.verdict === "allow" && !dryRun && decision.confirmation !== "none";
+      const ticket = decision.normalized === "provision_1c_admin";
+      const needsApproval = decision.verdict === "allow" && decision.confirmation !== "none" && (!dryRun || ticket);
       const executeNow = decision.verdict === "allow" && !dryRun && decision.confirmation === "none";
       if (needsApproval) {
         const seq = get().seq + 1;
@@ -283,7 +326,16 @@ export const useJarvis = create<JarvisState>((set, get) => ({
           expiresAt: Date.now() + APPROVAL_TTL_MS,
           phrase: `CONFIRM ${approvalId}`,
         };
-        const next: Turn = { ...base, step: 4, phase: "awaiting", approval, dryRun };
+        const next: Turn = {
+          ...base,
+          step: 4,
+          phase: "awaiting",
+          approval,
+          dryRun,
+          showFindings: decision.previewFindings,
+          exitCode: decision.previewFindings ? 0 : null,
+          durationMs: decision.previewFindings ? decision.durationMs : null,
+        };
         set({
           seq,
           turns: get().turns.map((item) => (item.id === id ? next : item)),
@@ -291,7 +343,8 @@ export const useJarvis = create<JarvisState>((set, get) => ({
         });
         return;
       }
-      const showFindings = readSnapshot || executeNow;
+      const preview = decision.previewFindings && decision.verdict === "allow" && decision.findings.length > 0;
+      const showFindings = readSnapshot || executeNow || preview;
       let result = "dry_run";
       if (decision.verdict === "deny") result = "denied";
       else if (decision.verdict === "clarify") result = "clarify";

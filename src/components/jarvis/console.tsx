@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUp, KeyRound, MessageSquare, Mic, ScrollText, Server, Square, X } from "lucide-react";
 import {
   ACCOUNTS,
+  ONEC_DEV,
+  ONEC_READER,
   OPERATORS,
   RISK_LABEL,
   RUNBOOKS,
@@ -15,7 +17,8 @@ import {
   type Risk,
 } from "@/lib/jarvis/model";
 import { alternativesFrom, interpretSpeech, type RawResult, type SpeechAlt, type SpeechReading } from "@/lib/jarvis/hearing";
-import { useJarvis, type Phase, type Turn } from "@/lib/jarvis/store";
+import { useJarvis, type Notice, type Phase, type Turn } from "@/lib/jarvis/store";
+import { WATCH_ALERTS, WATCH_HOSTS, type WatchLevel } from "@/lib/jarvis/watch";
 
 type SideTab = "site" | "audit" | "access";
 
@@ -242,7 +245,7 @@ function TurnCard({ turn, now }: { turn: Turn; now: number }) {
           </li>
         ))}
       </ol>
-      {turn.decision.mutation && !turn.showFindings && turn.decision.verdict === "allow" && turn.phase !== "awaiting" ? (
+      {turn.decision.mutation && !turn.executed && turn.decision.verdict === "allow" && turn.phase !== "awaiting" ? (
         <ul className="mt-4 flex flex-col gap-1 text-sm text-muted">
           {turn.decision.consequences.map((line) => (
             <li key={line}>{line}</li>
@@ -391,6 +394,37 @@ function AccessPanel() {
         </ul>
       </section>
       <section>
+        <h2 className="font-mono text-sm">{ONEC_READER.id}</h2>
+        <ul className="mt-3 flex flex-col gap-2 text-sm">
+          {ONEC_READER.allow.map((item) => (
+            <li key={item} className="text-moss">
+              можно · {item}
+            </li>
+          ))}
+          {ONEC_READER.deny.map((item) => (
+            <li key={item} className="text-danger">
+              нельзя · {item}
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section>
+        <h2 className="font-mono text-sm">{ONEC_DEV.id}</h2>
+        <p className="mt-1 text-sm text-muted">Только development и test. Постоянного admin нет.</p>
+        <ul className="mt-3 flex flex-col gap-2 text-sm">
+          {ONEC_DEV.allow.map((item) => (
+            <li key={item} className="text-moss">
+              можно · {item}
+            </li>
+          ))}
+          {ONEC_DEV.deny.map((item) => (
+            <li key={item} className="text-danger">
+              нельзя · {item}
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section>
         <h2 className="text-sm font-medium">Контур</h2>
         <ul className="mt-3 flex flex-col gap-2">
           {SERVICES.map((service) => (
@@ -420,13 +454,19 @@ const SIDE: { id: SideTab; label: string }[] = [
   { id: "access", label: "Доступ" },
 ];
 
+let adminTicketQueued = false;
+
 export function Console() {
   const turns = useJarvis((state) => state.turns);
   const now = useJarvis((state) => state.now);
   const busy = useJarvis((state) => state.busy);
   const dryRun = useJarvis((state) => state.dryRun);
+  const watch = useJarvis((state) => state.watch);
+  const notices = useJarvis((state) => state.notices);
   const operatorId = useJarvis((state) => state.operatorId);
   const setDryRun = useJarvis((state) => state.setDryRun);
+  const setWatch = useJarvis((state) => state.setWatch);
+  const pushNotice = useJarvis((state) => state.pushNotice);
   const setOperator = useJarvis((state) => state.setOperator);
   const submit = useJarvis((state) => state.submit);
   const tick = useJarvis((state) => state.tick);
@@ -456,8 +496,24 @@ export function Console() {
   }, [tick]);
 
   useEffect(() => {
+    if (adminTicketQueued) return;
+    adminTicketQueued = true;
+    void submit("Создай заявку на учётку jarvis-1c-admin", "text");
+  }, [submit]);
+
+  useEffect(() => {
+    if (!watch) return;
+    const timers = WATCH_ALERTS.map((item, index) =>
+      window.setTimeout(() => pushNotice(item.id), 900 + index * 2800),
+    );
+    return () => {
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }, [watch, pushNotice]);
+
+  useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [turns, hearing]);
+  }, [turns, notices, hearing]);
 
   useEffect(() => {
     return () => {
@@ -640,17 +696,30 @@ export function Console() {
             <p className="font-mono text-xs text-moss">демо-консоль</p>
             <h1 className="text-xl font-semibold tracking-tight">JARVIS</h1>
           </div>
-          <button
-            type="button"
-            aria-pressed={dryRun}
-            onClick={() => setDryRun(!dryRun)}
-            className={
-              "min-h-11 rounded-md px-3 font-mono text-xs " +
-              (dryRun ? "bg-forest text-paper" : "bg-paper text-ink")
-            }
-          >
-            {dryRun ? "DRY RUN" : "Боевой"}
-          </button>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              aria-pressed={watch}
+              onClick={() => setWatch(!watch)}
+              className={
+                "min-h-11 rounded-md px-3 font-mono text-xs " +
+                (watch ? "bg-forest text-paper" : "border border-line text-muted")
+              }
+            >
+              {watch ? "Слежу" : "Пауза"}
+            </button>
+            <button
+              type="button"
+              aria-pressed={dryRun}
+              onClick={() => setDryRun(!dryRun)}
+              className={
+                "min-h-11 rounded-md px-3 font-mono text-xs " +
+                (dryRun ? "bg-forest text-paper" : "bg-paper text-ink")
+              }
+            >
+              {dryRun ? "DRY RUN" : "Боевой"}
+            </button>
+          </div>
         </div>
         <div className="flex gap-2 px-4 py-3">
           {OPERATORS.map((operator) => {
@@ -670,9 +739,18 @@ export function Console() {
             );
           })}
         </div>
-        <p className="px-4 pb-3 font-mono text-xs text-subtle">
-          Telegram → Whisper → ядро → политика → инструмент
+        <p className="px-4 font-mono text-xs text-subtle">
+          {watch ? "Слежение включено. Чинить сам не начинаю." : "Слежение на паузе."}
         </p>
+        <ul className="flex gap-2 overflow-x-auto px-4 py-3">
+          {WATCH_HOSTS.map((host) => (
+            <li key={host.id} className="flex shrink-0 items-center gap-2 rounded-full border border-line px-3 py-2">
+              <span className={`size-2 rounded-full ${levelDot(host.level)}`} aria-hidden="true" />
+              <span className="font-mono text-xs">{host.id}</span>
+              <span className="text-xs text-subtle">{host.note}</span>
+            </li>
+          ))}
+        </ul>
       </header>
       {stranger ? (
         <p className="border-b border-line px-4 py-2 text-sm text-danger">
@@ -689,11 +767,11 @@ export function Console() {
           className={`${mobile === "dialog" ? "flex" : "hidden"} min-h-0 min-w-0 flex-1 flex-col lg:flex`}
         >
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4" aria-live="polite">
-            {turns.length === 0 && !hearing ? (
+            {turns.length === 0 && notices.length === 0 && !hearing ? (
               <div className="flex flex-col gap-4">
                 <p className="max-w-xl text-pretty text-muted">
-                  Нажмите микрофон и скажите команду. Если записи нет, те же фразы можно отправить текстом.
-                  Намерение выбирает контур, инструмент берётся из runbook.
+                  Слежение уже смотрит узлы. Если что-то сломается, я напишу где, что случилось и что делать.
+                  Сам ничего не чиню.
                 </p>
                 <div className="flex flex-col gap-2">
                   {VOICE_PRESETS.slice(0, 3).map((preset) => (
@@ -709,18 +787,7 @@ export function Console() {
                 </div>
               </div>
             ) : null}
-            {turns.map((turn) => (
-              <div key={turn.id} className="flex flex-col gap-2">
-                <div className="ml-8 rounded-lg bg-elevated px-3 py-2">
-                  <p className="font-mono text-xs text-subtle">
-                    {turn.source === "voice" ? "голос" : "текст"} · {formatClock(turn.at)}
-                  </p>
-                  {turn.heard ? <p className="text-xs text-subtle">услышано: {turn.heard}</p> : null}
-                  <p className="text-pretty text-sm">{turn.request}</p>
-                </div>
-                <TurnCard turn={turn} now={now} />
-              </div>
-            ))}
+            <Thread notices={notices} turns={turns} now={now} locked={locked} onOpen={(command) => void send(command, "text")} />
             {hearing ? (
               <div className="turn-in rounded-xl border border-line bg-surface p-4">
                 <p className="font-mono text-xs text-moss">Whisper</p>
@@ -939,6 +1006,91 @@ export function Console() {
       ) : null}
     </main>
   );
+}
+
+function levelDot(level: WatchLevel): string {
+  if (level === "bad") return "bg-danger-deep";
+  if (level === "warn") return "bg-warn";
+  return "bg-moss";
+}
+
+function NoticeCard({
+  notice,
+  disabled,
+  onOpen,
+}: {
+  notice: Notice;
+  disabled: boolean;
+  onOpen: (command: string) => void;
+}) {
+  return (
+    <article className="turn-in rounded-xl border border-line bg-surface p-4">
+      <p className="font-mono text-xs text-moss">
+        слежение · {notice.host} · {notice.area}
+      </p>
+      <h2 className="mt-2 text-lg font-semibold tracking-tight text-balance">{notice.title}</h2>
+      <p className="mt-3 text-pretty text-sm">
+        <span className="text-subtle">Где. </span>
+        {notice.where}
+      </p>
+      <p className="mt-2 text-pretty text-sm">
+        <span className="text-subtle">Что случилось. </span>
+        {notice.broke}
+      </p>
+      <p className="mt-2 text-pretty text-sm">
+        <span className="text-subtle">Что сделать. </span>
+        {notice.fix}
+      </p>
+      {notice.command ? (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onOpen(notice.command ?? "")}
+          className="mt-4 min-h-11 rounded-md border border-line px-3 text-left text-sm disabled:opacity-40"
+        >
+          {notice.command}
+        </button>
+      ) : null}
+    </article>
+  );
+}
+
+function Thread({
+  notices,
+  turns,
+  now,
+  locked,
+  onOpen,
+}: {
+  notices: Notice[];
+  turns: Turn[];
+  now: number;
+  locked: boolean;
+  onOpen: (command: string) => void;
+}) {
+  const feed = [
+    ...notices.map((notice) => ({ kind: "notice" as const, at: notice.at, notice, turn: null as Turn | null })),
+    ...turns.map((turn) => ({ kind: "turn" as const, at: turn.at, notice: null as Notice | null, turn })),
+  ].sort((left, right) => left.at - right.at);
+  return feed.map((item) => {
+    if (item.notice) {
+      return <NoticeCard key={item.notice.id} notice={item.notice} disabled={locked} onOpen={onOpen} />;
+    }
+    if (!item.turn) return null;
+    const turn = item.turn;
+    return (
+      <div key={turn.id} className="flex flex-col gap-2">
+        <div className="ml-8 rounded-lg bg-elevated px-3 py-2">
+          <p className="font-mono text-xs text-subtle">
+            {turn.source === "voice" ? "голос" : "текст"} · {formatClock(turn.at)}
+          </p>
+          {turn.heard ? <p className="text-xs text-subtle">услышано: {turn.heard}</p> : null}
+          <p className="text-pretty text-sm">{turn.request}</p>
+        </div>
+        <TurnCard turn={turn} now={now} />
+      </div>
+    );
+  });
 }
 
 function NavButton({

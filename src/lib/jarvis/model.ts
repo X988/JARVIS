@@ -1,3 +1,4 @@
+import { ONEC_DEV, classifyOnecDeveloper, onecDevAdapter, type DevPlan } from "@/lib/jarvis/onec-dev";
 export type Risk = 0 | 1 | 2 | 3;
 export type Verdict = "allow" | "deny" | "clarify";
 export type FindingState = "ok" | "warn" | "bad" | "info";
@@ -14,6 +15,8 @@ export type Operator = {
   telegramId: number;
   allowed: boolean;
 };
+
+export { ONEC_DEV };
 
 export type IntentId =
   | "check_fleet"
@@ -40,6 +43,13 @@ export type IntentId =
   | "clean_server"
   | "push_main"
   | "delete_db"
+  | "read_1c_code"
+  | "review_1c_query"
+  | "trace_1c"
+  | "patch_1c"
+  | "load_1c_cf"
+  | "provision_1c_admin"
+  | "onec_dev"
   | "unknown";
 
 export type Spec = {
@@ -70,6 +80,7 @@ export type Decision = Spec & {
   verdict: Verdict;
   reason: string | null;
   policyNotes: string[];
+  previewFindings: boolean;
 };
 
 export const RISK_LABEL: Record<Risk, string> = {
@@ -88,6 +99,7 @@ export const SUGGESTIONS: { label: string; text: string }[] = [
   { label: "Проверь сервер", text: "Проверь сервер" },
   { label: "Backup utp", text: "Сделай резервную копию базы utp" },
   { label: "Mailcow", text: "Проверь Mailcow" },
+  { label: "План", text: "Проверь Mailcow и место на дисках, ничего не меняй" },
   { label: "Место", text: "Проверь свободное место на всех серверах" },
   { label: "Служба 1С", text: "Перезапусти службу 1С" },
   { label: "Ребут DC", text: "Перезагрузи контроллер домена" },
@@ -95,6 +107,11 @@ export const SUGGESTIONS: { label: string; text: string }[] = [
   { label: "Push в main", text: "Запушь исправление в main" },
   { label: "Удали базу", text: "Удали базу utp" },
   { label: "1С не пускает", text: "Почему пользователи не заходят в 1С" },
+  { label: "Модуль 1С", text: "Посмотри модуль проведения в расширении" },
+  { label: "Запрос 1С", text: "Проверь запрос к регистру накопления" },
+  { label: "Правка 1С", text: "Исправь запрос в расширении и не загружай в рабочую" },
+  { label: "Форма 1С", text: "Создай управляемую форму в расширении" },
+  { label: "Анализ 1С", text: "Запусти статический анализ расширения" },
 ];
 
 export const VOICE_PRESETS: { id: string; text: string; length: string }[] = [
@@ -153,6 +170,9 @@ export const RUNBOOKS: Runbook[] = [
   { id: "deploy_project", title: "Деплой", description: "Только после тестов и approval. Не в main напрямую.", inputs: "repo, ref", validation: "ветка не main", risk: 2, targets: "разрешённые repo", executor: "coding-agent", timeout: "20 мин", rollback: "предыдущий релиз", verification: "health после выкладки" },
   { id: "rollback_project", title: "Откат релиза", description: "Вернуть предыдущий артефакт. Требует подтверждения.", inputs: "repo, release", validation: "есть предыдущий релиз", risk: 2, targets: "billing", executor: "semaphore", timeout: "15 мин", rollback: "повторный деплой текущего", verification: "версия и health" },
   { id: "git_ci_diagnostics", title: "Разбор CI", description: "Статус workflow, упавший job, без push.", inputs: "repo", validation: "repo в allowlist", risk: 0, targets: "company/billing", executor: "jarvis-github", timeout: "30 с", rollback: "не нужен", verification: "имя job и ошибка" },
+  { id: "read_1c_code", title: "1С: модуль", description: "Чтение модуля расширения. Без выгрузки в базу и без выполнения кода.", inputs: "extension, module", validation: "объект есть в расширении", risk: 0, targets: "расширение utp", executor: "jarvis-1c-reader", timeout: "30 с", rollback: "не нужен", verification: "имя модуля и процедура" },
+  { id: "review_1c_query", title: "1С: запрос", description: "Разбор текста запроса: соединения, параметры, виртуальные таблицы.", inputs: "query", validation: "текст запроса, не выполнение", risk: 0, targets: "расширение utp", executor: "jarvis-1c-reader", timeout: "20 с", rollback: "не нужен", verification: "замечания по тексту" },
+  { id: "patch_1c_extension", title: "1С: правка расширения", description: "Diff в ветке расширения. Рабочая база и CF не обновляются.", inputs: "module, branch", validation: "не основная конфигурация", risk: 2, targets: "расширение utp", executor: "jarvis-1c-reader", timeout: "10 мин", rollback: "ветку не мержить", verification: "синтаксис и diff" },
 ];
 
 export const ACCOUNTS: { id: string; scope: string }[] = [
@@ -162,7 +182,31 @@ export const ACCOUNTS: { id: string; scope: string }[] = [
   { id: "jarvis-backup", scope: "запись только в каталог backup" },
   { id: "jarvis-mikrotik", scope: "API read, backup отдельным правом" },
   { id: "jarvis-github", scope: "чтение CI, PR без права на main" },
+  { id: "jarvis-1c-reader", scope: "журнал, метаданные, модули, git-ветка и diff. Не production." },
+  { id: "jarvis-1c-dev", scope: ONEC_DEV.scope },
 ];
+
+export const ONEC_READER = {
+  id: "jarvis-1c-reader",
+  allow: [
+    "журнал регистрации",
+    "metadata",
+    "анализ модулей",
+    "чтение логов",
+    "поиск ошибки",
+    "git clone",
+    "создание branch",
+    "diff",
+    "tests",
+  ],
+  deny: [
+    "загрузка CF в production",
+    "обновление конфигурации БД",
+    "Выполнить()",
+    "произвольный COM-вызов",
+    "изменение production DB",
+  ],
+};
 
 export const SERVICES: { name: string; state: string }[] = [
   { name: "PostgreSQL", state: "модель" },
@@ -880,6 +924,208 @@ const SPECS: Record<IntentId, Spec> = {
     recommendation: "Доступны проверка и backup. Восстановление — отдельный runbook уровня 3, не удаление.",
     durationMs: 0,
   }),
+  read_1c_code: spec({
+    id: "read_1c_code",
+    title: "Модуль расширения",
+    normalized: "read_1c_code",
+    risk: 0,
+    tool: "read_1c_module",
+    target: "расширение utp / Документ.Реализация",
+    runbook: "read_1c_code",
+    account: "jarvis-1c-reader",
+    parameters: [
+      { key: "module", value: "МодульОбъекта" },
+      { key: "procedure", value: "ОбработкаПроведения" },
+    ],
+    confirmation: "none",
+    mutation: false,
+    forceDeny: false,
+    clarify: false,
+    denyReason: null,
+    clarifyReason: null,
+    plan: ["Читать только расширение, не основную конфигурацию на запись.", "Не выполнять модуль и не открывать отладчик на рабочей базе."],
+    toolCall: 'read_1c_module(object: "Документ.Реализация", module: "МодульОбъекта")',
+    consequences: ["Только чтение."],
+    findings: [
+      { label: "Модуль", state: "info", detail: "РасширениеУТ, МодульОбъекта, процедура ОбработкаПроведения, 86 строк." },
+      { label: "Запрос", state: "warn", detail: "РегистрНакопления.Продажи.Остатки без параметра периода." },
+      { label: "Проведение", state: "ok", detail: "Движения пишутся после проверки заполнения. Пустых наборов нет." },
+      { label: "База", state: "ok", detail: "Текст прочитан из git расширения. В информационную базу ничего не загружалось." },
+    ],
+    recommendation: "Слабое место — виртуальная таблица без периода. Правку можно положить в ветку расширения, не в рабочую базу.",
+    durationMs: 900,
+  }),
+  review_1c_query: spec({
+    id: "review_1c_query",
+    title: "Разбор запроса",
+    normalized: "review_1c_query",
+    risk: 0,
+    tool: "review_1c_query",
+    target: "расширение utp / запрос остатков",
+    runbook: "review_1c_query",
+    account: "jarvis-1c-reader",
+    parameters: [{ key: "source", value: "МодульОбъекта" }],
+    confirmation: "none",
+    mutation: false,
+    forceDeny: false,
+    clarify: false,
+    denyReason: null,
+    clarifyReason: null,
+    plan: ["Разобрать текст запроса.", "Не выполнять его на копии боя и не снимать план СУБД отсюда."],
+    toolCall: 'review_1c_query(module: "МодульОбъекта")',
+    consequences: ["Запрос не запускался."],
+    findings: [
+      { label: "Виртуальная таблица", state: "warn", detail: "Остатки() без &Период. Платформа берёт текущие остатки на сейчас." },
+      { label: "Соединение", state: "warn", detail: "Левое соединение номенклатуры без отбора по организации. Строк больше, чем нужно проведению." },
+      { label: "Индекс", state: "info", detail: "Условие по регистратору в тексте нет. Для проведения документа он обычно не нужен, для отчёта нужен." },
+      { label: "Выполнение", state: "ok", detail: "Запрос не передавался в кластер." },
+    ],
+    recommendation: "Добавьте параметр периода и отбор по организации. Это правка расширения, не обновление конфигурации базы.",
+    durationMs: 700,
+  }),
+  trace_1c: spec({
+    id: "trace_1c",
+    title: "Стек 1С",
+    normalized: "trace_1c",
+    risk: 0,
+    tool: "read_1c_event_log",
+    target: "srv1c01 / журнал регистрации",
+    runbook: "read_1c_code",
+    account: "jarvis-1c-reader",
+    parameters: [{ key: "event", value: "проведение" }],
+    confirmation: "none",
+    mutation: false,
+    forceDeny: false,
+    clarify: false,
+    denyReason: null,
+    clarifyReason: null,
+    plan: ["Прочитать последние ошибки проведения.", "Не исправлять данные документа и не перепроводить."],
+    toolCall: 'read_1c_event_log(server: "srv1c01", event: "posting")',
+    consequences: ["Журнал только читается."],
+    findings: [
+      { label: "Событие", state: "bad", detail: "Ошибка проведения Реализация 00001482 сегодня в 13:41." },
+      { label: "Стек", state: "info", detail: "ОбщийМодуль.ПроведениеСервер.Провести, строка 214." },
+      { label: "Причина", state: "warn", detail: "Поле СтавкаНДС не найдено в выборке запроса. В расширении колонка называется Ставка." },
+      { label: "Данные", state: "ok", detail: "Документ не перепроводился. Движения не переписывались." },
+    ],
+    recommendation: "Расхождение имён колонки. Чиню только текстом расширения после отдельной команды, документы сам не трогаю.",
+    durationMs: 800,
+  }),
+  patch_1c: spec({
+    id: "patch_1c",
+    title: "Правка расширения",
+    normalized: "patch_1c",
+    risk: 2,
+    tool: "patch_1c_extension",
+    target: "расширение utp / ветка fix/posting-query",
+    runbook: "patch_1c_extension",
+    account: "jarvis-1c-reader",
+    parameters: [
+      { key: "branch", value: "fix/posting-query" },
+      { key: "module", value: "МодульОбъекта" },
+    ],
+    confirmation: "single",
+    mutation: true,
+    forceDeny: false,
+    clarify: false,
+    denyReason: null,
+    clarifyReason: null,
+    plan: [
+      "Править файл расширения в ветке, не основную конфигурацию.",
+      "Показать diff. В рабочую базу не загружать.",
+      "Обновление конфигурации базы и CF этой командой закрыты.",
+    ],
+    toolCall: 'patch_1c_extension(branch: "fix/posting-query", module: "МодульОбъекта")',
+    consequences: ["Появится diff в ветке расширения.", "Информационная база utp не обновляется.", "Пользователи проведение не теряют."],
+    findings: [
+      { label: "Diff", state: "info", detail: "Остатки(&Период) и отбор по организации. Колонка СтавкаНДС возвращена в выборку." },
+      { label: "Синтаксис", state: "ok", detail: "Проверка модуля расширения без ошибок. Это не запуск на кластере." },
+      { label: "База", state: "ok", detail: "CF не собирался. ОбновитьКонфигурациюБазыДанных не вызывалось." },
+    ],
+    recommendation: "Дальше человек смотрит diff и сам решает, загружать ли расширение. Отсюда в рабочую базу хода нет.",
+    durationMs: 2400,
+  }),
+  provision_1c_admin: spec({
+    id: "provision_1c_admin",
+    title: "Заявка на jarvis-1c-admin",
+    normalized: "provision_1c_admin",
+    risk: 3,
+    tool: "request_account",
+    target: "каталог учёток",
+    runbook: null,
+    account: "jarvis-1c-reader",
+    parameters: [{ key: "account", value: "jarvis-1c-admin" }],
+    confirmation: "double",
+    mutation: true,
+    forceDeny: false,
+    clarify: false,
+    denyReason: null,
+    clarifyReason: null,
+    plan: [
+      "Открыть заявку на отдельную учётку. jarvis-1c-reader не расширять.",
+      "В заявке только тестовая база: загрузка расширения и обновление её конфигурации.",
+      "Production, Выполнить() и произвольный COM в текст заявки не входят.",
+    ],
+    toolCall: 'request_account(name: "jarvis-1c-admin", scope: "test-infobase")',
+    consequences: [
+      "Появится номер заявки. Учётки в каталоге ещё нет.",
+      "Две точные фразы. «Да» не принимается.",
+      "Даже после них консоль не создаёт учётку и не пишет в production.",
+    ],
+    findings: [
+      { label: "Заявка", state: "ok", detail: "Номер записан в журнал. Это разрешение на бумаге, не учётка." },
+      { label: "Каталог", state: "warn", detail: "jarvis-1c-admin не создана. Пароль нигде не задавался." },
+      { label: "Граница", state: "ok", detail: "Тестовая база ещё не подключена. Production, CF, Выполнить() и COM не запрашивались." },
+    ],
+    recommendation: "Учётку заводит человек в тестовом контуре. Пароль в эту консоль не приносить.",
+    durationMs: 400,
+  }),
+  load_1c_cf: spec({
+    id: "load_1c_cf",
+    title: "Загрузка конфигурации",
+    normalized: "load_1c_cf",
+    risk: 3,
+    tool: "load_configuration",
+    target: "рабочая база utp",
+    runbook: null,
+    account: "—",
+    parameters: [{ key: "file", value: "cf" }],
+    confirmation: "none",
+    mutation: true,
+    forceDeny: true,
+    clarify: false,
+    denyReason: "У jarvis-1c-reader нет загрузки CF, обновления конфигурации БД, Выполнить(), произвольного COM и записи в production.",
+    clarifyReason: null,
+    plan: ["Не открывать конфигуратор на запись.", "Не вызывать ОбновитьКонфигурациюБазыДанных.", "Не исполнять текст, который пришёл в команде."],
+    toolCall: "load_configuration(...)  — нет такого инструмента",
+    consequences: ["Рабочая база не изменена."],
+    findings: [],
+    recommendation: "Правка возможна только как diff расширения. В базу её кладёт человек после ревью.",
+    durationMs: 0,
+  }),
+  onec_dev: spec({
+    id: "onec_dev",
+    title: "Разработка 1С",
+    normalized: "onec_dev",
+    risk: 2,
+    tool: "onec_repository",
+    target: "расширение, контур test",
+    runbook: null,
+    account: "jarvis-1c-dev",
+    parameters: [{ key: "environment", value: "test" }],
+    confirmation: "single",
+    mutation: true,
+    forceDeny: false,
+    clarify: false,
+    denyReason: null,
+    clarifyReason: null,
+    plan: ["Править только копию расширения."],
+    toolCall: "onec_repository(...)",
+    consequences: ["Production не вызывается."],
+    findings: [],
+    recommendation: null,
+    durationMs: 400,
+  }),
   unknown: spec({
     id: "unknown",
     title: "Команда не разобрана",
@@ -900,7 +1146,7 @@ const SPECS: Record<IntentId, Spec> = {
     toolCall: "—",
     consequences: ["Ничего не выполнено."],
     findings: [],
-    recommendation: "Например: проверь сервер, сделай резервную копию базы utp, проверь Mailcow.",
+    recommendation: "Например: проверь сервер, посмотри модуль проведения, проверь запрос 1С.",
     durationMs: 0,
   }),
 };
@@ -928,9 +1174,15 @@ export function matchIntent(raw: string): IntentId {
   if (/(бэкап|backup|export|сохрани\S*).{0,32}(mikrotik|микротик|rb5009)|(mikrotik|микротик|rb5009).{0,32}(бэкап|backup|export|конфиг)/.test(s)) {
     return "backup_mikrotik";
   }
-  if (/mailcow|мейлкау|почтов\S* сервер/.test(s)) return "check_mailcow";
+  if (/mailcow|мейлкау|почтов\S* сервер|почт/.test(s)) return "check_mailcow";
   if (/wireguard|вайргард|вайр гард/.test(s)) return "check_wireguard";
+  if (/jarvis-1c-admin/.test(s)) return "provision_1c_admin";
   if (/github|actions|пайплайн/.test(s)) return "git_ci";
+  if (/загруз\S*\s+(cf|конфигурац)|обнов\S*\s+конфигурац|залей\s+cf|выполнить\s*\(|динамическ\S*\s+выполн|произвольн\S*\s+com|com-?\s*объект|измен\S*\s+(production|рабоч\S*\s+баз)|запис\S*\s+в\s+(базу|production)/.test(s)) return "load_1c_cf";
+  if (/(запрос)/.test(s) && /(проверь|разбер|почему|тормоз|план|посмотр|глянь)/.test(s)) return "review_1c_query";
+  if (/журнал\s+регистрац|стек|строк\S*\s+модул/.test(s)) return "trace_1c";
+  if (/(исправ|поправ|доработ|патч)/.test(s) && /(модул|запрос|расширен|обработк|1с|1c)/.test(s)) return "patch_1c";
+  if (/(модул|расширен|метаданн|обработк|процедур|функци)/.test(s) && /(посмотр|прочита|разбер|найд|глянь|покаж)/.test(s)) return "read_1c_code";
   if (/исправ\S* ошиб|прогони тест|почини код/.test(s)) return "coding";
   if (/перезагруз|reboot|ребут/.test(s)) {
     return /dc01|контроллер|домен/.test(s) ? "reboot_dc" : "reboot_ambiguous";
@@ -947,7 +1199,7 @@ export function matchIntent(raw: string): IntentId {
   if (/(проверь|состоян|статус).{0,24}(1с|1c)|(1с|1c).{0,16}(сервер|кластер)/.test(s)) return "check_1c";
   if (/контроллер|dc01|(^|\s)dc(\s|$)/.test(s)) return "check_dc";
   if (/mikrotik|микротик|rb5009|маршрутизатор/.test(s)) return "check_mikrotik";
-  if (/проверь сервер|состояние площад|статус сервер/.test(s)) return "check_fleet";
+  if (/проверь сервер|состояние площад|статус площад|статус сервер/.test(s)) return "check_fleet";
   return "unknown";
 }
 
@@ -962,8 +1214,312 @@ function confirmText(kind: Spec["confirmation"]): string {
   return "не требуется";
 }
 
+type CompoundHit = {
+  spec: Spec;
+  previewFindings: boolean;
+  note: string | null;
+  extraNotes: string[];
+};
+
+function matchClause(chunk: string): IntentId {
+  const direct = matchIntent(chunk);
+  if (direct !== "unknown") return direct;
+  const s = normalize(chunk);
+  if (/(бэкап|backup|копи)/.test(s) && /(utp|ютп|баз)/.test(s)) return "backup_utp";
+  if (/(бэкап|backup|копи|конфиг|export)/.test(s) && /(mikrotik|микротик|rb5009)/.test(s)) return "backup_mikrotik";
+  if (/mailcow|почт/.test(s)) return "check_mailcow";
+  if (/диск|место/.test(s)) return "check_disk";
+  if (/docker|докер/.test(s)) return "check_docker";
+  if (/wireguard|вайр/.test(s)) return "check_wireguard";
+  if (/mikrotik|микротик|маршрутизатор/.test(s)) return "check_mikrotik";
+  if (/запрос/.test(s)) return "review_1c_query";
+  if (/модул|расширен|метаданн|обработк/.test(s)) return "read_1c_code";
+  if (/журнал/.test(s)) return "trace_1c";
+  if (/1с|1c/.test(s)) return "check_1c";
+  if (/(^|\s)sql(\s|$)|utp|ютп|база|базу|базы/.test(s)) return "check_sql";
+  if (/площад|сервер/.test(s)) return "check_fleet";
+  if (/контроллер|домен|dc01|(^|\s)dc(\s|$)/.test(s)) return "check_dc";
+  if (/интернет|канал/.test(s)) return "check_wan";
+  if (/отчет|сводк/.test(s)) return "daily_report";
+  if (/github|actions|пайплайн/.test(s)) return "git_ci";
+  return "unknown";
+}
+
+function compoundSpec(raw: string): CompoundHit | null {
+  let body = normalize(raw);
+  if (!body) return null;
+  const extraNotes: string[] = [];
+  const avoid = new Set<IntentId>();
+  let readOnly = false;
+  const guards: { re: RegExp; note: string; readOnly?: boolean; drop: IntentId[] }[] = [
+    {
+      re: /только\s+(?:скажи|сообщи|покажи|посмотри)|только\s+чтение|ничего\s+не\s+мен\S*|без\s+изменений/g,
+      note: "Ограничение: только чтение, изменения в план не ставятся.",
+      readOnly: true,
+      drop: [],
+    },
+    {
+      re: /не\s+(?:перезапуск\S*|перезагруж\S*|ребут\S*|рестарт\S*)/g,
+      note: "Перезапуск и перезагрузка из фразы исключены.",
+      drop: ["restart_1c", "reboot_dc", "reboot_ambiguous", "restart_ambiguous"],
+    },
+    {
+      re: /не\s+(?:пуш\S*|push\S*)(?:\s+\S+){0,4}/g,
+      note: "Push из фразы исключён.",
+      drop: ["push_main"],
+    },
+    {
+      re: /не\s+удал\S*(?:\s+\S+){0,3}/g,
+      note: "Удаление из фразы исключено.",
+      drop: ["delete_db"],
+    },
+    {
+      re: /не\s+чист\S*/g,
+      note: "Очистка из фразы исключена.",
+      drop: ["clean_server"],
+    },
+    {
+      re: /не\s+(?:загруж\S*|обнов\S*\s+конфигурац\S*)(?:\s+\S+){0,5}/g,
+      note: "Загрузка в рабочую базу из фразы исключена.",
+      drop: ["load_1c_cf"],
+    },
+  ];
+  for (const guard of guards) {
+    if (!guard.re.test(body)) continue;
+    guard.re.lastIndex = 0;
+    extraNotes.push(guard.note);
+    if (guard.readOnly) readOnly = true;
+    for (const id of guard.drop) avoid.add(id);
+    body = body.replace(guard.re, " ");
+    guard.re.lastIndex = 0;
+  }
+  const conditionMatch = body.match(/если\s+[^,;]+/);
+  const condition = conditionMatch?.[0] ?? null;
+  if (condition) {
+    extraNotes.push(`Условие «${condition}» не включает само действие.`);
+    body = body.replace(condition, " ");
+  }
+  const chunks = body
+    .split(/\s*(?:,|;| и | потом | затем | а затем | после этого | а также )\s*/)
+    .map((part) => part.replace(/^(а|ну|потом|затем|сначала|также|еще|ещё)\s+/, "").trim())
+    .filter((part) => part.length > 1 && !/^(пожалуйста|сейчас|мне|там)$/.test(part));
+  const known: IntentId[] = [];
+  const missed: string[] = [];
+  const seen = new Set<IntentId>();
+  for (const chunk of chunks) {
+    const intent = matchClause(chunk);
+    if (intent === "unknown") {
+      if (!/^(проверь|посмотри|скажи|статус|что)$/.test(chunk)) missed.push(chunk);
+      continue;
+    }
+    if (seen.has(intent)) continue;
+    seen.add(intent);
+    known.push(intent);
+    if (known.length === 4) break;
+  }
+  const complex = known.length >= 2 || extraNotes.length > 0 || missed.length > 0;
+  if (!complex) return null;
+
+  const dropped: { id: IntentId; why: string }[] = [];
+  const held: IntentId[] = [];
+  const sure: IntentId[] = [];
+  for (const id of known) {
+    const spec = SPECS[id];
+    if (spec.forceDeny) {
+      dropped.push({ id, why: spec.denyReason ?? "Запрещено политикой." });
+      continue;
+    }
+    if (avoid.has(id)) {
+      dropped.push({ id, why: "Вы просили этого не делать." });
+      continue;
+    }
+    if (readOnly && spec.mutation) {
+      dropped.push({ id, why: "Фраза разрешает только чтение." });
+      continue;
+    }
+    if (spec.clarify) {
+      held.push(id);
+      continue;
+    }
+    sure.push(id);
+  }
+
+  const dropLines = dropped.map((item) => `Не делаю «${SPECS[item.id].title}»: ${item.why}`);
+  const heldLines = held.map((id) => `Не назначаю «${SPECS[id].title}»: ${SPECS[id].clarifyReason ?? "нужно уточнение"}`);
+  const missLine = missed.length > 0 ? `Не разобрал: ${missed.join("; ")}.` : null;
+  const note = [...dropLines, ...heldLines, missLine].filter(Boolean).join(" ") || null;
+
+  if (sure.length === 0 && held.length === 0 && known.length > 0 && known.every((id) => SPECS[id].forceDeny)) {
+    const reason = known.map((id) => SPECS[id].denyReason).filter(Boolean).join(" ");
+    return {
+      spec: {
+        ...SPECS[known[0]],
+        id: "unknown",
+        title: "План отклонён",
+        normalized: "compound_plan",
+        forceDeny: true,
+        denyReason: reason,
+        plan: dropLines,
+        toolCall: known.map((id) => SPECS[id].toolCall).join(" → "),
+        recommendation: "Ни один шаг этого плана не входит в схему инструментов.",
+      },
+      previewFindings: false,
+      note: reason,
+      extraNotes,
+    };
+  }
+
+  if (sure.length === 0) {
+    const reason = note ?? "В фразе не осталось безопасного шага.";
+    return {
+      spec: {
+        ...SPECS.unknown,
+        id: "unknown",
+        title: "План не собран",
+        normalized: "compound_plan",
+        clarify: true,
+        clarifyReason: reason,
+        plan: [...extraNotes, ...dropLines, ...heldLines, "Ничего не выполнять, пока нет ясного безопасного шага."],
+        recommendation: "Оставьте чтение или назовите один разрешённый runbook.",
+      },
+      previewFindings: false,
+      note: reason,
+      extraNotes,
+    };
+  }
+
+  if (sure.length === 1) {
+    const base = SPECS[sure[0]];
+    return {
+      spec: {
+        ...base,
+        plan: [...base.plan, ...extraNotes, ...dropLines, ...heldLines],
+        recommendation: [base.recommendation, note].filter(Boolean).join(" "),
+      },
+      previewFindings: false,
+      note,
+      extraNotes,
+    };
+  }
+
+  const specs = sure.map((id) => SPECS[id]);
+  const risk = specs.reduce<Risk>((max, item) => (item.risk > max ? item.risk : max), 0);
+  const confirmation = specs.reduce<Spec["confirmation"]>((kind, item) => {
+    const rank = item.confirmation === "double" ? 2 : item.confirmation === "single" ? 1 : 0;
+    const current = kind === "double" ? 2 : kind === "single" ? 1 : 0;
+    if (rank > current) return item.confirmation;
+    return kind;
+  }, "none");
+  const findings = specs
+    .filter((item) => !item.mutation)
+    .flatMap((item) => item.findings.map((finding) => ({ ...finding, label: `${item.title}: ${finding.label}` })));
+  const accounts = [...new Set(specs.map((item) => item.account))];
+  return {
+    spec: {
+      id: sure[0],
+      title: `План из ${specs.length} шагов`,
+      normalized: "compound_plan",
+      risk,
+      tool: "plan",
+      target: specs.map((item) => item.target).join(", "),
+      runbook: null,
+      account: accounts.join(", "),
+      parameters: specs.map((item, index) => ({ key: String(index + 1), value: item.tool })),
+      confirmation,
+      mutation: specs.some((item) => item.mutation),
+      forceDeny: false,
+      clarify: false,
+      denyReason: null,
+      clarifyReason: null,
+      plan: [
+        ...extraNotes,
+        ...specs.map((item, index) => `${index + 1}. ${item.title}. ${item.plan[0] ?? item.tool}`),
+        ...dropLines,
+        ...heldLines,
+      ],
+      toolCall: specs.map((item) => item.toolCall).join(" → "),
+      consequences: specs.filter((item) => item.mutation).flatMap((item) => item.consequences),
+      findings,
+      recommendation: [
+        "Шаги идут по порядку. Запрещённый шаг не становится разрешённым от соседнего.",
+        note,
+      ]
+        .filter(Boolean)
+        .join(" "),
+      durationMs: specs.reduce((sum, item) => sum + item.durationMs, 0),
+    },
+    previewFindings: findings.length > 0 && specs.some((item) => item.mutation),
+    note,
+    extraNotes,
+  };
+}
+
+function specFromDev(plan: DevPlan): Spec {
+  const allowed = plan.steps.filter((item) => !item.deny);
+  const denied = plan.steps.filter((item) => item.deny);
+  const allDenied = allowed.length === 0;
+  const risk = plan.steps.reduce<Risk>((max, item) => (item.risk > max ? item.risk : max), 0);
+  const confirmation = allDenied
+    ? "none"
+    : allowed.some((item) => item.confirmation === "single")
+      ? "single"
+      : "none";
+  const titles = (allDenied ? denied : allowed).map((item) => item.title);
+  return spec({
+    id: "onec_dev",
+    title: titles.length === 1 ? titles[0] : "Разработка 1С",
+    normalized: "onec_dev",
+    risk,
+    tool: "onec_repository",
+    target: `расширение, контур ${plan.environment}`,
+    runbook: null,
+    account: "jarvis-1c-dev",
+    parameters: [
+      { key: "environment", value: plan.environment },
+      { key: "capabilities", value: plan.steps.map((item) => item.capability).join(", ") },
+    ],
+    confirmation,
+    mutation: allowed.some((item) => item.mutation),
+    forceDeny: allDenied,
+    clarify: false,
+    denyReason: allDenied ? denied.map((item) => item.reason).join(" ") : null,
+    clarifyReason: null,
+    plan: [
+      `Контур ${plan.environment}. Учётка jarvis-1c-dev, не постоянный admin.`,
+      ...allowed.map((item) =>
+        item.capability === "extension.create"
+          ? "Расширение JarvisDev уже собрано в extensions/JarvisDev. Это выгрузка в файлы, не загрузка в базу."
+          : `${item.title}: копия расширения, не основная конфигурация.`,
+      ),
+      ...denied.map((item) => `Не делаю «${item.title}»: ${item.reason}`),
+      onecDevAdapter.note,
+    ],
+    toolCall: `onec_repository(environment: "${plan.environment}", capabilities: "${plan.steps.map((item) => item.capability).join(", ")}")`,
+    consequences: allDenied
+      ? ["Ничего не изменено."]
+      : [
+          "Правка только в копии расширения выбранного контура.",
+          "Commit и PR ждут точную фразу. Push в main по-прежнему закрыт.",
+          "CF, конфигурация production и SQL-таблицы не вызываются.",
+        ],
+    findings: allDenied
+      ? []
+      : [
+          { label: "Контур", state: "info", detail: plan.environment },
+          { label: "Адаптер", state: "warn", detail: onecDevAdapter.note },
+          ...allowed.map((item) => ({ label: item.title, state: "ok" as const, detail: "Шаг принят политикой разработчика." })),
+        ],
+    recommendation: allDenied
+      ? "Повторите то же действие для development или test и только через расширение."
+      : "Дальше человек смотрит diff. В рабочую базу это само не попадает.",
+    durationMs: 600,
+  });
+}
+
 export function evaluate(raw: string, operator: Operator, now: Date): Decision {
-  const specItem = SPECS[matchIntent(raw)];
+  const dev = classifyOnecDeveloper(raw);
+  const compound = dev ? null : compoundSpec(raw);
+  const specItem = dev ? specFromDev(dev) : compound?.spec ?? SPECS[matchIntent(raw)];
   const windowOpen = inMaintenance(now);
   const notes = [
     `Пользователь: ${operator.name}`,
@@ -979,6 +1535,7 @@ export function evaluate(raw: string, operator: Operator, now: Date): Decision {
         ? "Окно 22:00–06:00: сейчас вне окна. Для изменения нужно подтверждение."
         : "Окно обслуживания чтение и низкий риск не блокирует.",
     `Учётка: ${specItem.account}`,
+    ...(compound?.extraNotes ?? []),
   ];
 
   let verdict: Verdict = "allow";
@@ -992,9 +1549,16 @@ export function evaluate(raw: string, operator: Operator, now: Date): Decision {
   } else if (specItem.clarify) {
     verdict = "clarify";
     reason = specItem.clarifyReason;
+  } else if (dev && dev.steps.some((item) => item.deny) && dev.steps.some((item) => !item.deny)) {
+    reason = dev.steps
+      .filter((item) => item.deny)
+      .map((item) => item.reason)
+      .join(" ");
+  } else if (compound?.note) {
+    reason = compound.note;
   }
 
-  return { ...specItem, verdict, reason, policyNotes: notes };
+  return { ...specItem, verdict, reason, policyNotes: notes, previewFindings: compound?.previewFindings ?? false };
 }
 
 export function formatClock(ts: number): string {

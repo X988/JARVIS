@@ -36,6 +36,8 @@ const REPAIRS: [RegExp, string][] = [
   [/бекап/g, "бэкап"],
   [/(^|\s)ди\s*си(\s|$)/g, "$1контроллер домена$2"],
   [/(^|\s)дц(\s|$)/g, "$1контроллер домена$2"],
+  [/(^|\s)конфу(\s|$)/g, "$1конфигурация$2"],
+  [/(^|\s)конфа(\s|$)/g, "$1конфигурация$2"],
 ];
 
 const SAFE: { say: string; keys: string[] }[] = [
@@ -54,6 +56,8 @@ const SAFE: { say: string; keys: string[] }[] = [
   { say: "Сделай отчёт за сегодня", keys: ["отчет", "сводк"] },
   { say: "Почисти сервер", keys: ["почисти", "очисти"] },
   { say: "Проверь контроллер домена", keys: ["контроллер"] },
+  { say: "Посмотри модуль проведения в расширении", keys: ["модул", "расширен"] },
+  { say: "Проверь запрос к регистру накопления", keys: ["проверь запрос", "запрос к регистр"] },
 ];
 
 export function repairSpeech(raw: string): string {
@@ -84,6 +88,10 @@ export function alternativesFrom(results: ArrayLike<RawResult>): SpeechAlt[] {
   }
   if (!alts.length && headText) alts.push({ transcript: headText, confidence: 1 });
   return alts;
+}
+
+function hasSeveralSteps(text: string): boolean {
+  return /(?:,| и | потом | затем | а также | после этого )/.test(text);
 }
 
 function grams(input: string): Map<string, number> {
@@ -137,7 +145,7 @@ export function interpretSpeech(alts: SpeechAlt[]): SpeechReading {
       return b.text.length - a.text.length;
     });
   const best = ranked[0];
-  if (best.intent !== "unknown") {
+  if (best.intent !== "unknown" && !hasSeveralSteps(best.text)) {
     const canon = SAFE.filter((item) => matchIntent(item.say) === best.intent);
     const text = canon.length === 1 ? canon[0].say : best.text;
     return {
@@ -150,6 +158,15 @@ export function interpretSpeech(alts: SpeechAlt[]): SpeechReading {
   }
 
   const basis = cleaned.slice().sort((a, b) => b.text.length - a.text.length)[0];
+  if (hasSeveralSteps(basis.text)) {
+    return {
+      raw: basis.raw,
+      text: basis.text,
+      changed: normalize(basis.raw) !== basis.text,
+      uncertain: false,
+      choices: [],
+    };
+  }
   const scored = SAFE.map((item) => ({ ...item, score: fuzzyScore(basis.text, item) })).sort(
     (a, b) => b.score - a.score,
   );
