@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "JARVIS",
+      "hasCanvas": false,
+      "bodyTextLen": 1284,
+      "bodyTextHash": "bd543971df0ddac8e2fcc05f6811ba1527f184a740a0ae51a337ca0b0697c56a",
+      "bodyTextPrefix": "демо-консоль JARVIS DRY RUN admin1 чужой ID Telegram → Whisper →",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "JARVIS",
+      "hasCanvas": false,
+      "bodyTextLen": 460,
+      "bodyTextHash": "15e7a676f07bce40385f8e24c288d873ad29b92beb9fd301873250366d35274e",
+      "bodyTextPrefix": "демо-консоль JARVIS DRY RUN admin1 чужой ID Telegram → Whisper →",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}

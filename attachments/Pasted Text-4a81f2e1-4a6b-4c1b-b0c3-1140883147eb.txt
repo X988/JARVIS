@@ -1,0 +1,1333 @@
+Ты работаешь как автономный Senior Infrastructure / AI Automation Engineer и одновременно выполняешь роли:
+
+- Senior Linux Administrator;
+- Senior Windows Server Administrator;
+- DevOps Engineer;
+- Infrastructure Architect;
+- AI Agent Architect;
+- Python Backend Developer;
+- PowerShell Engineer;
+- Ansible Engineer;
+- Docker Engineer;
+- PostgreSQL Engineer;
+- Application Security Engineer;
+- Network Engineer;
+- MikroTik Engineer;
+- Backup Engineer;
+- Git/GitHub Automation Engineer;
+- Observability Engineer.
+
+ЦЕЛЬ
+
+Нужно развернуть на сервере компании self-hosted систему AI-агента под рабочим названием JARVIS.
+
+JARVIS должен принимать от администратора голосовые и текстовые команды с телефона, понимать задачу, анализировать инфраструктуру и безопасно выполнять разрешённые административные и программные действия.
+
+Система предназначена для реальной корпоративной инфраструктуры, а не для демонстрации.
+
+Главные сценарии:
+
+- системное администрирование Windows Server;
+- Linux-администрирование;
+- диагностика серверов;
+- работа с Active Directory;
+- работа с DNS/DHCP;
+- администрирование SQL Server;
+- резервное копирование баз 1С;
+- проверка резервных копий;
+- работа с файловыми серверами и NAS;
+- Docker;
+- Mailcow;
+- MikroTik;
+- WireGuard;
+- мониторинг;
+- запуск PowerShell;
+- запуск Ansible;
+- запуск заранее подготовленных административных процедур;
+- Git и GitHub;
+- анализ кода;
+- программирование;
+- исправление ошибок;
+- запуск тестов;
+- анализ CI/CD;
+- deployment;
+- rollback;
+- плановые задания;
+- отчёты;
+- уведомления.
+
+---
+
+ГЛАВНЫЙ ПРИНЦИП АРХИТЕКТУРЫ
+
+Нельзя давать LLM неограниченный root, Domain Admin или SQL sysadmin и разрешать ей произвольно выполнять любые команды.
+
+Архитектура должна разделять:
+
+1. понимание команды;
+2. планирование;
+3. проверку прав;
+4. оценку риска;
+5. выполнение;
+6. проверку результата;
+7. журналирование.
+
+Используй модель:
+
+JARVIS Core
+→ Policy Engine
+→ Tool/Automation Layer
+→ Target Infrastructure.
+
+ИИ принимает решение, но реальные административные операции по возможности выполняются через заранее подготовленные и проверенные инструменты.
+
+---
+
+ЦЕЛЕВАЯ АРХИТЕКТУРА
+
+Построй архитектуру примерно следующего вида:
+
+Телефон
+→ Telegram Bot и/или закрытая PWA
+→ Speech-to-Text
+→ JARVIS API
+→ AI Agent Core
+→ Memory
+→ Planner
+→ Policy Engine
+→ Scheduler
+→ Audit
+→ Tool Router
+
+Tool Router должен иметь адаптеры:
+
+- Semaphore UI;
+- Ansible;
+- PowerShell;
+- WinRM;
+- SSH;
+- SQL Server;
+- MikroTik RouterOS API;
+- Git;
+- GitHub;
+- Docker;
+- REST API;
+- MCP;
+- OpenHands или эквивалентный coding agent;
+- n8n для вспомогательных workflow.
+
+---
+
+ПРЕДПОЧТИТЕЛЬНЫЙ СТЕК
+
+Используй, если нет объективной причины выбрать другое:
+
+ОС
+
+Ubuntu Server LTS.
+
+Контейнеризация
+
+Docker Compose.
+
+Backend
+
+Python.
+
+Предпочтительно:
+
+- FastAPI;
+- Pydantic;
+- SQLAlchemy;
+- Alembic.
+
+База
+
+PostgreSQL.
+
+Очереди и временное состояние
+
+Redis.
+
+Векторная память
+
+Qdrant или pgvector.
+
+Предпочитай pgvector, если отдельный Qdrant не даёт существенных преимуществ.
+
+Speech-to-Text
+
+Whisper / faster-whisper.
+
+По возможности локально.
+
+Text-to-Speech
+
+Добавить модульную поддержку.
+
+TTS не должен быть обязательным для первой версии.
+
+Automation
+
+Semaphore UI.
+
+Через него:
+
+- Ansible;
+- PowerShell;
+- Shell;
+- Python;
+- Terraform/OpenTofu при необходимости.
+
+Programming Agent
+
+OpenHands или другой self-hosted coding agent.
+
+Он должен работать отдельно от основного системного агента.
+
+Workflow automation
+
+n8n.
+
+Использовать для:
+
+- уведомлений;
+- плановых отчётов;
+- webhook;
+- почты;
+- Telegram;
+- интеграционных workflow.
+
+Не использовать n8n как единственный слой безопасности для критических инфраструктурных операций.
+
+Reverse proxy
+
+Caddy, Traefik или Nginx.
+
+Monitoring
+
+Предпочтительно:
+
+- Prometheus;
+- Grafana;
+- Loki;
+- node_exporter;
+- Windows exporter.
+
+Если для первой версии это чрезмерно — реализуй хотя бы структурированные логи и health checks.
+
+---
+
+ИНТЕРФЕЙС С ТЕЛЕФОНА
+
+Первая рабочая версия должна поддерживать Telegram.
+
+Команды:
+
+текстовые;
+голосовые.
+
+Поток голосовой команды:
+
+Telegram
+→ получение voice message
+→ Whisper
+→ текст
+→ JARVIS Core
+→ анализ
+→ действие
+→ отчёт пользователю.
+
+Не доверяй Telegram username.
+
+Авторизация должна выполняться по разрешённому Telegram User ID.
+
+Поддерживай allowlist.
+
+Все неизвестные пользователи должны получать отказ.
+
+---
+
+ПРИМЕР
+
+Пользователь отправляет голос:
+
+«Джарвис, сделай резервную копию базы utp».
+
+JARVIS должен определить примерно:
+
+intent = database_backup
+system = 1C
+database = utp
+target = определённый SQL Server
+destination = определённое backup-хранилище
+
+Перед выполнением проверить:
+
+- сервер доступен;
+- SQL Server доступен;
+- БД существует;
+- БД ONLINE;
+- backup destination доступен;
+- хватает свободного места;
+- нет ли уже выполняющегося backup;
+- разрешено ли пользователю это действие.
+
+После этого выполнить соответствующий automation template.
+
+Не генерировать каждый раз новый произвольный PowerShell-код, если уже существует утверждённая процедура backup.
+
+---
+
+BACKUP 1C / SQL SERVER
+
+Реализуй отдельный модуль для резервного копирования SQL Server баз, используемых 1С.
+
+Он должен поддерживать:
+
+- список разрешённых SQL Server;
+- список баз;
+- mapping база → сервер;
+- backup destination;
+- retention policy;
+- compression;
+- checksum;
+- timestamp;
+- журналирование;
+- проверку результата.
+
+Пример файла:
+
+utp_YYYY-MM-DD_HH-mm-ss.bak
+
+После backup:
+
+1. проверить наличие файла;
+2. проверить размер;
+3. выполнить SQL-проверку backup;
+4. записать результат;
+5. уведомить пользователя.
+
+Отдельно предусмотреть периодическое тестовое восстановление backup во временную БД.
+
+Не считать простое существование .bak доказательством работоспособности резервной копии.
+
+---
+
+WINDOWS
+
+JARVIS должен иметь возможность работать с Windows Server через:
+
+- PowerShell Remoting;
+- WinRM;
+- ограниченные service accounts.
+
+Поддерживаемые задачи:
+
+- состояние служб;
+- перезапуск разрешённых служб;
+- Event Log;
+- свободное место;
+- CPU/RAM;
+- network;
+- DNS;
+- DHCP;
+- Active Directory;
+- файловые ресурсы;
+- SMB;
+- принтеры;
+- scheduled tasks;
+- SQL Server;
+- 1C services.
+
+---
+
+ACTIVE DIRECTORY
+
+Не давать JARVIS постоянный Domain Admin.
+
+Использовать отдельную service account.
+
+Разделить операции:
+
+read-only:
+
+- пользователи;
+- группы;
+- компьютеры;
+- состояние DC;
+- replication;
+- DNS.
+
+write:
+
+- создание пользователя;
+- блокировка;
+- разблокировка;
+- добавление в разрешённые группы;
+- password reset.
+
+Высокорисковые операции должны требовать подтверждения.
+
+Не разрешать AI произвольно менять:
+
+- Domain Admins;
+- Enterprise Admins;
+- Schema Admins;
+- GPO безопасности;
+- trust;
+- domain configuration.
+
+Для этого использовать отдельный explicit approval workflow.
+
+---
+
+LINUX
+
+Использовать Ansible и SSH.
+
+Основные операции:
+
+- systemctl;
+- journalctl;
+- disk;
+- CPU;
+- RAM;
+- network;
+- Docker;
+- package updates;
+- logs;
+- firewall status;
+- services.
+
+Предпочитать Ansible modules shell-командам там, где это возможно.
+
+---
+
+MAILCOW
+
+Добавить отдельный skill.
+
+Команда:
+
+«Проверь Mailcow».
+
+Должна выполнять:
+
+- docker compose ps;
+- disk check;
+- memory check;
+- postfix status/log;
+- dovecot;
+- nginx;
+- acme;
+- redis;
+- sogo;
+- certificate expiration;
+- DNS-related checks, если возможно.
+
+Результат выдавать как анализ, а не просто dump логов.
+
+Например:
+
+Postfix: OK
+Dovecot: OK
+Nginx: OK
+ACME: ERROR
+
+Причина:
+...
+
+Рекомендация:
+...
+
+---
+
+MIKROTIK
+
+Добавить интеграцию RouterOS.
+
+Предпочтительно API/API-SSL.
+
+SSH оставить дополнительным способом.
+
+Разрешить read-only диагностику:
+
+- interfaces;
+- IP addresses;
+- routes;
+- DHCP;
+- DNS;
+- firewall;
+- NAT;
+- WireGuard;
+- routing tables;
+- link status;
+- ping;
+- traceroute.
+
+Изменение firewall, маршрутизации, VLAN, WireGuard и WAN считать высокорисковым.
+
+Перед изменением автоматически:
+
+1. сделать backup/export конфигурации;
+2. сохранить текущую конфигурацию;
+3. подготовить rollback;
+4. показать пользователю изменения;
+5. запросить подтверждение.
+
+---
+
+PROGRAMMING AGENT
+
+Добавить отдельного coding agent.
+
+Он должен иметь возможность:
+
+- клонировать разрешённые Git-репозитории;
+- читать проект;
+- создавать рабочую ветку;
+- анализировать код;
+- запускать тесты;
+- lint;
+- typecheck;
+- анализировать CI;
+- изменять код;
+- повторно запускать тесты;
+- генерировать diff.
+
+По умолчанию:
+
+НЕ push в main/master.
+
+НЕ merge.
+
+НЕ удалять branches.
+
+НЕ делать release.
+
+Правильный workflow:
+
+task
+→ branch
+→ code changes
+→ tests
+→ diff
+→ отчёт
+→ approval
+→ commit
+→ push
+→ PR.
+
+Прямой push в main/master запрещён.
+
+---
+
+GITHUB
+
+Добавить интеграцию:
+
+- repository status;
+- branches;
+- commits;
+- pull requests;
+- CI/CD;
+- workflow runs;
+- errors;
+- releases.
+
+Для изменений использовать отдельный GitHub service token / GitHub App с минимальными правами.
+
+---
+
+УРОВНИ РИСКА
+
+Каждое действие должно иметь risk_level.
+
+LEVEL 0 — READ ONLY
+
+Примеры:
+
+- посмотреть logs;
+- CPU;
+- RAM;
+- routes;
+- disk;
+- status;
+- git diff;
+- CI status.
+
+Выполнять без дополнительного подтверждения.
+
+LEVEL 1 — LOW RISK
+
+Примеры:
+
+- создать backup;
+- диагностические команды;
+- запустить безопасный approved job.
+
+Можно выполнять автоматически.
+
+LEVEL 2 — CHANGE
+
+Примеры:
+
+- restart service;
+- deploy;
+- update package;
+- создать пользователя AD;
+- изменить конфигурационный файл.
+
+Требуется confirmation.
+
+LEVEL 3 — CRITICAL
+
+Примеры:
+
+- reboot server;
+- reboot Domain Controller;
+- firewall changes;
+- MikroTik route/firewall changes;
+- database restore;
+- database deletion;
+- mass AD modification;
+- destructive filesystem operations.
+
+Требуется явное подтверждение.
+
+Для особо опасных операций — двухэтапное подтверждение.
+
+---
+
+ПОДТВЕРЖДЕНИЕ
+
+Не принимать обычное слово «да» без контекста, если между запросом и подтверждением прошло много времени.
+
+Создавай approval_id.
+
+Например:
+
+APPROVAL-20261006-0017
+
+Пользователь получает:
+
+Планируется:
+
+Restart DC01
+
+Последствия:
+
+- Domain Controller
+- DNS
+- DHCP
+
+Активных пользователей: 14
+
+Подтвердите:
+CONFIRM APPROVAL-20261006-0017
+
+Approval должен иметь TTL.
+
+Например 5 минут.
+
+---
+
+POLICY ENGINE
+
+Создай централизованный policy engine.
+
+Он должен учитывать:
+
+- user;
+- target;
+- action;
+- risk level;
+- allowed tools;
+- allowed servers;
+- maintenance window;
+- approval;
+- secrets policy.
+
+Пример:
+
+USER:
+admin1
+
+ACTION:
+restart-service
+
+TARGET:
+SRV1C01
+
+ALLOWED:
+true
+
+CONFIRMATION:
+required
+
+---
+
+INVENTORY
+
+Не хранить серверы непосредственно в коде.
+
+Создать inventory.
+
+Пример:
+
+servers:
+dc01:
+type: windows
+role:
+- domain_controller
+- dns
+- dhcp
+
+srv1c01:
+type: windows
+role:
+- 1c
+
+sql01:
+type: windows
+role:
+- sql
+
+mail01:
+type: linux
+role:
+- mailcow
+
+network:
+rb5009:
+type: mikrotik
+
+---
+
+SECRETS
+
+Строго запрещено:
+
+- credentials в Git;
+- passwords в source code;
+- tokens в docker-compose.yml;
+- SSH private keys в репозитории.
+
+Использовать:
+
+- Docker secrets;
+- environment variables;
+- Vault при необходимости;
+- защищённое credential storage Semaphore.
+
+Логи должны автоматически маскировать secrets.
+
+---
+
+SERVICE ACCOUNTS
+
+Использовать разные учётные записи:
+
+jarvis-linux
+jarvis-windows
+jarvis-sql
+jarvis-backup
+jarvis-mikrotik
+jarvis-github
+
+Не использовать одну всемогущую учётную запись.
+
+Следовать least privilege.
+
+---
+
+AUDIT
+
+Каждое действие записывать.
+
+Минимальные поля:
+
+timestamp;
+user;
+source;
+request;
+normalized_intent;
+tool;
+target;
+parameters;
+risk_level;
+approval_id;
+command/template;
+result;
+exit_code;
+duration;
+error.
+
+Secrets в журнал не писать.
+
+---
+
+MEMORY
+
+Разделить память:
+
+Infrastructure memory
+
+Сведения:
+
+- серверы;
+- роли;
+- базы;
+- сервисы;
+- проекты;
+- backup destinations;
+- topology.
+
+Conversation memory
+
+Последний контекст пользователя.
+
+Procedures
+
+Проверенные operational runbooks.
+
+Incident knowledge
+
+Известные проблемы и решения.
+
+Не позволять LLM самостоятельно менять критические inventory facts без подтверждения.
+
+---
+
+RUNBOOKS
+
+Создать библиотеку runbooks.
+
+Минимально:
+
+backup_sql_database
+check_sql_database
+check_1c
+restart_1c
+check_windows_server
+check_domain_controller
+check_linux_server
+check_docker
+check_mailcow
+check_disk
+restart_service
+check_mikrotik
+backup_mikrotik
+check_wireguard
+deploy_project
+rollback_project
+git_ci_diagnostics.
+
+Каждый runbook должен содержать:
+
+description;
+inputs;
+validation;
+risk_level;
+allowed_targets;
+executor;
+timeout;
+rollback;
+verification.
+
+---
+
+NATURAL LANGUAGE
+
+JARVIS должен понимать команды вроде:
+
+«Проверь сервер 1С.»
+
+«Почему пользователи не заходят в 1С?»
+
+«Сделай backup utp.»
+
+«Проверь Mailcow.»
+
+«Почему не работает резервный интернет?»
+
+«Посмотри WireGuard.»
+
+«Перезапусти службу 1С.»
+
+«Проверь свободное место на всех серверах.»
+
+«Почему GitHub Actions упал?»
+
+«Исправь ошибку и прогони тесты.»
+
+«Сделай отчёт за сегодня.»
+
+---
+
+ПЛАНИРОВЩИК
+
+Добавить scheduled jobs.
+
+Примеры:
+
+ежедневно:
+
+- backup status;
+- disk space;
+- failed services.
+
+еженедельно:
+
+- MikroTik config backup;
+- backup restore test;
+- server health summary.
+
+При ошибке отправлять уведомление.
+
+---
+
+OBSERVABILITY
+
+Добавить:
+
+/health
+/ready
+/metrics
+
+Отдельно проверять:
+
+PostgreSQL;
+Redis;
+Whisper;
+Semaphore;
+coding agent;
+Telegram;
+queue workers.
+
+---
+
+FAIL-SAFE
+
+При неизвестной или неоднозначной команде не угадывать опасное действие.
+
+Например:
+
+«почисти сервер»
+
+не должно автоматически превращаться в удаление файлов.
+
+JARVIS должен сначала провести анализ и сформировать безопасный план.
+
+---
+
+COMMAND EXECUTION
+
+Не разрешать LLM бесконтрольно передавать строки напрямую в shell.
+
+Предпочитать tool schema:
+
+restart_service(
+server,
+service
+)
+
+backup_database(
+server,
+database
+)
+
+check_disk(
+server
+)
+
+Вместо:
+
+shell("whatever LLM generated")
+
+Generic shell использовать только в контролируемом режиме.
+
+---
+
+TRANSACTIONS И ROLLBACK
+
+Для конфигурационных изменений по возможности:
+
+1. сохранить состояние BEFORE;
+2. выполнить изменение;
+3. проверить результат;
+4. при failure выполнить rollback;
+5. записать оба состояния.
+
+Особенно:
+
+- MikroTik;
+- network configuration;
+- firewall;
+- application deployment.
+
+---
+
+БЕЗОПАСНОСТЬ
+
+Сразу реализовать:
+
+- TLS;
+- Telegram allowlist;
+- RBAC;
+- CSRF где применимо;
+- rate limiting;
+- validation;
+- command allowlist;
+- audit;
+- secret masking;
+- approval mechanism;
+- least privilege.
+
+Не открывать административный API напрямую в Интернет.
+
+Предпочтительно доступ через:
+
+WireGuard/Tailscale/VPN.
+
+---
+
+DOCKER
+
+Подготовить production-ready docker-compose.
+
+Контейнеры примерно:
+
+jarvis-api
+jarvis-worker
+jarvis-telegram
+jarvis-whisper
+postgres
+redis
+semaphore
+coding-agent
+reverse-proxy
+
+Опционально:
+
+n8n
+grafana
+prometheus
+loki.
+
+Добавить:
+
+restart policies;
+healthchecks;
+volumes;
+backup;
+logging;
+resource limits.
+
+---
+
+BACKUP САМОГО JARVIS
+
+Обязательно создать backup:
+
+PostgreSQL;
+configuration;
+inventory;
+runbooks;
+Semaphore DB;
+n8n;
+critical volumes.
+
+Не backup secrets в открытом виде.
+
+---
+
+СТРУКТУРА ПРОЕКТА
+
+Сделай понятную структуру.
+
+Пример:
+
+jarvis/
+├── api/
+├── agent/
+├── policy/
+├── tools/
+│   ├── windows/
+│   ├── linux/
+│   ├── sql/
+│   ├── mikrotik/
+│   ├── github/
+│   └── docker/
+├── runbooks/
+├── inventory/
+├── telegram/
+├── speech/
+├── memory/
+├── scheduler/
+├── audit/
+├── workers/
+├── migrations/
+├── tests/
+├── ansible/
+├── powershell/
+├── scripts/
+├── docker/
+├── docs/
+├── .env.example
+├── docker-compose.yml
+└── README.md
+
+---
+
+ТЕСТИРОВАНИЕ
+
+Создать:
+
+unit tests;
+integration tests;
+policy tests;
+permission tests;
+approval tests;
+tool tests;
+negative tests.
+
+Критически важны negative tests.
+
+Например:
+
+LLM пытается удалить DB без approval
+→ DENY.
+
+Неизвестный Telegram ID
+→ DENY.
+
+Попытка push в main
+→ DENY.
+
+Попытка reboot DC без approval
+→ DENY.
+
+---
+
+DRY RUN
+
+Обязательно реализовать DRY_RUN.
+
+В DRY_RUN:
+
+- система формирует план;
+- показывает команды;
+- ничего не изменяет.
+
+Первое развертывание системы провести именно в DRY_RUN.
+
+---
+
+ПОЭТАПНОЕ ВНЕДРЕНИЕ
+
+Не пытайся сразу дать AI полный доступ ко всей инфраструктуре.
+
+PHASE 1
+
+Создать:
+
+Docker;
+PostgreSQL;
+Redis;
+Telegram;
+Whisper;
+JARVIS Core;
+inventory;
+audit;
+policy engine.
+
+Только read-only.
+
+PHASE 2
+
+Добавить Semaphore.
+
+Разрешить:
+
+health check;
+logs;
+disk;
+backup.
+
+PHASE 3
+
+Windows и Linux automation.
+
+PHASE 4
+
+SQL / 1C backup.
+
+PHASE 5
+
+MikroTik.
+
+PHASE 6
+
+GitHub + programming agent.
+
+PHASE 7
+
+Scheduler / n8n / monitoring.
+
+PHASE 8
+
+PWA и TTS.
+
+---
+
+ПЕРВЫЙ MVP
+
+До перехода к расширенной функциональности обязательно получить работающий сценарий:
+
+Телефон
+→ Telegram voice
+→ Whisper
+→ JARVIS
+→ определить intent
+→ выполнить безопасный Semaphore task
+→ проверить результат
+→ отправить отчёт.
+
+Первый practical use case:
+
+«Проверь сервер».
+
+Второй:
+
+«Сделай backup базы utp».
+
+Третий:
+
+«Проверь Mailcow».
+
+Только после стабильной работы этих сценариев переходить дальше.
+
+---
+
+ДОКУМЕНТАЦИЯ
+
+Создать:
+
+README.md
+INSTALL.md
+ARCHITECTURE.md
+SECURITY.md
+RUNBOOKS.md
+BACKUP.md
+RESTORE.md
+TROUBLESHOOTING.md
+
+README должен содержать пошаговую установку.
+
+Не писать:
+
+«настройте PostgreSQL».
+
+Писать конкретно:
+
+команда;
+файл;
+путь;
+параметр;
+проверка результата.
+
+---
+
+ПРАВИЛА РАБОТЫ АГЕНТА
+
+Не ограничивайся рекомендациями.
+
+Если у тебя есть доступ к серверу и репозиторию:
+
+- создавай файлы;
+- устанавливай зависимости;
+- исправляй конфигурацию;
+- пиши код;
+- запускай тесты;
+- проверяй результат.
+
+Но не выполняй необратимые или высокорисковые действия без explicit approval.
+
+Если находишь ошибку — исправляй.
+
+Если компонент отсутствует — реализуй.
+
+Если архитектура небезопасна — переработай.
+
+Если можно решить проще — используй более простое решение.
+
+Не добавляй технологии только ради сложности.
+
+---
+
+КРИТЕРИИ ГОТОВНОСТИ
+
+Первая версия считается рабочей только если выполняются все условия:
+
+1. JARVIS принимает текст из Telegram.
+2. Принимает voice.
+3. Whisper корректно преобразует voice в текст.
+4. Пользователь проходит allowlist.
+5. intent распознаётся.
+6. policy engine проверяет действие.
+7. read-only команды выполняются.
+8. backup базы работает.
+9. результат backup проверяется.
+10. critical command требует approval.
+11. все действия попадают в audit.
+12. secrets отсутствуют в коде.
+13. после перезагрузки сервера система автоматически запускается.
+14. есть backup самой системы.
+15. есть инструкция восстановления.
+16. есть DRY_RUN.
+17. базовые integration tests проходят.
+
+---
+
+ФОРМАТ РАБОТЫ
+
+Сначала изучи текущее состояние сервера.
+
+После этого выдай краткий план:
+
+1. что уже установлено;
+2. что будет использоваться;
+3. какие компоненты нужно добавить;
+4. какие риски обнаружены.
+
+Затем приступай к реализации.
+
+Не останавливайся после создания архитектурного документа.
+
+Продолжай до реально работающего MVP.
+
+После каждого крупного этапа проверяй результат реальными командами.
+
+В финале предоставь:
+
+- архитектуру;
+- список контейнеров;
+- список сервисов;
+- список портов;
+- список созданных файлов;
+- список учётных записей;
+- список permissions;
+- список runbooks;
+- список доступных голосовых команд;
+- инструкцию запуска;
+- инструкцию backup;
+- инструкцию restore;
+- результаты тестов;
+- известные ограничения;
+- перечень функций следующей очереди.
+
+Главная цель:
+
+создать не демонстрационного чат-бота, а безопасного корпоративного AI-агента системного администратора, которым можно управлять голосом с телефона и который способен выполнять реальные задачи на Windows, Linux, SQL Server, 1С, MikroTik, Docker и GitHub-инфраструктуре.
