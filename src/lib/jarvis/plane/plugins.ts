@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 export type PluginManifest = {
   id: string;
   version: string;
@@ -22,4 +25,24 @@ export function validatePlugin(raw: unknown): { ok: true; manifest: PluginManife
     return { ok: false, code: "SHELL_DENIED" };
   }
   return { ok: true, manifest: item as PluginManifest };
+}
+
+export function loadPluginDir(dir: string): { accepted: PluginManifest[]; rejected: string[] } {
+  if (!fs.existsSync(dir)) return { accepted: [], rejected: [] };
+  const accepted: PluginManifest[] = [];
+  const rejected: string[] = [];
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.endsWith(".json")) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(path.join(dir, name), "utf8"));
+    } catch {
+      rejected.push(name);
+      continue;
+    }
+    const result = validatePlugin(parsed);
+    if (result.ok) accepted.push(result.manifest);
+    else rejected.push(name);
+  }
+  return { accepted, rejected };
 }

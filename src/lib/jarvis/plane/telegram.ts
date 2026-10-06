@@ -9,7 +9,10 @@ export type TelegramUpdate = {
   text?: string;
   voiceFileId?: string;
   documentName?: string;
+  imageFileId?: string;
+  forwardedFromId?: number;
   replyTo?: string;
+  progress?: "typing";
 };
 
 export type TelegramOutcome =
@@ -35,6 +38,17 @@ export function sessionForTelegram(userId: number, allow: number[], now = Date.n
     expiresAt: now + 15 * 60_000,
     channel: "telegram",
   };
+}
+
+export function telegramContext(update: TelegramUpdate): string {
+  const bits = [
+    update.replyTo ? `reply:${update.replyTo}` : "",
+    update.forwardedFromId ? `forward:${update.forwardedFromId}` : "",
+    update.documentName ? `file:${update.documentName}` : "",
+    update.imageFileId ? "image" : "",
+    update.progress ?? "",
+  ].filter(Boolean);
+  return bits.join(" ");
 }
 
 export function acceptTelegram(
