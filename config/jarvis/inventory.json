@@ -1,0 +1,191 @@
+{
+  "version": 1,
+  "targets": [
+    {
+      "id": "dc01",
+      "displayName": "Domain Controller",
+      "type": "windows",
+      "environment": "production",
+      "roles": [
+        "domain-controller",
+        "dns",
+        "dhcp"
+      ],
+      "reference": "dc01",
+      "aliases": [
+        "dc01",
+        "dc",
+        "контроллер домена"
+      ],
+      "enabled": true,
+      "allowedRunbooks": [
+        "server.health",
+        "disk.check"
+      ]
+    },
+    {
+      "id": "srv1c01",
+      "displayName": "1C Server",
+      "type": "windows",
+      "environment": "production",
+      "roles": [
+        "1c"
+      ],
+      "reference": "srv1c01",
+      "aliases": [
+        "srv1c01",
+        "сервер 1с",
+        "1с сервер"
+      ],
+      "enabled": true,
+      "allowedRunbooks": [
+        "server.health",
+        "disk.check"
+      ]
+    },
+    {
+      "id": "sql01",
+      "displayName": "SQL Server",
+      "type": "windows",
+      "environment": "production",
+      "roles": [
+        "sql-server"
+      ],
+      "reference": "sql01",
+      "aliases": [
+        "sql01",
+        "sql сервер",
+        "sql server"
+      ],
+      "enabled": true,
+      "allowedRunbooks": [
+        "server.health",
+        "disk.check"
+      ]
+    },
+    {
+      "id": "fs01",
+      "displayName": "File Server",
+      "type": "windows",
+      "environment": "production",
+      "roles": [
+        "file-server"
+      ],
+      "reference": "fs01",
+      "aliases": [
+        "fs01",
+        "файловый сервер"
+      ],
+      "enabled": true,
+      "allowedRunbooks": [
+        "server.health",
+        "disk.check"
+      ]
+    },
+    {
+      "id": "mail01",
+      "displayName": "Mailcow",
+      "type": "linux",
+      "environment": "production",
+      "roles": [
+        "mailcow",
+        "docker"
+      ],
+      "reference": "mail01",
+      "aliases": [
+        "mail01",
+        "mailcow",
+        "почтовый сервер"
+      ],
+      "enabled": true,
+      "allowedRunbooks": [
+        "server.health",
+        "disk.check",
+        "mailcow.health"
+      ]
+    },
+    {
+      "id": "rb5009",
+      "displayName": "MikroTik RB5009",
+      "type": "mikrotik",
+      "environment": "production",
+      "roles": [
+        "gateway",
+        "wireguard"
+      ],
+      "reference": "rb5009",
+      "aliases": [
+        "rb5009",
+        "mikrotik",
+        "микротик",
+        "router"
+      ],
+      "enabled": true,
+      "allowedRunbooks": [
+        "mikrotik.status",
+        "wireguard.status"
+      ]
+    },
+    {
+      "id": "db-utp",
+      "displayName": "SQL database utp",
+      "type": "database",
+      "environment": "production",
+      "roles": [
+        "sql-database"
+      ],
+      "reference": "sql01/utp",
+      "aliases": [
+        "utp",
+        "ютп",
+        "база utp",
+        "база ютп"
+      ],
+      "enabled": true,
+      "allowedRunbooks": [
+        "sql.health",
+        "sql.backup"
+      ]
+    },
+    {
+      "id": "onec-jarvisdev",
+      "displayName": "JarvisDev 1C export",
+      "type": "onec-export",
+      "environment": "development",
+      "roles": [
+        "1c-source-export"
+      ],
+      "reference": "extensions/JarvisDev",
+      "aliases": [
+        "jarvisdev",
+        "расширение utp",
+        "выгрузка 1с"
+      ],
+      "enabled": true,
+      "allowedRunbooks": [
+        "onec.read",
+        "onec.query",
+        "onec.patch"
+      ]
+    },
+    {
+      "id": "repo-honey",
+      "displayName": "honey-granite-fair-hazel",
+      "type": "repository",
+      "environment": "development",
+      "roles": [
+        "github-repository"
+      ],
+      "reference": "X988/honey-granite-fair-hazel",
+      "aliases": [
+        "honey-granite-fair-hazel",
+        "репозиторий jarvis",
+        "jarvis repo"
+      ],
+      "enabled": true,
+      "allowedRunbooks": [
+        "github.ci"
+      ]
+    }
+  ]
+}
