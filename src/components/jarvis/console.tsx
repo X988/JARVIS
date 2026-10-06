@@ -503,12 +503,7 @@ export function Console() {
 
   useEffect(() => {
     if (!watch) return;
-    const timers = WATCH_ALERTS.map((item, index) =>
-      window.setTimeout(() => pushNotice(item.id), 900 + index * 2800),
-    );
-    return () => {
-      for (const timer of timers) window.clearTimeout(timer);
-    };
+    for (const item of WATCH_ALERTS) pushNotice(item.id);
   }, [watch, pushNotice]);
 
   useEffect(() => {
@@ -693,7 +688,7 @@ export function Console() {
       <header className="border-b border-line">
         <div className="flex items-center justify-between gap-3 px-4 pt-3">
           <div>
-            <p className="font-mono text-xs text-moss">демо-консоль</p>
+            <p className="font-mono text-xs text-moss">DEMO</p>
             <h1 className="text-xl font-semibold tracking-tight">JARVIS</h1>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -717,7 +712,7 @@ export function Console() {
                 (dryRun ? "bg-forest text-paper" : "bg-paper text-ink")
               }
             >
-              {dryRun ? "DRY RUN" : "Боевой"}
+              {dryRun ? "DRY RUN" : "DEMO"}
             </button>
           </div>
         </div>
@@ -740,7 +735,7 @@ export function Console() {
           })}
         </div>
         <p className="px-4 font-mono text-xs text-subtle">
-          {watch ? "Слежение включено. Чинить сам не начинаю." : "Слежение на паузе."}
+          {watch ? "Слежение demo. Это не телеметрия. Чинить сам не начинаю." : "Слежение на паузе."}
         </p>
         <ul className="flex gap-2 overflow-x-auto px-4 py-3">
           {WATCH_HOSTS.map((host) => (
@@ -759,7 +754,7 @@ export function Console() {
       ) : null}
       {!dryRun ? (
         <p className="border-b border-line bg-forest px-4 py-2 text-sm text-paper">
-          Боевой режим здесь тоже симуляция: серверы компании не вызываются.
+          Боевого контура нет. Кнопка снимает только сухой прогон внутри DEMO. Серверы не вызываются.
         </p>
       ) : null}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">

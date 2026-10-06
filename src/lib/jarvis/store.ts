@@ -158,7 +158,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       id: uid("aud"),
       at: notice.at,
       user,
-      source: "watch",
+      source: "demo",
       request: notice.title,
       intent: "watch",
       tool: "watch_hosts",

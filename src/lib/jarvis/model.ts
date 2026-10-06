@@ -1,4 +1,4 @@
-import { ONEC_DEV, classifyOnecDeveloper, onecDevAdapter, type DevPlan } from "@/lib/jarvis/onec-dev";
+import { ONEC_DEV, classifyOnecDeveloper, onecDevAdapter, type DevPlan } from "./onec-dev.ts";
 export type Risk = 0 | 1 | 2 | 3;
 export type Verdict = "allow" | "deny" | "clarify";
 export type FindingState = "ok" | "warn" | "bad" | "info";
