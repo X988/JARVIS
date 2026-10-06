@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { takeToken } from "../rate-limit.ts";
 import { adapterStatus } from "./adapters.ts";
+import { monitoringStatus } from "../monitoring.ts";
 import { authenticateRequest } from "./auth.ts";
 import { processCommand } from "./pipeline.ts";
 
@@ -48,7 +49,7 @@ function httpStatus(code:string):number{
   if(code==="APPROVAL_EXPIRED" || code==="APPROVAL_MISMATCH") return 409;
   if(code==="TARGET_NOT_FOUND" || code==="RUNBOOK_NOT_FOUND") return 404;
   if(code==="SCHEMA_INVALID") return 400;
-  if(code==="EXECUTION_DISABLED" || code==="NOT_CONFIGURED") return 503;
+  if(code==="EXECUTION_DISABLED" || code==="NOT_CONFIGURED" || code==="CREDENTIAL_UNAVAILABLE" || code==="ADAPTER_DISABLED") return 503;
   if(code==="EXECUTION_TIMEOUT" || code==="VERIFICATION_FAILED") return 504;
   return 403;
 }
@@ -88,7 +89,7 @@ export async function handleSession(request:Request):Promise<Response>{
     channel:auth.channel,
     executionMode:executionMode(),
     adapters:adapterStatus(),
-    monitoring:"MONITORING_NOT_CONFIGURED",
+    monitoring: monitoringStatus(),
   },auth.code==="OK"?200:403,heads);
 }
 

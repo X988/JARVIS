@@ -169,6 +169,58 @@ describe("server pipeline", () => {
   it("ignores a short yes", () => {
     assert.equal(run("да").code, "POLICY_DENIED");
   });
+
+  it("does not run a real adapter when the server mode stays dry-run", () => {
+    const previous = process.env.EXECUTION_MODE;
+    delete process.env.EXECUTION_MODE;
+    let calls = 0;
+    try {
+      const result = run("Проверь сервер", {
+        execute: () => {
+          calls += 1;
+          return { called: true, code: "OK", detail: "должен был не вызваться" };
+        },
+      });
+      assert.equal(result.trace.mode, "dry-run");
+      assert.equal(calls, 0);
+      assert.equal(result.executionCalled, false);
+    } finally {
+      if (previous === undefined) delete process.env.EXECUTION_MODE;
+      else process.env.EXECUTION_MODE = previous;
+    }
+  });
+
+  it("calls a read-only executor once for a repeated request id", () => {
+    const stateDir = freshDir();
+    let calls = 0;
+    const execute = () => {
+      calls += 1;
+      return { called: true, code: "NOT_CONFIGURED", detail: "нет канала" };
+    };
+    const first = run("Проверь сервер", { stateDir, requestId: "health-once", mode: "real", execute });
+    const second = run("Проверь сервер", { stateDir, requestId: "health-once", mode: "real", execute });
+    assert.equal(first.code, "EXECUTION_DISABLED");
+    assert.equal(second.duplicate, true);
+    assert.equal(calls, 1);
+  });
+
+  it("reports an unconfigured read-only adapter instead of success", () => {
+    const windows = process.env.JARVIS_WINDOWS_HOST;
+    const ssh = process.env.JARVIS_SSH_HOST;
+    delete process.env.JARVIS_WINDOWS_HOST;
+    delete process.env.JARVIS_SSH_HOST;
+    try {
+      const result = run("Проверь сервер", { mode: "real" });
+      assert.equal(result.executionCalled, false);
+      assert.equal(result.code, "EXECUTION_DISABLED");
+      assert.match(result.trace.execution, /не подключён/);
+    } finally {
+      if (windows === undefined) delete process.env.JARVIS_WINDOWS_HOST;
+      else process.env.JARVIS_WINDOWS_HOST = windows;
+      if (ssh === undefined) delete process.env.JARVIS_SSH_HOST;
+      else process.env.JARVIS_SSH_HOST = ssh;
+    }
+  });
 });
 
 describe("command http", () => {
@@ -210,5 +262,27 @@ describe("command http", () => {
     assert.equal(body.trace.runbook, "server.health");
     assert.equal(body.trace.risk, 0);
     assert.equal(body.executionCalled, false);
+
+    const forged = await handleCommand(new Request("http://127.0.0.1/api/commands", {
+      method: "POST",
+      headers: {
+        ...testHeader,
+        cookie: csrf,
+        "x-jarvis-csrf": token,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        text: "Сделай резервную копию базы utp",
+        risk: 0,
+        approved: true,
+        mode: "real",
+        request_id: "http-backup",
+      }),
+    }));
+    const backup = await forged.json();
+    assert.equal(backup.code, "APPROVAL_REQUIRED");
+    assert.equal(backup.trace.mode, "dry-run");
+    assert.equal(backup.trace.risk, 2);
+    assert.equal(backup.executionCalled, false);
   });
 });

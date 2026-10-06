@@ -1,5 +1,4 @@
 import { timingSafeEqual } from "node:crypto";
-import { getSessionUser } from "@/lib/auth/verify.server";
 import type { Session } from "./session.ts";
 
 type Role="operator"|"none";
@@ -32,10 +31,9 @@ function makeSession(id:string,binding:WebBinding|TelegramBinding,channel:Sessio
 export async function authenticateRequest(request:Request):Promise<AuthResult>{
   if(process.env.NODE_ENV!=="production" && process.env.JARVIS_TEST_AUTH==="1"){
     const actor=request.headers.get("x-jarvis-test-actor")?.trim();
-    if(actor){
-      const role:Role=actor==="admin1" ? "operator" : "none";
-      return {session:makeSession("test-"+actor,{actorId:actor,role},"test"),code:role==="operator"?"OK":"ACTOR_DENIED",channel:"test"};
-    }
+    if(!actor) return {session:null,code:"AUTH_REQUIRED",channel:"test"};
+    const role:Role=actor==="admin1" ? "operator" : "none";
+    return {session:makeSession("test-"+actor,{actorId:actor,role},"test"),code:role==="operator"?"OK":"ACTOR_DENIED",channel:"test"};
   }
 
   const telegramId=request.headers.get("x-telegram-id")?.trim();
@@ -48,6 +46,7 @@ export async function authenticateRequest(request:Request):Promise<AuthResult>{
     return {session:makeSession("telegram-"+telegramId,binding,"telegram"),code:binding.role==="operator"?"OK":"ACTOR_DENIED",channel:"telegram"};
   }
 
+  const { getSessionUser } = await import("../../auth/verify.server.ts");
   const user=await getSessionUser();
   if(!user) return {session:null,code:"AUTH_REQUIRED",channel:"web"};
   const bindings=jsonMap<WebBinding>("JARVIS_WEB_ACTORS_JSON");

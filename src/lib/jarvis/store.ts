@@ -56,6 +56,7 @@ export type Notice = WatchAlert & { at: number };
 
 type JarvisState = {
   actorId: string;
+  sessionReady: boolean;
   dryRun: boolean;
   serverMode: string;
   watch: boolean;
@@ -117,6 +118,7 @@ let lock = false;
 
 export const useJarvis = create<JarvisState>((set, get) => ({
   actorId: "unauthenticated",
+  sessionReady: false,
   dryRun: true,
   serverMode: "dry-run",
   watch: true,
@@ -136,9 +138,10 @@ export const useJarvis = create<JarvisState>((set, get) => ({
         serverMode: session.executionMode,
         dryRun: session.executionMode !== "real",
         actorId: session.actorId ?? "authenticated",
+        sessionReady: true,
       });
     } catch {
-      set({ serverMode: "dry-run", dryRun: true, actorId: "unauthenticated" });
+      set({ serverMode: "dry-run", dryRun: true, actorId: "unauthenticated", sessionReady: true });
     }
   },
 
@@ -208,7 +211,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     const text = phrase.trim();
     if (!text || lock) return;
     const turn = get().turns.find((item) => item.id === turnId);
-    if (!turn || turn.phase !== "awaiting") return;
+    if (!turn || turn.phase !== "awaiting" || !turn.approval) return;
     lock = true;
     set({ busy: true });
     try {

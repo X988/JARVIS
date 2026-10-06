@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { appendAudit } from "../audit-log.ts";
-import { acquireLock, releaseLock } from "../locks.ts";
+import { appendAudit, externalSinkLabel } from "../audit-log.ts";
+import { createLockProvider } from "../locks.ts";
 import { OPERATORS, evaluate, type Decision } from "../model.ts";
+import { defaultRealExecute } from "./adapters.ts";
 import { createApproval, findApproval, parameterHash, saveApproval } from "./approvals.ts";
 import { rememberRequest } from "./idempotency.ts";
 import { matchTarget, targetById, unknownLatinToken, type Target } from "./inventory.ts";
@@ -112,7 +113,7 @@ function finish(
       executor: partial.executionCalled ? partial.trace.execution : "",
       result: partial.code,
       verification: partial.trace.verification,
-      externalSink: "NOT_CONFIGURED",
+      externalSink: externalSinkLabel(),
     },
     input.stateDir,
   );
@@ -128,15 +129,21 @@ function gateway(runbook: Runbook, target: string, mode: Mode, stateDir: string,
   if (mode === "dry-run") return { called: false, code: "DRY_RUN", detail: "исполнитель не вызывался" };
   if (runbook.policy === "DENY_ALWAYS") return { called: false, code: "POLICY_DENIED", detail: "запрет не исполняется" };
   const lockKey = runbook.lock ? `${runbook.lock}:${target}` : "";
-  if (lockKey && !acquireLock(lockKey, "pipeline", 30 * 60 * 1000, `${stateDir}/locks`)) {
-    return { called: false, code: "POLICY_DENIED", detail: "уже выполняется такая операция" };
+  const locks = createLockProvider(lockKey ? `${stateDir}/locks` : undefined);
+  if (lockKey) {
+    const held = locks.acquire(lockKey, "pipeline", 30 * 60 * 1000);
+    if (!held.ok) {
+      const code = held.reason === "held" ? "POLICY_DENIED" : "NOT_CONFIGURED";
+      const detail = held.reason === "held" ? "уже выполняется такая операция" : `блокировка ${locks.id}: ${held.reason}`;
+      return { called: false, code, detail };
+    }
   }
   try {
     if (mode === "mock") return { called: true, code: "MOCK", detail: "mock, это не живой сервер" };
-    if (execute) return execute({ runbook: runbook.id, target, mode });
-    return { called: false, code: "NOT_CONFIGURED", detail: "адаптер не настроен" };
+    const runner = execute ?? defaultRealExecute;
+    return runner({ runbook: runbook.id, target, mode });
   } finally {
-    if (lockKey) releaseLock(lockKey, `${stateDir}/locks`);
+    if (lockKey) locks.release(lockKey);
   }
 }
 
@@ -393,7 +400,7 @@ function fresh(
     });
   }
   const exec = gateway(book, target.id, current.mode, current.stateDir, current.execute);
-  const ok = exec.code === "DRY_RUN" || exec.code === "MOCK";
+  const ok = exec.code === "DRY_RUN" || exec.code === "MOCK" || exec.code === "OK";
   const decision: Decision = {
     ...parsed,
     verdict: ok ? "allow" : "deny",
@@ -451,7 +458,7 @@ function traceOf(original: string, normalized: string, constraint: string, targe
   return {
     original,
     normalized,
-    steps: ["authenticate", "parse", "inventory", "policy", "approval", "gateway", "verify", "audit"],
+    steps: ["authenticate", "normalize", "parse", "alias", "constraint", "inventory", "runbook", "policy", "risk", "approval", "gateway", "verify", "audit"],
     constraint,
     target,
     runbook: book.id,
@@ -461,4 +468,10 @@ function traceOf(original: string, normalized: string, constraint: string, targe
     execution,
     verification,
   };
+}
+
+export class CommandService {
+  process(input: Parameters<typeof processCommand>[0]): PipelineResult {
+    return processCommand(input);
+  }
 }

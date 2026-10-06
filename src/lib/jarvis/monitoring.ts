@@ -35,6 +35,36 @@ export class DemoMonitoringProvider implements MonitoringProvider {
   }
 }
 
+export class PrometheusProvider implements MonitoringProvider {
+  readonly id = "prometheus";
+  readonly mode = "live" as const;
+  status(): "NOT_CONFIGURED" | "ADAPTER_DISABLED" {
+    return process.env.JARVIS_PROMETHEUS_URL ? "ADAPTER_DISABLED" : "NOT_CONFIGURED";
+  }
+  collect(): MonitorEvent[] {
+    return [];
+  }
+}
+
+export class ZabbixProvider implements MonitoringProvider {
+  readonly id = "zabbix";
+  readonly mode = "live" as const;
+  status(): "NOT_CONFIGURED" | "ADAPTER_DISABLED" {
+    return process.env.JARVIS_ZABBIX_URL ? "ADAPTER_DISABLED" : "NOT_CONFIGURED";
+  }
+  collect(): MonitorEvent[] {
+    return [];
+  }
+}
+
+export function monitoringStatus(env: NodeJS.ProcessEnv = process.env): string {
+  const live = [
+    env.JARVIS_PROMETHEUS_URL ? "prometheus:ADAPTER_DISABLED" : "",
+    env.JARVIS_ZABBIX_URL ? "zabbix:ADAPTER_DISABLED" : "",
+  ].filter(Boolean);
+  return live.length === 0 ? "MONITORING_NOT_CONFIGURED" : live.join(",");
+}
+
 export class UnconfiguredProvider implements MonitoringProvider {
   readonly mode = "live" as const;
   readonly id: string;
@@ -52,13 +82,16 @@ const LIVE = [
   ["JARVIS_SQL_HOST", "sql"],
   ["JARVIS_MIKROTIK_HOST", "mikrotik"],
   ["JARVIS_MAILCOW_HOST", "mailcow"],
-  ["JARVIS_ZABBIX_URL", "zabbix"],
-  ["JARVIS_PROMETHEUS_URL", "prometheus"],
   ["JARVIS_ALERTMANAGER_URL", "alertmanager"],
 ] as const;
 
 export function providersFromEnv(env: Record<string, string | undefined> = process.env): MonitoringProvider[] {
-  const live = LIVE.filter(([key]) => Boolean(env[key])).map(([, id]) => new UnconfiguredProvider(id));
+  const live: MonitoringProvider[] = [];
+  if (env.JARVIS_PROMETHEUS_URL) live.push(new PrometheusProvider());
+  if (env.JARVIS_ZABBIX_URL) live.push(new ZabbixProvider());
+  for (const [key, id] of LIVE) {
+    if (env[key]) live.push(new UnconfiguredProvider(id));
+  }
   return [new DemoMonitoringProvider(), ...live];
 }
 

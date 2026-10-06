@@ -84,3 +84,56 @@ export function verifyAudit(dir?: string): { ok: boolean; rows: number } {
   }
   return { ok: true, rows: lines.length };
 }
+
+export interface AuditSink {
+  readonly id: "syslog" | "http" | "loki";
+  status(): "NOT_CONFIGURED" | "ADAPTER_DISABLED";
+}
+
+class EnvAuditSink implements AuditSink {
+  readonly id: AuditSink["id"];
+  private readonly envName: string;
+
+  constructor(id: AuditSink["id"], envName: string) {
+    this.id = id;
+    this.envName = envName;
+  }
+
+  status(): "NOT_CONFIGURED" | "ADAPTER_DISABLED" {
+    return process.env[this.envName] ? "ADAPTER_DISABLED" : "NOT_CONFIGURED";
+  }
+}
+
+export class SyslogAuditSink extends EnvAuditSink {
+  constructor() {
+    super("syslog", "JARVIS_AUDIT_SYSLOG");
+  }
+}
+
+export class HttpAuditSink extends EnvAuditSink {
+  constructor() {
+    super("http", "JARVIS_AUDIT_HTTP_URL");
+  }
+}
+
+export class LokiAuditSink extends EnvAuditSink {
+  constructor() {
+    super("loki", "JARVIS_AUDIT_LOKI_URL");
+  }
+}
+
+/**
+ * Local hash chain detects a changed line, not a file that was replaced wholesale.
+ * An external sink is the anchor. Until one is actually connected, this stays
+ * NOT_CONFIGURED or ADAPTER_DISABLED and never reports a delivered copy.
+ */
+export function externalSinkLabel(env: NodeJS.ProcessEnv = process.env): string {
+  const sinks = [
+    ["syslog", env.JARVIS_AUDIT_SYSLOG],
+    ["http", env.JARVIS_AUDIT_HTTP_URL],
+    ["loki", env.JARVIS_AUDIT_LOKI_URL],
+  ] as const;
+  const active = sinks.filter(([, value]) => Boolean(value));
+  if (active.length === 0) return "NOT_CONFIGURED";
+  return active.map(([id]) => `${id}:ADAPTER_DISABLED`).join(",");
+}

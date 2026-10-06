@@ -22,10 +22,10 @@
 
 Поля `risk`, `policy`, `role`, `allowed`, `runbook`, `approved` из JSON игнорируются.
 
-Живые адаптеры Windows, SSH, SQL, RouterOS и Docker без переменных окружения отвечают `NOT_CONFIGURED` и не рисуют успех. Выгрузка 1С читается файловым исполнителем только для development и test.
+Живые адаптеры Windows (WinRM), SSH, SQL, RouterOS, Docker и выгрузка 1С без переменных окружения отвечают `NOT_CONFIGURED`. Если задан адрес, но нет учётной записи, ответ `CREDENTIAL_UNAVAILABLE`. Если заданы оба, а клиент в этом репозитории не подключён, ответ `ADAPTER_DISABLED`. Успех не подменяется. `MockExecutor` в режиме `real` тоже не считается выполнением.
 
-Заявки лежат в `data/approvals.json`. Журнал — `data/audit.jsonl` со схемой 1 и цепочкой hash. Внешний sink (syslog, HTTP, Loki) не подключён: поле `externalSink` равно `NOT_CONFIGURED`. Подмена файла целиком локальной цепочкой не ловится, пока нет внешней копии.
+Заявки лежат в `data/approvals.json` на сервере, не в памяти вкладки. Журнал — `data/audit.jsonl` со схемой 1 и цепочкой hash. Внешний sink (syslog, HTTP, Loki) без URL равен `NOT_CONFIGURED`. Если URL задан, а клиент доставки не подключён, статус `ADAPTER_DISABLED`. Подмена файла целиком локальной цепочкой не ловится, пока нет внешней копии.
 
-Блокировка по умолчанию файловая, на одном хосте. Для нескольких процессов нужен Redis или advisory lock Postgres. Класса подключения к Redis в этом репозитории нет: без `JARVIS_REDIS_URL` используется файл.
+Блокировка по умолчанию `FileLockProvider`, на одном хосте. `RedisLockProvider` выбирается `JARVIS_LOCK_BACKEND=redis`. Без `JARVIS_REDIS_URL` он отвечает `NOT_CONFIGURED` и не выдаёт lock. С URL, но без живого клиента, lock тоже не выдаётся (`ADAPTER_DISABLED`), чтобы отсутствие Redis не выглядело как свободный ресурс. Для нескольких хостов нужен настоящий Redis или advisory lock Postgres.
 
-Слежение без URL провайдера показывает `MONITORING_NOT_CONFIGURED`. Карточки demo — фикстуры, не метрики.
+Слежение без URL провайдера показывает `MONITORING_NOT_CONFIGURED`. `PrometheusProvider` и `ZabbixProvider` при заданном URL не рисуют метрики, пока клиент не подключён. Карточки demo — фикстуры, не телеметрия.

@@ -482,6 +482,7 @@ export function Console() {
   const watch = useJarvis((state) => state.watch);
   const notices = useJarvis((state) => state.notices);
   const actorId = useJarvis((state) => state.actorId);
+  const sessionReady = useJarvis((state) => state.sessionReady);
   const setWatch = useJarvis((state) => state.setWatch);
   const pushNotice = useJarvis((state) => state.pushNotice);
   const ensureSession = useJarvis((state) => state.ensureSession);
@@ -504,7 +505,7 @@ export function Console() {
   const silenceRef = useRef<number | null>(null);
   const limitRef = useRef<number | null>(null);
   const candidatesRef = useRef<SpeechAlt[]>([]);
-  const locked = busy || hearing !== null || listening;
+  const locked = !sessionReady || busy || hearing !== null || listening;
 
   useEffect(() => {
     const id = window.setInterval(() => tick(Date.now()), 1000);

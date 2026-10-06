@@ -5,7 +5,7 @@ export type BslHit = {
 };
 
 export type BslReport = {
-  adapter: "fallback";
+  adapter: "fallback" | "not-configured";
   ok: boolean;
   hits: BslHit[];
   note: string;
@@ -69,9 +69,9 @@ export class FallbackBslValidator implements BslValidator {
 
 export class BslLanguageServerValidator implements BslValidator {
   readonly id = "bsl-language-server";
-  check(): BslReport {
+  check(_source: string): BslReport {
     return {
-      adapter: "fallback",
+      adapter: "not-configured",
       ok: false,
       hits: [],
       note: "BSL Language Server не установлен. Это не полная проверка 1С. Статус NOT_CONFIGURED.",
@@ -81,7 +81,7 @@ export class BslLanguageServerValidator implements BslValidator {
 
 export class OneCDesignerValidator implements BslValidator {
   readonly id = "1cv8";
-  check(): BslReport {
-    return { adapter: "fallback", ok: false, hits: [], note: "Конфигуратор 1cv8 не вызывался. Статус NOT_CONFIGURED." };
+  check(_source: string): BslReport {
+    return { adapter: "not-configured", ok: false, hits: [], note: "Конфигуратор 1cv8 не вызывался. Статус NOT_CONFIGURED." };
   }
 }
