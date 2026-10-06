@@ -10,6 +10,8 @@ export type ApprovalRecord = {
   runbook: string;
   target: string;
   normalized: string;
+  normalizedParameters: Record<string, string>;
+  constraint: string;
   parameterHash: string;
   risk: number;
   createdAt: number;
@@ -34,8 +36,17 @@ function writeAll(dir: string, rows: ApprovalRecord[]): void {
   fs.writeFileSync(file(dir), JSON.stringify(rows));
 }
 
-export function parameterHash(parts: { runbook: string; target: string; normalized: string }): string {
-  return createHash("sha256").update(JSON.stringify([parts.runbook, parts.target, parts.normalized])).digest("hex");
+export function parameterHash(parts: {
+  runbook: string;
+  target: string;
+  normalized: string;
+  constraint: string;
+  normalizedParameters: Record<string, string>;
+}): string {
+  const parameters = Object.entries(parts.normalizedParameters).sort(([left], [right]) => left.localeCompare(right));
+  return createHash("sha256")
+    .update(JSON.stringify([parts.runbook, parts.target, parts.normalized, parts.constraint, parameters]))
+    .digest("hex");
 }
 
 export function createApproval(dir: string, row: Omit<ApprovalRecord, "status" | "stage">): ApprovalRecord {

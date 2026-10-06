@@ -69,12 +69,20 @@ export async function ensureServerSession(): Promise<{ executionMode: string; ro
   return { executionMode: body.executionMode || "dry-run", role: body.role, actorId: body.actorId };
 }
 
-export async function postCommand(text: string, requestId: string): Promise<ServerCommand> {
+export async function postCommand(
+  text: string,
+  requestId: string,
+  approval?: { id: string; confirmation: string },
+): Promise<ServerCommand> {
   const response = await fetch("/api/commands", {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json", "x-jarvis-csrf": csrf() },
-    body: JSON.stringify({ text, request_id: requestId }),
+    body: JSON.stringify({
+      text,
+      request_id: requestId,
+      ...(approval ? { approval_id: approval.id, confirmation: approval.confirmation } : {}),
+    }),
   });
   const body = (await response.json()) as Partial<ServerCommand> & { code?: string };
   if (!body.decision || !body.trace) {

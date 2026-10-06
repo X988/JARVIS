@@ -44,8 +44,30 @@ export type PipelineResult = {
 
 const SHORT_YES = /^(да|yes|ok|ага|подтверждаю)$/i;
 const NO_CHANGE = /ничего не меняй|только скажи|только чтение|без изменений|только покажи/;
-const CONFIRM = /^CONFIRM\s+(APPROVAL-[A-Z0-9-]+)$/i;
 const DYNAMIC = /Выполнить\s*\(/i;
+
+function normalizedParametersOf(decision: Decision): Record<string, string> {
+  return Object.fromEntries(
+    decision.parameters
+      .map((item) => [item.key, item.value] as const)
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
+function approvalHash(
+  book: Runbook,
+  target: string,
+  decision: Decision,
+  constraint: string,
+): string {
+  return parameterHash({
+    runbook: book.id,
+    target,
+    normalized: decision.normalized,
+    constraint,
+    normalizedParameters: normalizedParametersOf(decision),
+  });
+}
 
 function modeOf(explicit?: Mode): Mode {
   if (explicit) return explicit;
@@ -127,6 +149,7 @@ export function processCommand(input: {
   mode?: Mode;
   execute?: (call: ExecCall) => ExecResult;
   forged?: Record<string, unknown>;
+  approval?: { id: string; confirmation: string };
 }): PipelineResult {
   const now = input.now ?? new Date();
   const mode = modeOf(input.mode);
@@ -167,6 +190,7 @@ export function processCommand(input: {
         trace: emptyTrace(text, current.mode, "учётка без прав"),
       });
     }
+    if (current.approval) return confirmApproval(base, current, current.approval.id, current.approval.confirmation);
     if (SHORT_YES.test(text)) {
       return finish(base, {
         code: "POLICY_DENIED",
@@ -178,8 +202,6 @@ export function processCommand(input: {
         trace: emptyTrace(text, current.mode, "короткое согласие"),
       });
     }
-    const confirm = CONFIRM.exec(text);
-    if (confirm) return confirmApproval(base, current, confirm[1]);
     return fresh(base, current);
   }
 }
@@ -202,118 +224,102 @@ function emptyTrace(original: string, mode: Mode, normalized: string): Omit<Trac
 
 function confirmApproval(
   base: { text: string; requestId: string; session: Session | null; stateDir: string; now: Date },
-  current: { mode: Mode; stateDir: string; now: Date; session: Session | null; execute?: (call: ExecCall) => ExecResult; forged?: Record<string, unknown> },
+  current: {
+    mode: Mode;
+    stateDir: string;
+    now: Date;
+    session: Session | null;
+    execute?: (call: ExecCall) => ExecResult;
+    approval?: { id: string; confirmation: string };
+  },
   approvalId: string,
+  confirmation: string,
 ): PipelineResult {
   const row = findApproval(current.stateDir, approvalId);
   if (!row || !current.session) {
     return finish(base, {
-      code: "POLICY_DENIED",
-      verdict: "deny",
-      mode: current.mode,
-      executionCalled: false,
-      decision: denyShell(base.text, "Такой заявки нет."),
-      approval: null,
+      code: "APPROVAL_MISMATCH", verdict: "deny", mode: current.mode, executionCalled: false,
+      decision: denyShell(base.text, "Такой заявки нет или она не принадлежит текущей сессии."), approval: null,
       trace: emptyTrace(base.text, current.mode, "approval"),
     });
   }
   if (row.actorId !== current.session.accountId) {
     return finish(base, {
-      code: "ACTOR_DENIED",
-      verdict: "deny",
-      mode: current.mode,
-      executionCalled: false,
-      decision: denyShell(base.text, "Заявка чужая."),
-      approval: null,
+      code: "ACTOR_DENIED", verdict: "deny", mode: current.mode, executionCalled: false,
+      decision: denyShell(base.text, "Заявка принадлежит другому actor."), approval: null,
       trace: emptyTrace(base.text, current.mode, row.normalized),
     });
   }
-  if (row.expiresAt < current.now.getTime()) {
-    saveApproval(current.stateDir, { ...row, status: "expired" });
+  if (row.status !== "pending") {
     return finish(base, {
-      code: "APPROVAL_EXPIRED",
-      verdict: "deny",
-      mode: current.mode,
-      executionCalled: false,
-      decision: denyShell(base.text, "Заявка протухла."),
-      approval: null,
+      code: row.status === "expired" ? "APPROVAL_EXPIRED" : "APPROVAL_MISMATCH", verdict: "deny", mode: current.mode, executionCalled: false,
+      decision: denyShell(base.text, "Заявка уже недействительна."), approval: null,
       trace: { ...emptyTrace(base.text, current.mode, row.normalized), runbook: row.runbook, target: row.target, risk: row.risk as 0 | 1 | 2 | 3 },
     });
   }
-  const claimed = current.forged?.parameters;
-  if (claimed && typeof claimed === "object") {
-    const bag = claimed as { runbook?: string; target?: string; normalized?: string };
-    const hash = parameterHash({
-      runbook: String(bag.runbook ?? ""),
-      target: String(bag.target ?? ""),
-      normalized: String(bag.normalized ?? ""),
-    });
-    if (hash !== row.parameterHash) {
-      saveApproval(current.stateDir, { ...row, status: "mismatch" });
-      return finish(base, {
-        code: "APPROVAL_MISMATCH",
-        verdict: "deny",
-        mode: current.mode,
-        executionCalled: false,
-        decision: denyShell(base.text, "Параметры заявки уже другие. Старое подтверждение не действует."),
-        approval: null,
-        trace: emptyTrace(base.text, current.mode, row.normalized),
-      });
-    }
-  }
-  const book = runbookForIntent(row.normalized) ?? null;
-  if (!book || book.policy === "DENY_ALWAYS") {
+  if (row.expiresAt <= current.now.getTime()) {
+    saveApproval(current.stateDir, { ...row, status: "expired" });
     return finish(base, {
-      code: "POLICY_DENIED",
-      verdict: "deny",
-      mode: current.mode,
-      executionCalled: false,
-      decision: denyShell(base.text, "Этот шаг запрещён всегда."),
-      approval: null,
-      trace: emptyTrace(base.text, current.mode, row.normalized),
+      code: "APPROVAL_EXPIRED", verdict: "deny", mode: current.mode, executionCalled: false,
+      decision: denyShell(base.text, "Срок подтверждения истёк."), approval: null,
+      trace: { ...emptyTrace(base.text, current.mode, row.normalized), runbook: row.runbook, target: row.target, risk: row.risk as 0 | 1 | 2 | 3 },
     });
   }
-  if (row.required === 2 && row.stage < 2) {
+
+  const expected = row.required === 2 && row.stage === 2 ? "CONFIRM FINAL " + row.id : "CONFIRM " + row.id;
+  if (SHORT_YES.test(confirmation.trim()) || confirmation.trim() !== expected) {
+    return finish(base, {
+      code: "APPROVAL_MISMATCH", verdict: "deny", mode: current.mode, executionCalled: false,
+      decision: denyShell(base.text, "Нужна точная серверная фраза подтверждения."),
+      approval: { id: row.id, phrase: expected, expiresAt: row.expiresAt, stage: row.stage },
+      trace: { ...emptyTrace(base.text, current.mode, row.normalized), runbook: row.runbook, target: row.target, risk: row.risk as 0 | 1 | 2 | 3 },
+    });
+  }
+
+  const parsed = evaluate(base.text, OPERATORS[0], current.now);
+  const book = runbookForIntent(parsed.normalized) ?? inferRunbook(base.text);
+  const hinted = matchTarget(base.text) ?? (parsed.target === "fleet" ? targetById("fleet") : targetById(parsed.target));
+  const constraint = NO_CHANGE.test(base.text.toLowerCase()) ? "NO_CHANGE" : "нет";
+  const hash = book && hinted ? approvalHash(book, hinted.id, parsed, constraint) : "";
+  if (!book || !hinted || hash !== row.parameterHash || book.risk !== row.risk) {
+    saveApproval(current.stateDir, { ...row, status: "mismatch" });
+    return finish(base, {
+      code: "APPROVAL_MISMATCH", verdict: "deny", mode: current.mode, executionCalled: false,
+      decision: denyShell(base.text, "Команда или её параметры изменились. Требуется новая заявка."), approval: null,
+      trace: { ...emptyTrace(base.text, current.mode, parsed.normalized), runbook: book?.id ?? "—", target: hinted?.id ?? "—", risk: book?.risk ?? 3 },
+    });
+  }
+
+  if (book.policy === "DENY_ALWAYS") {
+    return finish(base, {
+      code: "POLICY_DENIED", verdict: "deny", mode: current.mode, executionCalled: false,
+      decision: denyShell(base.text, "DENY_ALWAYS нельзя отменить заявкой."), approval: null,
+      trace: { ...emptyTrace(base.text, current.mode, parsed.normalized), runbook: book.id, target: hinted.id, risk: book.risk, policy: "DENY_ALWAYS" },
+    });
+  }
+
+  if (row.required === 2 && row.stage === 1) {
     const next = { ...row, stage: 2 as const };
     saveApproval(current.stateDir, next);
     return finish(base, {
-      code: "APPROVAL_REQUIRED",
-      verdict: "deny",
-      mode: current.mode,
-      executionCalled: false,
-      decision: denyShell(base.text, "Нужна вторая фраза CONFIRM."),
-      approval: { id: next.id, phrase: `CONFIRM ${next.id}`, expiresAt: next.expiresAt, stage: 2 },
-      trace: emptyTrace(base.text, current.mode, row.normalized),
+      code: "APPROVAL_REQUIRED", verdict: "deny", mode: current.mode, executionCalled: false,
+      decision: denyShell(base.text, "Требуется второй серверный этап подтверждения.", book.risk),
+      approval: { id: next.id, phrase: "CONFIRM FINAL " + next.id, expiresAt: next.expiresAt, stage: 2 },
+      trace: traceOf(base.text, parsed.normalized, "нет", hinted.id, book, current.mode, "не вызывался", "ждёт второе подтверждение"),
     });
   }
+
   saveApproval(current.stateDir, { ...row, status: "confirmed" });
-  const exec = gateway(book, row.target, current.mode, current.stateDir, current.execute);
-  const decision = denyShell(base.text, exec.detail, book.risk);
-  decision.verdict = exec.code === "DRY_RUN" || exec.code === "MOCK" ? "allow" : "deny";
-  decision.forceDeny = decision.verdict !== "allow";
-  decision.risk = book.risk;
-  decision.runbook = book.id;
-  decision.target = row.target;
+  const exec = gateway(book, hinted.id, current.mode, current.stateDir, current.execute);
+  const ok = exec.code === "DRY_RUN" || exec.code === "MOCK" || exec.code === "OK";
+  const decision: Decision = {
+    ...parsed, verdict: ok ? "allow" : "deny", reason: ok ? null : exec.detail, risk: book.risk, runbook: book.id, target: hinted.id, forceDeny: !ok,
+    policyNotes: ["Решение принято на сервере.", "Режим " + current.mode + ".", exec.detail],
+  };
   return finish(base, {
-    code: exec.code === "DRY_RUN" || exec.code === "MOCK" ? "OK" : exec.code,
-    verdict: decision.verdict,
-    mode: current.mode,
-    executionCalled: exec.called,
-    decision,
-    approval: null,
-    trace: {
-      original: base.text,
-      normalized: row.normalized,
-      steps: ["authenticate", "approval", "gateway", "verify", "audit"],
-      constraint: "нет",
-      target: row.target,
-      runbook: book.id,
-      risk: book.risk,
-      policy: book.policy,
-      mode: current.mode,
-      execution: exec.detail,
-      verification: exec.called ? "адаптер не подтвердил живую проверку" : "прогона не было",
-    },
+    code: ok ? "OK" : exec.code === "NOT_CONFIGURED" ? "EXECUTION_DISABLED" : exec.code,
+    verdict: decision.verdict, mode: current.mode, executionCalled: exec.called, decision, approval: null,
+    trace: traceOf(base.text, parsed.normalized, "нет", hinted.id, book, current.mode, exec.detail, exec.code === "OK" ? book.verification : "проверка не выполнялась"),
   });
 }
 
@@ -364,7 +370,9 @@ function fresh(
       runbook: book.id,
       target: target.id,
       normalized: parsed.normalized,
-      parameterHash: parameterHash({ runbook: book.id, target: target.id, normalized: parsed.normalized }),
+      normalizedParameters: normalizedParametersOf(parsed),
+      constraint,
+      parameterHash: approvalHash(book, target.id, parsed, constraint),
       risk: book.risk,
       createdAt: current.now.getTime(),
       expiresAt: current.now.getTime() + 5 * 60 * 1000,

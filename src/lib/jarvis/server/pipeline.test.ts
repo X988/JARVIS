@@ -25,6 +25,7 @@ function run(text: string, extra: Partial<Parameters<typeof processCommand>[0]> 
     mode: extra.mode,
     execute: extra.execute,
     forged: extra.forged,
+    approval: extra.approval,
   });
 }
 
@@ -91,47 +92,71 @@ describe("server pipeline", () => {
     assert.equal(calls, 0);
   });
 
-  it("runs a mutating command once for one request id", () => {
+  it("executes an approved mutating request only once per request id", () => {
     const stateDir = freshDir();
     let calls = 0;
     const execute = (_call: ExecCall) => {
       calls += 1;
-      return { called: true, code: "NOT_CONFIGURED", detail: "нет" };
+      return { called: true, code: "OK", detail: "verified" };
     };
-    const first = run("Сделай резервную копию базы utp", { stateDir, requestId: "same", mode: "real", execute });
-    assert.equal(first.code, "APPROVAL_REQUIRED");
-    const second = run("Сделай резервную копию базы utp", { stateDir, requestId: "same", mode: "real", execute });
+    const opened = run("Сделай резервную копию базы utp", { stateDir, requestId: "open-backup", mode: "real", execute });
+    assert.equal(opened.code, "APPROVAL_REQUIRED");
+    assert.ok(opened.approval);
+    const confirm = {
+      id: opened.approval!.id,
+      confirmation: opened.approval!.phrase,
+    };
+    const first = run("Сделай резервную копию базы utp", {
+      stateDir,
+      requestId: "confirm-same",
+      mode: "real",
+      execute,
+      approval: confirm,
+    });
+    const second = run("Сделай резервную копию базы utp", {
+      stateDir,
+      requestId: "confirm-same",
+      mode: "real",
+      execute,
+      approval: confirm,
+    });
+    assert.equal(first.code, "OK");
     assert.equal(second.duplicate, true);
-    assert.equal(calls, 0);
+    assert.equal(calls, 1);
   });
 
-  it("expires an approval and rejects a parameter change", () => {
+  it("expires an approval and invalidates it when server-normalized parameters change", () => {
     const stateDir = freshDir();
-    const opened = run("Сделай резервную копию базы utp", { stateDir, now });
+    const command = "Сделай резервную копию базы utp";
+    const opened = run(command, { stateDir, now });
     assert.ok(opened.approval);
     const expired = processCommand({
-      text: opened.approval?.phrase ?? "",
+      text: command,
       requestId: "confirm-late",
       session: admin,
       stateDir,
       now: new Date(now.getTime() + 10 * 60 * 1000),
       mode: "dry-run",
+      approval: { id: opened.approval!.id, confirmation: opened.approval!.phrase },
     });
     assert.equal(expired.code, "APPROVAL_EXPIRED");
-    const again = run("Сделай резервную копию базы utp", { stateDir, now, requestId: "backup-2" });
+
+    const again = run(command, { stateDir, now, requestId: "backup-2" });
+    assert.ok(again.approval);
     const mismatch = processCommand({
-      text: again.approval?.phrase ?? "",
+      text: command + ", ничего не меняй",
       requestId: "confirm-bad",
       session: admin,
       stateDir,
       now,
       mode: "real",
       execute: () => {
-        throw new Error("executor");
+        throw new Error("executor must not be called");
       },
-      forged: { parameters: { runbook: "sql.backup", target: "sql01", normalized: "database_backup" } },
+      approval: { id: again.approval!.id, confirmation: again.approval!.phrase },
     });
     assert.equal(mismatch.code, "APPROVAL_MISMATCH");
+    assert.equal(mismatch.executionCalled, false);
   });
 
   it("drops a modifying runbook under NO_CHANGE", () => {

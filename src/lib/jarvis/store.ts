@@ -212,7 +212,10 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     lock = true;
     set({ busy: true });
     try {
-      const result = await postCommand(text, uid("req"));
+      const result = await postCommand(turn.request, uid("req"), {
+        id: turn.approval.id,
+        confirmation: text,
+      });
       const user = get().actorId;
       const phase: Phase = result.approval ? "awaiting" : result.verdict === "deny" ? "denied" : "done";
       const next: Turn = {
