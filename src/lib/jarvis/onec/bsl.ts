@@ -54,3 +54,34 @@ export function checkBsl(source: string): BslReport {
     note: "BSL Language Server в этой среде нет. Проверка — встроенный fallback, не замена конфигуратору.",
   };
 }
+
+export interface BslValidator {
+  id: string;
+  check(source: string): BslReport;
+}
+
+export class FallbackBslValidator implements BslValidator {
+  readonly id = "fallback";
+  check(source: string): BslReport {
+    return checkBsl(source);
+  }
+}
+
+export class BslLanguageServerValidator implements BslValidator {
+  readonly id = "bsl-language-server";
+  check(): BslReport {
+    return {
+      adapter: "fallback",
+      ok: false,
+      hits: [],
+      note: "BSL Language Server не установлен. Это не полная проверка 1С. Статус NOT_CONFIGURED.",
+    };
+  }
+}
+
+export class OneCDesignerValidator implements BslValidator {
+  readonly id = "1cv8";
+  check(): BslReport {
+    return { adapter: "fallback", ok: false, hits: [], note: "Конфигуратор 1cv8 не вызывался. Статус NOT_CONFIGURED." };
+  }
+}

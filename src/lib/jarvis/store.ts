@@ -1,11 +1,6 @@
 import { create } from "zustand";
-import {
-  APPROVAL_TTL_MS,
-  OPERATORS,
-  evaluate,
-  type Decision,
-  type Operator,
-} from "@/lib/jarvis/model";
+import { postCommand, unavailableDecision, ensureServerSession, type ServerTrace } from "@/lib/jarvis/client-api";
+import { OPERATORS, type Decision, type Operator } from "@/lib/jarvis/model";
 import { WATCH_ALERTS, type WatchAlert } from "@/lib/jarvis/watch";
 
 export type Phase = "running" | "awaiting" | "done" | "denied" | "expired" | "cancelled";
@@ -34,6 +29,8 @@ export type Turn = {
   durationMs: number | null;
   hint: string | null;
   replies: string[];
+  trace: ServerTrace | null;
+  serverCode: string | null;
 };
 
 export type AuditEntry = {
@@ -60,6 +57,7 @@ export type Notice = WatchAlert & { at: number };
 type JarvisState = {
   operatorId: string;
   dryRun: boolean;
+  serverMode: string;
   watch: boolean;
   busy: boolean;
   now: number;
@@ -70,9 +68,10 @@ type JarvisState = {
   setOperator: (id: string) => void;
   setDryRun: (value: boolean) => void;
   setWatch: (value: boolean) => void;
+  ensureSession: () => Promise<void>;
   pushNotice: (id: string) => void;
   submit: (raw: string, source: "text" | "voice", heard?: string) => Promise<void>;
-  reply: (turnId: string, phrase: string) => void;
+  reply: (turnId: string, phrase: string) => Promise<void>;
   cancel: (turnId: string) => void;
   tick: (ts: number) => void;
 };
@@ -83,19 +82,8 @@ function uid(prefix: string): string {
   return `${prefix}-${n}`;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
 function operatorById(id: string): Operator {
   return OPERATORS.find((item) => item.id === id) ?? OPERATORS[0];
-}
-
-function dayStamp(date: Date): string {
-  const p = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}`;
 }
 
 function paramsOf(decision: Decision): string {
@@ -135,6 +123,7 @@ let lock = false;
 export const useJarvis = create<JarvisState>((set, get) => ({
   operatorId: "admin1",
   dryRun: true,
+  serverMode: "dry-run",
   watch: true,
   busy: false,
   now: 0,
@@ -146,6 +135,19 @@ export const useJarvis = create<JarvisState>((set, get) => ({
   setOperator: (id) => set({ operatorId: id }),
   setDryRun: (value) => set({ dryRun: value }),
   setWatch: (value) => set({ watch: value }),
+  ensureSession: async () => {
+    const accountId = get().operatorId;
+    try {
+      const session = await ensureServerSession(accountId);
+      if (get().operatorId !== accountId) {
+        await get().ensureSession();
+        return;
+      }
+      set({ serverMode: session.executionMode, dryRun: session.executionMode !== "real" });
+    } catch {
+      set({ serverMode: "dry-run" });
+    }
+  },
 
   pushNotice: (id) => {
     const state = get();
@@ -209,62 +211,43 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     });
   },
 
-  reply: (turnId, phrase) => {
+  reply: async (turnId, phrase) => {
     const text = phrase.trim();
-    if (!text) return;
-    const state = get();
-    const turn = state.turns.find((item) => item.id === turnId);
-    if (!turn || turn.phase !== "awaiting" || !turn.approval) return;
-    const user = operatorById(state.operatorId).name;
-    const replies = [...turn.replies, text];
-    if (/^(да|ок|ok|yes|подтверждаю|confirm)$/i.test(text)) {
-      const next = { ...turn, replies, hint: "Короткое «да» без номера заявки не принимаю." };
-      set({ turns: state.turns.map((item) => (item.id === turnId ? next : item)) });
-      return;
-    }
-    if (text !== turn.approval.phrase) {
-      const next = { ...turn, replies, hint: "Фраза не совпала с заявкой. Скопируйте её целиком." };
-      set({ turns: state.turns.map((item) => (item.id === turnId ? next : item)) });
-      return;
-    }
-    if (Date.now() > turn.approval.expiresAt) {
-      const next: Turn = { ...turn, replies, phase: "expired", hint: "Срок заявки истёк." };
-      set({
-        turns: state.turns.map((item) => (item.id === turnId ? next : item)),
-        audit: [auditFrom(next, user, "expired", "approval ttl", turn.approval.id), ...state.audit].slice(0, 80),
-      });
-      return;
-    }
-    if (turn.decision.confirmation === "double" && turn.approval.stage === 1) {
-      const phraseNext = `CONFIRM-FINAL ${turn.approval.id}`;
+    if (!text || lock) return;
+    const turn = get().turns.find((item) => item.id === turnId);
+    if (!turn || turn.phase !== "awaiting") return;
+    lock = true;
+    set({ busy: true });
+    try {
+      const result = await postCommand(text, uid("req"));
+      const user = operatorById(get().operatorId).name;
+      const phase: Phase = result.approval ? "awaiting" : result.verdict === "deny" ? "denied" : "done";
       const next: Turn = {
         ...turn,
-        replies,
-        hint: "Первый этап принят. Нужна вторая фраза той же заявки.",
-        approval: { ...turn.approval, stage: 2, phrase: phraseNext },
+        replies: [...turn.replies, text],
+        phase,
+        step: 4,
+        decision: result.decision,
+        approval: result.approval
+          ? { id: result.approval.id, stage: result.approval.stage, expiresAt: result.approval.expiresAt, phrase: result.approval.phrase }
+          : null,
+        executed: result.executionCalled,
+        showFindings: result.verdict === "allow",
+        dryRun: result.mode !== "real",
+        trace: result.trace,
+        serverCode: result.code,
+        hint: result.decision.reason,
+        exitCode: result.verdict === "allow" ? 0 : 1,
+        durationMs: result.decision.durationMs,
       };
       set({
-        turns: state.turns.map((item) => (item.id === turnId ? next : item)),
-        audit: [auditFrom(next, user, "approval_stage_1", null, turn.approval.id), ...state.audit].slice(0, 80),
+        turns: get().turns.map((item) => (item.id === turnId ? next : item)),
+        audit: [auditFrom(next, user, result.code, result.decision.reason, result.approval?.id ?? null), ...get().audit].slice(0, 80),
       });
-      return;
+    } finally {
+      lock = false;
+      set({ busy: false });
     }
-    const ticket = turn.decision.normalized === "provision_1c_admin";
-    const next: Turn = {
-      ...turn,
-      replies,
-      phase: "done",
-      step: 4,
-      executed: !ticket,
-      showFindings: true,
-      hint: ticket ? "Заявка закрыта. Учётка в каталоге не появилась." : null,
-      exitCode: 0,
-      durationMs: turn.decision.durationMs,
-    };
-    set({
-      turns: state.turns.map((item) => (item.id === turnId ? next : item)),
-      audit: [auditFrom(next, user, ticket ? "ticket_only" : "simulated_ok", null, turn.approval.id), ...state.audit].slice(0, 80),
-    });
   },
 
   submit: async (raw, source, heard) => {
@@ -282,90 +265,38 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     lock = true;
     set({ busy: true });
     try {
-      const state = get();
-      const operator = operatorById(state.operatorId);
-      const decision = evaluate(text, operator, new Date());
-      const dryRun = state.dryRun;
+      await get().ensureSession();
+      const result = await postCommand(text, uid("req")).catch(() => null);
+      const decision = result?.decision ?? unavailableDecision("Сервер политики не ответил.");
+      const user = operatorById(get().operatorId).name;
       const id = uid("turn");
-      const base: Turn = {
+      const phase: Phase = result?.approval ? "awaiting" : decision.verdict === "deny" ? "denied" : "done";
+      const next: Turn = {
         id,
         source,
         request: text,
         heard: heard && heard.trim() && heard.trim() !== text ? heard.trim() : null,
         at: Date.now(),
-        phase: "running",
-        step: 1,
-        decision,
-        approval: null,
-        executed: false,
-        showFindings: false,
-        dryRun,
-        exitCode: null,
-        durationMs: null,
-        hint: null,
-        replies: [],
-      };
-      set({ turns: [...state.turns, base] });
-      for (let step = 2; step <= 4; step += 1) {
-        await sleep(280);
-        set({
-          turns: get().turns.map((item) => (item.id === id ? { ...item, step } : item)),
-        });
-      }
-      const user = operator.name;
-      const readSnapshot = decision.verdict === "allow" && !decision.mutation;
-      const ticket = decision.normalized === "provision_1c_admin";
-      const needsApproval = decision.verdict === "allow" && decision.confirmation !== "none" && (!dryRun || ticket);
-      const executeNow = decision.verdict === "allow" && !dryRun && decision.confirmation === "none";
-      if (needsApproval) {
-        const seq = get().seq + 1;
-        const approvalId = `APPROVAL-${dayStamp(new Date())}-${String(seq).padStart(4, "0")}`;
-        const approval: Approval = {
-          id: approvalId,
-          stage: 1,
-          expiresAt: Date.now() + APPROVAL_TTL_MS,
-          phrase: `CONFIRM ${approvalId}`,
-        };
-        const next: Turn = {
-          ...base,
-          step: 4,
-          phase: "awaiting",
-          approval,
-          dryRun,
-          showFindings: decision.previewFindings,
-          exitCode: decision.previewFindings ? 0 : null,
-          durationMs: decision.previewFindings ? decision.durationMs : null,
-        };
-        set({
-          seq,
-          turns: get().turns.map((item) => (item.id === id ? next : item)),
-          audit: [auditFrom(next, user, "awaiting_approval", null, approvalId), ...get().audit].slice(0, 80),
-        });
-        return;
-      }
-      const preview = decision.previewFindings && decision.verdict === "allow" && decision.findings.length > 0;
-      const showFindings = readSnapshot || executeNow || preview;
-      let result = "dry_run";
-      if (decision.verdict === "deny") result = "denied";
-      else if (decision.verdict === "clarify") result = "clarify";
-      else if (executeNow) result = "simulated_ok";
-      else if (readSnapshot) result = dryRun ? "read_dry_run" : "simulated_ok";
-      const next: Turn = {
-        ...base,
+        phase,
         step: 4,
-        phase: decision.verdict === "deny" ? "denied" : "done",
-        executed: executeNow,
-        showFindings,
-        dryRun,
-        exitCode: showFindings ? 0 : null,
-        durationMs: showFindings ? decision.durationMs : null,
+        decision,
+        approval: result?.approval
+          ? { id: result.approval.id, stage: result.approval.stage, expiresAt: result.approval.expiresAt, phrase: result.approval.phrase }
+          : null,
+        executed: Boolean(result?.executionCalled),
+        showFindings: decision.verdict === "allow" && decision.findings.length > 0,
+        dryRun: (result?.mode ?? "dry-run") !== "real",
+        exitCode: decision.verdict === "allow" ? 0 : 1,
+        durationMs: decision.durationMs,
+        hint: decision.reason,
+        replies: [],
+        trace: result?.trace ?? null,
+        serverCode: result?.code ?? "AUTH_REQUIRED",
       };
       set({
-        turns: get().turns.map((item) => (item.id === id ? next : item)),
-        audit: [
-          auditFrom(next, user, result, decision.verdict === "allow" ? null : decision.reason, null),
-          ...get().audit,
-        ].slice(0, 80),
+        turns: [...get().turns, next],
+        serverMode: result?.mode ?? get().serverMode,
+        audit: [auditFrom(next, user, result?.code ?? "deny", decision.reason, result?.approval?.id ?? null), ...get().audit].slice(0, 80),
       });
     } finally {
       lock = false;

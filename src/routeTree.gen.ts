@@ -14,6 +14,7 @@ import { Route as HealthRouteImport } from './routes/health'
 import { Route as MetricsRouteImport } from './routes/metrics'
 import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as ApiCommandsRouteImport } from './routes/api/commands'
+import { Route as ApiSessionRouteImport } from './routes/api/session'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +41,11 @@ const ApiCommandsRoute = ApiCommandsRouteImport.update({
   path: '/api/commands',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSessionRoute = ApiSessionRouteImport.update({
+  id: '/api/session',
+  path: '/api/session',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +53,7 @@ export interface FileRoutesByFullPath {
   '/metrics': typeof MetricsRoute
   '/ready': typeof ReadyRoute
   '/api/commands': typeof ApiCommandsRoute
+  '/api/session': typeof ApiSessionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +61,7 @@ export interface FileRoutesByTo {
   '/metrics': typeof MetricsRoute
   '/ready': typeof ReadyRoute
   '/api/commands': typeof ApiCommandsRoute
+  '/api/session': typeof ApiSessionRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,13 +70,22 @@ export interface FileRoutesById {
   '/metrics': typeof MetricsRoute
   '/ready': typeof ReadyRoute
   '/api/commands': typeof ApiCommandsRoute
+  '/api/session': typeof ApiSessionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/health' | '/metrics' | '/ready' | '/api/commands'
+  fullPaths:
+    '/' | '/health' | '/metrics' | '/ready' | '/api/commands' | '/api/session'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/health' | '/metrics' | '/ready' | '/api/commands'
-  id: '__root__' | '/' | '/health' | '/metrics' | '/ready' | '/api/commands'
+  to: '/' | '/health' | '/metrics' | '/ready' | '/api/commands' | '/api/session'
+  id:
+    | '__root__'
+    | '/'
+    | '/health'
+    | '/metrics'
+    | '/ready'
+    | '/api/commands'
+    | '/api/session'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -77,6 +94,7 @@ export interface RootRouteChildren {
   MetricsRoute: typeof MetricsRoute
   ReadyRoute: typeof ReadyRoute
   ApiCommandsRoute: typeof ApiCommandsRoute
+  ApiSessionRoute: typeof ApiSessionRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -116,6 +134,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCommandsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/session': {
+      id: '/api/session'
+      path: '/api/session'
+      fullPath: '/api/session'
+      preLoaderRoute: typeof ApiSessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -125,6 +150,7 @@ const rootRouteChildren: RootRouteChildren = {
   MetricsRoute: MetricsRoute,
   ReadyRoute: ReadyRoute,
   ApiCommandsRoute: ApiCommandsRoute,
+  ApiSessionRoute: ApiSessionRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

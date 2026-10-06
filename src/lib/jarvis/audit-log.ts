@@ -9,6 +9,19 @@ export type AuditRow = {
   action: string;
   verdict: string;
   previousHash: string;
+  sessionId?: string;
+  commandId?: string;
+  normalized?: string;
+  target?: string;
+  runbook?: string;
+  risk?: number | string;
+  policy?: string;
+  approvalId?: string;
+  executor?: string;
+  durationMs?: number | string;
+  result?: string;
+  verification?: string;
+  externalSink?: string;
   hash?: string;
 };
 
@@ -17,7 +30,28 @@ export function auditFile(dir = process.env.JARVIS_STATE_DIR || path.join(proces
 }
 
 function canon(row: Omit<AuditRow, "hash">): string {
-  return JSON.stringify([row.at, row.executionId, row.actor, row.action, row.verdict, row.previousHash]);
+  return JSON.stringify([
+    1,
+    row.at,
+    row.executionId,
+    row.actor,
+    row.action,
+    row.verdict,
+    row.previousHash,
+    row.sessionId ?? "",
+    row.commandId ?? "",
+    row.normalized ?? "",
+    row.target ?? "",
+    row.runbook ?? "",
+    String(row.risk ?? ""),
+    row.policy ?? "",
+    row.approvalId ?? "",
+    row.executor ?? "",
+    String(row.durationMs ?? ""),
+    row.result ?? "",
+    row.verification ?? "",
+    row.externalSink ?? "NOT_CONFIGURED",
+  ]);
 }
 
 export function appendAudit(row: Omit<AuditRow, "previousHash" | "hash">, dir?: string): AuditRow {

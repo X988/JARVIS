@@ -16,3 +16,19 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+  e2e:
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+        env:
+          EXECUTION_MODE: dry-run
+          JARVIS_ALLOW_DEV_LOGIN: "1"
+          CI: "1"

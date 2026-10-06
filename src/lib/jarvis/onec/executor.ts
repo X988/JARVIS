@@ -19,8 +19,7 @@ export type OnecResult = {
   detail?: unknown;
 };
 
-const KINDS = ["module", "form", "command", "attribute", "template", "print", "report", "processor"] as const;
-export type OnecKind = (typeof KINDS)[number];
+export type OnecKind = "module" | "form" | "command" | "attribute" | "template" | "print" | "report" | "processor";
 
 function deny(environment: OnecEnv, adapter: OnecResult["adapter"], message: string): OnecResult {
   return { ok: false, code: "DENY", environment, adapter, message };

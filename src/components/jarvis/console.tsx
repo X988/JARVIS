@@ -221,6 +221,22 @@ function TurnCard({ turn, now }: { turn: Turn; now: number }) {
         <p className={`font-mono text-xs ${phaseTone(turn.phase, turn.decision.verdict)}`}>{stamp(turn)}</p>
       </div>
       <h2 className="mt-3 text-lg font-semibold tracking-tight text-balance">{turn.decision.title}</h2>
+      {turn.trace ? (
+        <dl className="mt-3 grid gap-1 font-mono text-xs text-muted">
+          <div>Original: {turn.trace.original}</div>
+          <div>Normalized: {turn.trace.normalized}</div>
+          <div>Steps: {turn.trace.steps.join(" → ")}</div>
+          <div>Constraint: {turn.trace.constraint}</div>
+          <div>Target: {turn.trace.target}</div>
+          <div>Runbook: {turn.trace.runbook}</div>
+          <div>Risk: {turn.trace.risk}</div>
+          <div>Policy: {turn.trace.policy}</div>
+          <div>Mode: {turn.trace.mode}</div>
+          <div>Execution: {turn.trace.execution}</div>
+          <div>Verification: {turn.trace.verification}</div>
+          <div>Audit: {turn.trace.audit}</div>
+        </dl>
+      ) : null}
       {turn.decision.reason ? <p className="mt-2 text-pretty text-sm text-fg">{turn.decision.reason}</p> : null}
       <ol className="mt-3 flex flex-wrap gap-x-3 gap-y-1">
         {labels.map((label, index) => (
@@ -454,20 +470,21 @@ const SIDE: { id: SideTab; label: string }[] = [
   { id: "access", label: "Доступ" },
 ];
 
-let adminTicketQueued = false;
+let started = false;
 
 export function Console() {
   const turns = useJarvis((state) => state.turns);
   const now = useJarvis((state) => state.now);
   const busy = useJarvis((state) => state.busy);
   const dryRun = useJarvis((state) => state.dryRun);
+  const serverMode = useJarvis((state) => state.serverMode);
   const watch = useJarvis((state) => state.watch);
   const notices = useJarvis((state) => state.notices);
   const operatorId = useJarvis((state) => state.operatorId);
-  const setDryRun = useJarvis((state) => state.setDryRun);
   const setWatch = useJarvis((state) => state.setWatch);
   const pushNotice = useJarvis((state) => state.pushNotice);
   const setOperator = useJarvis((state) => state.setOperator);
+  const ensureSession = useJarvis((state) => state.ensureSession);
   const submit = useJarvis((state) => state.submit);
   const tick = useJarvis((state) => state.tick);
   const [draft, setDraft] = useState("");
@@ -496,10 +513,10 @@ export function Console() {
   }, [tick]);
 
   useEffect(() => {
-    if (adminTicketQueued) return;
-    adminTicketQueued = true;
-    void submit("Создай заявку на учётку jarvis-1c-admin", "text");
-  }, [submit]);
+    if (started) return;
+    started = true;
+    void ensureSession();
+  }, [ensureSession]);
 
   useEffect(() => {
     if (!watch) return;
@@ -703,17 +720,9 @@ export function Console() {
             >
               {watch ? "Слежу" : "Пауза"}
             </button>
-            <button
-              type="button"
-              aria-pressed={dryRun}
-              onClick={() => setDryRun(!dryRun)}
-              className={
-                "min-h-11 rounded-md px-3 font-mono text-xs " +
-                (dryRun ? "bg-forest text-paper" : "bg-paper text-ink")
-              }
-            >
-              {dryRun ? "DRY RUN" : "DEMO"}
-            </button>
+            <span className="flex min-h-11 items-center rounded-md bg-forest px-3 font-mono text-xs text-paper">
+              {serverMode === "real" ? "REAL" : serverMode === "mock" ? "MOCK" : "DRY RUN"}
+            </span>
           </div>
         </div>
         <div className="flex gap-2 px-4 py-3">
@@ -723,7 +732,10 @@ export function Console() {
               <button
                 key={operator.id}
                 type="button"
-                onClick={() => setOperator(operator.id)}
+                onClick={() => {
+                  setOperator(operator.id);
+                  void ensureSession();
+                }}
                 className={
                   "min-h-11 flex-1 rounded-md border text-sm " +
                   (active ? "border-paper bg-paper text-ink" : "border-line text-muted")
@@ -735,7 +747,7 @@ export function Console() {
           })}
         </div>
         <p className="px-4 font-mono text-xs text-subtle">
-          {watch ? "Слежение demo. Это не телеметрия. Чинить сам не начинаю." : "Слежение на паузе."}
+          {watch ? "MONITORING_NOT_CONFIGURED. Ниже только demo-фикстуры, не телеметрия." : "Слежение на паузе."}
         </p>
         <ul className="flex gap-2 overflow-x-auto px-4 py-3">
           {WATCH_HOSTS.map((host) => (
@@ -753,8 +765,8 @@ export function Console() {
         </p>
       ) : null}
       {!dryRun ? (
-        <p className="border-b border-line bg-forest px-4 py-2 text-sm text-paper">
-          Боевого контура нет. Кнопка снимает только сухой прогон внутри DEMO. Серверы не вызываются.
+        <p className="border-b border-line bg-paper px-4 py-2 text-sm text-ink">
+          Сервер в режиме REAL. Кнопка в браузере этот режим не включает.
         </p>
       ) : null}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
