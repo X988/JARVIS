@@ -1,10 +1,31 @@
 {
-  "version": 1,
+  "version": 2,
   "targets": [
+    {
+      "id": "fleet",
+      "displayName": "Infrastructure fleet",
+      "type": "fleet",
+      "environment": "production",
+      "roles": [
+        "read"
+      ],
+      "reference": "inventory",
+      "aliases": [
+        "площадка",
+        "сервер",
+        "серверы",
+        "серверах"
+      ],
+      "enabled": true,
+      "allowedRunbooks": [
+        "server.health",
+        "disk.check"
+      ]
+    },
     {
       "id": "dc01",
       "displayName": "Domain Controller",
-      "type": "windows",
+      "type": "host",
       "environment": "production",
       "roles": [
         "domain-controller",
@@ -15,7 +36,9 @@
       "aliases": [
         "dc01",
         "dc",
-        "контроллер домена"
+        "контроллер домена",
+        "контроллер",
+        "домен"
       ],
       "enabled": true,
       "allowedRunbooks": [
@@ -26,7 +49,7 @@
     {
       "id": "srv1c01",
       "displayName": "1C Server",
-      "type": "windows",
+      "type": "host",
       "environment": "production",
       "roles": [
         "1c"
@@ -35,7 +58,9 @@
       "aliases": [
         "srv1c01",
         "сервер 1с",
-        "1с сервер"
+        "1с сервер",
+        "1с",
+        "1c"
       ],
       "enabled": true,
       "allowedRunbooks": [
@@ -46,7 +71,7 @@
     {
       "id": "sql01",
       "displayName": "SQL Server",
-      "type": "windows",
+      "type": "host",
       "environment": "production",
       "roles": [
         "sql-server"
@@ -55,7 +80,8 @@
       "aliases": [
         "sql01",
         "sql сервер",
-        "sql server"
+        "sql server",
+        "sql"
       ],
       "enabled": true,
       "allowedRunbooks": [
@@ -66,10 +92,11 @@
     {
       "id": "fs01",
       "displayName": "File Server",
-      "type": "windows",
+      "type": "host",
       "environment": "production",
       "roles": [
-        "file-server"
+        "file-server",
+        "smb"
       ],
       "reference": "fs01",
       "aliases": [
@@ -85,7 +112,7 @@
     {
       "id": "mail01",
       "displayName": "Mailcow",
-      "type": "linux",
+      "type": "mail",
       "environment": "production",
       "roles": [
         "mailcow",
@@ -95,6 +122,8 @@
       "aliases": [
         "mail01",
         "mailcow",
+        "мейлкау",
+        "почта",
         "почтовый сервер"
       ],
       "enabled": true,
@@ -107,11 +136,10 @@
     {
       "id": "rb5009",
       "displayName": "MikroTik RB5009",
-      "type": "mikrotik",
+      "type": "router",
       "environment": "production",
       "roles": [
-        "gateway",
-        "wireguard"
+        "gateway"
       ],
       "reference": "rb5009",
       "aliases": [
@@ -122,12 +150,30 @@
       ],
       "enabled": true,
       "allowedRunbooks": [
-        "mikrotik.status",
+        "mikrotik.status"
+      ]
+    },
+    {
+      "id": "wg",
+      "displayName": "WireGuard on RB5009",
+      "type": "vpn",
+      "environment": "production",
+      "roles": [
+        "wireguard"
+      ],
+      "reference": "rb5009/wireguard",
+      "aliases": [
+        "wireguard",
+        "вайргард",
+        "wg"
+      ],
+      "enabled": true,
+      "allowedRunbooks": [
         "wireguard.status"
       ]
     },
     {
-      "id": "db-utp",
+      "id": "utp",
       "displayName": "SQL database utp",
       "type": "database",
       "environment": "production",
@@ -137,6 +183,7 @@
       "reference": "sql01/utp",
       "aliases": [
         "utp",
+        "утп",
         "ютп",
         "база utp",
         "база ютп"
@@ -148,9 +195,9 @@
       ]
     },
     {
-      "id": "onec-jarvisdev",
+      "id": "jarvis-dev",
       "displayName": "JarvisDev 1C export",
-      "type": "onec-export",
+      "type": "repo",
       "environment": "development",
       "roles": [
         "1c-source-export"
@@ -158,20 +205,21 @@
       "reference": "extensions/JarvisDev",
       "aliases": [
         "jarvisdev",
+        "расширение",
         "расширение utp",
         "выгрузка 1с"
       ],
       "enabled": true,
       "allowedRunbooks": [
         "onec.read",
-        "onec.query",
-        "onec.patch"
+        "onec.patch",
+        "onec.form"
       ]
     },
     {
       "id": "repo-honey",
       "displayName": "honey-granite-fair-hazel",
-      "type": "repository",
+      "type": "repo",
       "environment": "development",
       "roles": [
         "github-repository"
