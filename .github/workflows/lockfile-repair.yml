@@ -3,18 +3,26 @@ on:
   push:
     branches:
       - jarvis/prod-contour
+permissions:
+  contents: write
 jobs:
-  generate:
+  generate-and-commit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: jarvis/prod-contour
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm install --package-lock-only --ignore-scripts
-      - uses: actions/upload-artifact@v4
-        with:
-          name: regenerated-lockfile
-          path: package-lock.json
-          if-no-files-found: error
+      - name: Commit canonical lockfile and remove repair workflow
+        run: |
+          rm .github/workflows/lockfile-repair.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json .github/workflows/lockfile-repair.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(ci): synchronize npm lockfile"
+          git push origin HEAD:jarvis/prod-contour
