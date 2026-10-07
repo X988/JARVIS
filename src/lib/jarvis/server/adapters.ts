@@ -4,6 +4,7 @@ import { targetById } from "./inventory.ts";
 import { FileOnecExecutor } from "../onec/executor.ts";
 import { sqlDatabase, runSql } from "./sql.ts";
 import { runSshProbe, runWindowsProbe } from "./host-probes.ts";
+import { runRouterOs } from "./routeros.ts";
 
 export type ExecutorKind = Runbook["executor"];
 
@@ -78,14 +79,7 @@ export class SQLExecutor implements Executor {
 export class RouterOSExecutor implements Executor {
   readonly type = "routeros" as const;
   execute(call: ExecCall): ExecResult {
-    const blocked = configured(
-      "JARVIS_MIKROTIK_HOST",
-      "JARVIS_MIKROTIK_USER",
-      "routeros",
-      "Только чтение: интерфейсы, маршруты или WireGuard.",
-    );
-    if (blocked) return blocked;
-    return missing("routeros", "ADAPTER_DISABLED", `RouterOS API не подключён. ${call.runbook} не опрашивался.`);
+    return runRouterOs(call);
   }
 }
 
