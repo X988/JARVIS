@@ -1,13 +1,16 @@
 import { timingSafeEqual } from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { actorsFromEnv, type TelegramActor, type TelegramUpdate } from "./telegram.ts";
 import { acceptTelegramVoice } from "../voice/turn.ts";
 import { voiceLine } from "../voice/gate.ts";
+import { synthesizeVoice } from "../voice/tts.ts";
 
 export type BotApi = {
   getFile(fileId: string): Promise<string | null>;
   download(filePath: string): Promise<Buffer | null>;
   sendMessage(chatId: number, text: string): Promise<boolean>;
+  sendVoice?(chatId: number, bytes: Buffer): Promise<boolean>;
 };
 
 function sameSecret(left: string, right: string): boolean {
@@ -53,6 +56,13 @@ export function createTelegramApi(env: NodeJS.ProcessEnv = process.env): BotApi 
       });
       return response.ok;
     },
+    async sendVoice(chatId, bytes) {
+      const form = new FormData();
+      form.set("chat_id", String(chatId));
+      form.set("voice", new Blob([new Uint8Array(bytes)], { type: "audio/ogg" }), "jarvis.ogg");
+      const response = await fetch(`${base}/bot${token}/sendVoice`, { method: "POST", body: form });
+      return response.ok;
+    },
   };
 }
 
@@ -79,7 +89,7 @@ export function telegramUpdate(body: unknown): { update: TelegramUpdate; chatId:
 export async function dispatchTelegram(
   body: unknown,
   opts: { stateDir: string; actors?: Record<string, TelegramActor>; api: BotApi; now?: Date; env?: NodeJS.ProcessEnv },
-): Promise<{ code: string; sent: boolean }> {
+): Promise<{ code: string; sent: boolean; voiceSent?: boolean }> {
   const parsed = telegramUpdate(body);
   if (!parsed) return { code: "EMPTY", sent: false };
   const actors = opts.actors ?? actorsFromEnv(opts.env);
@@ -100,7 +110,18 @@ export async function dispatchTelegram(
   });
   const text = "voiceSummary" in result ? result.voiceSummary : voiceLine(result.code, null);
   const sent = await opts.api.sendMessage(parsed.chatId, text);
-  return { code: result.code, sent };
+  let voiceSent = false;
+  if (parsed.update.voiceFileId && opts.api.sendVoice) {
+    const speech = synthesizeVoice(text, opts.env);
+    if (!("code" in speech)) {
+      try {
+        voiceSent = await opts.api.sendVoice(parsed.chatId, fs.readFileSync(speech.ogg));
+      } finally {
+        for (const file of speech.cleanup) fs.rmSync(file, { force: true });
+      }
+    }
+  }
+  return { code: result.code, sent, voiceSent };
 }
 
 export async function handleTelegramWebhook(request: Request, env: NodeJS.ProcessEnv = process.env): Promise<Response> {
