@@ -366,4 +366,40 @@ describe("locks, audit, git", () => {
     assert.equal(planGitFlow({ pushMain: true }).code, "DENY");
     assert.equal(planGitFlow({ pushMain: false }).steps.at(-1), "pr");
   });
+  it("fails closed on corrupted external audit outbox", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-audit-corrupt-"));
+    fs.writeFileSync(path.join(root, "audit-outbox.jsonl"), "{broken\n");
+    assert.throws(() => loadAuditOutbox(root), /invalid JSON/);
+    assert.equal(fs.readFileSync(path.join(root, "audit-outbox.jsonl"), "utf8"), "{broken\n");
+  });
+
+  it("fleet probe never reports aggregate success when members are unavailable", () => {
+    const names = [
+      "JARVIS_WINDOWS_HOST",
+      "JARVIS_WINDOWS_TARGETS_JSON",
+      "JARVIS_WINDOWS_USER",
+      "JARVIS_WINDOWS_PASSWORD",
+      "JARVIS_SSH_HOST",
+      "JARVIS_SSH_TARGETS_JSON",
+      "JARVIS_SSH_USER",
+    ] as const;
+    const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    for (const name of names) delete process.env[name];
+    try {
+      const result = new ServerProbeExecutor().execute({
+        runbook: "server.health",
+        target: "fleet",
+        mode: "real",
+      });
+      assert.notEqual(result.code, "OK");
+      assert.match(result.detail, /healthy=0\//);
+    } finally {
+      for (const name of names) {
+        const value = previous[name];
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
 });
