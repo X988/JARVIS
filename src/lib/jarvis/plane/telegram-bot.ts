@@ -6,7 +6,7 @@ import { acceptTelegramVoice } from "../voice/turn.ts";
 import { voiceLine } from "../voice/gate.ts";
 import { synthesizeVoice } from "../voice/tts.ts";
 import { mark } from "../metrics.ts";
-import { deliverArtifact } from "./artifacts.ts";
+import { deliverArtifact, resolveArtifactFile } from "./artifacts.ts";
 
 export type BotApi = {
   getFile(fileId: string): Promise<string | null>;
@@ -185,12 +185,16 @@ export async function sendTelegramArtifact(
   chatId: number,
   input: { root: string; relative: string; caption?: string; asPhoto?: boolean },
 ): Promise<{ ok: boolean; code?: string }> {
-  const root = path.resolve(input.root);
-  const full = path.resolve(root, input.relative);
-  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return { ok: false, code: "NOT_FOUND" };
+  const resolved = resolveArtifactFile(input.root, input.relative);
+  if (!resolved.ok) return { ok: false, code: resolved.code };
+  const full = resolved.path;
   const bytes = fs.readFileSync(full);
-  const preview = bytes.subarray(0, Math.min(bytes.length, 64 * 1024)).toString("utf8");
-  const gate = deliverArtifact({ root, relative: input.relative, bytes: bytes.length, text: preview });
+  const gate = deliverArtifact({
+    root: input.root,
+    relative: input.relative,
+    bytes: bytes.length,
+    text: bytes.toString("utf8"),
+  });
   if (!gate.ok) return { ok: false, code: gate.code };
   if (input.asPhoto && api.sendPhoto) {
     return { ok: await api.sendPhoto(chatId, bytes, path.basename(full), input.caption) };
