@@ -97,9 +97,7 @@ function cleanup(
   retentionMs: number,
 ): void {
   for (const [key, stamps] of Object.entries(bucket)) {
-    const retained = stamps.filter(
-      (stamp) => stamp <= now && now - stamp < retentionMs,
-    );
+    const retained = stamps.filter((stamp) => now - stamp < retentionMs);
     if (retained.length === 0) delete bucket[key];
     else bucket[key] = retained;
   }
@@ -109,7 +107,7 @@ export function takeToken(
   key: string,
   limit: number,
   windowMs: number,
-  now = Date.now(),
+  now?: number,
 ): boolean {
   if (!validKey(key)) throw new Error("invalid rate-limit key");
   if (!Number.isInteger(limit) || limit < 1 || limit > 100_000) {
@@ -118,7 +116,10 @@ export function takeToken(
   if (!Number.isInteger(windowMs) || windowMs < 1 || windowMs > 30 * 24 * 60 * 60 * 1000) {
     throw new Error("invalid rate-limit window");
   }
-  if (!Number.isFinite(now) || !Number.isInteger(now) || now < 0) {
+  if (
+    now !== undefined &&
+    (!Number.isFinite(now) || !Number.isInteger(now) || now < 0)
+  ) {
     throw new Error("invalid rate-limit clock");
   }
 
@@ -141,12 +142,19 @@ export function takeToken(
   );
 
   return withStateLock(dir, () => {
+    // When no deterministic clock is injected, sample time only after acquiring
+    // the inter-process lock. A process may start earlier but enter the critical
+    // section later; sampling before the lock can otherwise make a newer write
+    // look "from the future" and cause a lost update.
+    const effectiveNow = now ?? Date.now();
     const bucket = readBucket(target);
-    cleanup(bucket, now, retentionMs);
+    cleanup(bucket, effectiveNow, retentionMs);
 
     const existed = Object.prototype.hasOwnProperty.call(bucket, key);
     const current = bucket[key] ?? [];
-    const fresh = current.filter((stamp) => stamp <= now && now - stamp < windowMs);
+    // Future timestamps are retained and counted fail-closed. Silently dropping
+    // them would turn clock skew or contention into extra allowed requests.
+    const fresh = current.filter((stamp) => effectiveNow - stamp < windowMs);
     bucket[key] = fresh;
 
     if (fresh.length >= limit) {
@@ -160,7 +168,7 @@ export function takeToken(
       return false;
     }
 
-    fresh.push(now);
+    fresh.push(effectiveNow);
     bucket[key] = fresh;
     atomicWrite(target, bucket);
     return true;
