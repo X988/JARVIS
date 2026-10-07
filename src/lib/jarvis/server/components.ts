@@ -73,7 +73,10 @@ export function componentStatus(env: NodeJS.ProcessEnv = process.env): Record<st
       detail: dir,
     },
     audit: {
-      state: auditSink === "NOT_CONFIGURED" ? "DEGRADED" : "CONFIGURED",
+      state:
+        auditSink === "NOT_CONFIGURED" || /INVALID|ADAPTER_DISABLED/.test(auditSink)
+          ? "DEGRADED"
+          : "CONFIGURED",
       detail: auditSink,
     },
     scheduler: {
