@@ -54,18 +54,31 @@ def main() -> None:
 
     device = "cpu"
     compute = "int8"
+    model = None
     if requested in ("auto", "cuda"):
         try:
-            probe = WhisperModel(model_name, device="cuda", compute_type="int8_float16", download_root=root)
-            del probe
+            model = WhisperModel(
+                model_name,
+                device="cuda",
+                compute_type="int8_float16",
+                download_root=root,
+            )
             device = "cuda"
             compute = "int8_float16"
         except Exception:
             if requested == "cuda":
                 fail("NOT_CONFIGURED", "cuda unavailable")
+            model = None
             device = "cpu"
+            compute = "int8"
     try:
-        model = WhisperModel(model_name, device=device, compute_type=compute, download_root=root)
+        if model is None:
+            model = WhisperModel(
+                model_name,
+                device=device,
+                compute_type=compute,
+                download_root=root,
+            )
         segments, info = model.transcribe(
             wav,
             language=None if language == "auto" else language,
