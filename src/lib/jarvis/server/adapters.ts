@@ -5,6 +5,7 @@ import { FileOnecExecutor } from "../onec/executor.ts";
 import { sqlDatabase, runSql } from "./sql.ts";
 import { runSshProbe, runWindowsProbe } from "./host-probes.ts";
 import { runRouterOs } from "./routeros.ts";
+import { runMailcow } from "./mailcow.ts";
 
 export type ExecutorKind = Runbook["executor"];
 
@@ -86,14 +87,7 @@ export class RouterOSExecutor implements Executor {
 export class DockerExecutor implements Executor {
   readonly type = "docker" as const;
   execute(call: ExecCall): ExecResult {
-    const blocked = configured(
-      "JARVIS_DOCKER_HOST",
-      "JARVIS_MAILCOW_COMPOSE",
-      "docker",
-      "Read-only Mailcow: состояние сервисов compose и очередь.",
-    );
-    if (blocked) return blocked;
-    return missing("docker", "ADAPTER_DISABLED", `Docker-клиент не подключён. ${call.runbook} на ${call.target} не опрашивался.`);
+    return runMailcow(call);
   }
 }
 
