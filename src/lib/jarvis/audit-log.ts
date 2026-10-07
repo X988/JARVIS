@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { withStateLock } from "./server/state-lock.ts";
+import { enqueueAuditDelivery } from "./audit-outbox.ts";
 
 export type AuditRow = {
   at: string;
@@ -57,8 +58,9 @@ function canon(row: Omit<AuditRow, "hash">): string {
 
 export function appendAudit(row: Omit<AuditRow, "previousHash" | "hash">, dir?: string): AuditRow {
   const file = auditFile(dir);
-  return withStateLock(path.dirname(file), () => {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
+  const stateDir = path.dirname(file);
+  const stored = withStateLock(stateDir, () => {
+    fs.mkdirSync(stateDir, { recursive: true });
     let previousHash = "GENESIS";
     if (fs.existsSync(file)) {
       const lines = fs.readFileSync(file, "utf8").trim().split("\n").filter(Boolean);
@@ -66,10 +68,15 @@ export function appendAudit(row: Omit<AuditRow, "previousHash" | "hash">, dir?: 
     }
     const body = { ...row, previousHash };
     const hash = createHash("sha256").update(canon(body)).digest("hex");
-    const stored = { ...body, hash };
-    fs.appendFileSync(file, `${JSON.stringify(stored)}\n`);
-    return stored;
+    const saved = { ...body, hash };
+    fs.appendFileSync(file, `${JSON.stringify(saved)}\n`);
+    return saved;
   });
+
+  // External delivery is decoupled from command execution. A durable outbox is
+  // queued only after the local hash-chain row exists.
+  enqueueAuditDelivery(stored, stateDir);
+  return stored;
 }
 
 export function verifyAudit(dir?: string): { ok: boolean; rows: number } {
@@ -90,7 +97,7 @@ export function verifyAudit(dir?: string): { ok: boolean; rows: number } {
 
 export interface AuditSink {
   readonly id: "syslog" | "http" | "loki";
-  status(): "NOT_CONFIGURED" | "ADAPTER_DISABLED";
+  status(): "NOT_CONFIGURED" | "OUTBOX" | "ADAPTER_DISABLED";
 }
 
 class EnvAuditSink implements AuditSink {
@@ -102,8 +109,9 @@ class EnvAuditSink implements AuditSink {
     this.envName = envName;
   }
 
-  status(): "NOT_CONFIGURED" | "ADAPTER_DISABLED" {
-    return process.env[this.envName] ? "ADAPTER_DISABLED" : "NOT_CONFIGURED";
+  status(): "NOT_CONFIGURED" | "OUTBOX" | "ADAPTER_DISABLED" {
+    if (!process.env[this.envName]) return "NOT_CONFIGURED";
+    return this.id === "syslog" ? "ADAPTER_DISABLED" : "OUTBOX";
   }
 }
 
@@ -138,5 +146,7 @@ export function externalSinkLabel(env: NodeJS.ProcessEnv = process.env): string 
   ] as const;
   const active = sinks.filter(([, value]) => Boolean(value));
   if (active.length === 0) return "NOT_CONFIGURED";
-  return active.map(([id]) => `${id}:ADAPTER_DISABLED`).join(",");
+  return active
+    .map(([id]) => `${id}:${id === "syslog" ? "ADAPTER_DISABLED" : "OUTBOX"}`)
+    .join(",");
 }
