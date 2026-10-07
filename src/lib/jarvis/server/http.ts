@@ -6,6 +6,7 @@ import { monitoringStatus } from "../monitoring.ts";
 import { authenticateRequest } from "./auth.ts";
 import { processCommand } from "./pipeline.ts";
 import { validRequestId } from "./idempotency.ts";
+import { runAgentTurn } from "../plane/agent-runtime.ts";
 
 function stateDir(): string {
   return process.env.JARVIS_STATE_DIR || process.cwd()+"/data";
@@ -52,10 +53,13 @@ function httpStatus(code:string):number{
   if(code==="OK") return 200;
   if(code==="AUTH_REQUIRED") return 401;
   if(code==="ACTOR_DENIED" || code==="POLICY_DENIED") return 403;
-  if(code==="APPROVAL_REQUIRED") return 202;
+  if(code==="APPROVAL_REQUIRED" || code==="MUTATION_REQUIRES_APPROVAL") return 202;
   if(code==="APPROVAL_EXPIRED" || code==="APPROVAL_MISMATCH" || code==="PRECONDITION_FAILED") return 409;
   if(code==="TARGET_NOT_FOUND" || code==="RUNBOOK_NOT_FOUND") return 404;
   if(code==="SCHEMA_INVALID") return 400;
+  if(code==="PLAN_INVALID" || code==="PLAN_REJECTED") return 422;
+  if(code==="AGENT_DISABLED" || code==="LLM_UNAVAILABLE") return 503;
+  if(code==="DRY_RUN" || code==="CLARIFY" || code==="AGENT_PARTIAL") return 200;
   if(code==="EXECUTION_DISABLED" || code==="NOT_CONFIGURED" || code==="CREDENTIAL_UNAVAILABLE" || code==="ADAPTER_DISABLED" || code==="SECURITY_STATE_UNAVAILABLE") return 503;
   if(code==="EXECUTION_TIMEOUT" || code==="VERIFICATION_FAILED") return 504;
   return 403;
@@ -161,4 +165,56 @@ export async function handleCommand(request:Request):Promise<Response>{
     approval,
   });
   return json(result,httpStatus(result.code));
+}
+
+
+export async function handleAgentCommand(request: Request): Promise<Response> {
+  if (request.method !== "POST") return json({ code: "SCHEMA_INVALID" }, 405);
+  if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
+    return json({ code: "SCHEMA_INVALID" }, 400);
+  }
+
+  const auth = await authenticateRequest(request);
+  if (!auth.session || auth.code !== "OK") {
+    return json({ code: auth.code }, httpStatus(auth.code));
+  }
+  if (!csrfOk(request, auth.channel)) return json({ code: "AUTH_REQUIRED" }, 401);
+
+  let rateAllowed = false;
+  try {
+    rateAllowed = takeToken("agent:" + auth.session.accountId, 12, 60_000);
+  } catch {
+    increment("jarvis_rate_limit_denied_total");
+    return json({ code: "SECURITY_STATE_UNAVAILABLE" }, 503);
+  }
+  if (!rateAllowed) {
+    increment("jarvis_rate_limit_denied_total");
+    return json({ code: "RATE_LIMIT" }, 429);
+  }
+
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > 64 * 1024) {
+    return json({ code: "SCHEMA_INVALID" }, 413);
+  }
+
+  let parsedBody: unknown;
+  try {
+    parsedBody = await request.json();
+  } catch {
+    return json({ code: "SCHEMA_INVALID" }, 400);
+  }
+  if (!parsedBody || typeof parsedBody !== "object" || Array.isArray(parsedBody)) {
+    return json({ code: "SCHEMA_INVALID" }, 400);
+  }
+  const body = parsedBody as Record<string, unknown>;
+  if (typeof body.text !== "string" || !body.text.trim() || body.text.length > 4000) {
+    return json({ code: "SCHEMA_INVALID" }, 400);
+  }
+
+  const result = await runAgentTurn(body.text, {
+    session: auth.session,
+    stateDir: stateDir(),
+    mode: executionMode(),
+  });
+  return json(result, httpStatus(result.code));
 }
