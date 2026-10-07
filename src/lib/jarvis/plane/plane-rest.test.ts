@@ -13,7 +13,7 @@ import { admitMcp, admitMcpRunbook } from "./mcp.ts";
 import { admitPlugin, loadPluginDir } from "./plugins.ts";
 import { indexFolder, searchChunks } from "./rag.ts";
 import { researchReport } from "./research.ts";
-import { isTaskDue, runDue, saveTasks, type ScheduledTask } from "./scheduler.ts";
+import { createOneTimeTask, createRecurringTask, isTaskDue, loadTasks, runDue, saveTasks, type ScheduledTask } from "./scheduler.ts";
 import { telegramContext } from "./telegram.ts";
 import { recordUndo } from "./undo.ts";
 import { applyPrObservation, createPrWatch, prWatchMayMutateRepository } from "./pr-watch.ts";
@@ -222,6 +222,52 @@ describe("remaining project ideas", () => {
     assert.equal(planForBranch("main").code, "DENY");
     assert.equal(planForBranch("fix-ci").steps.at(-1), "pr");
     assert.equal(prMayLandOnMain(), false);
+  });
+
+  it("accepts non-zero cron fields and rejects invalid persisted schedules", () => {
+    const recurring = createRecurringTask({
+      id: "backup-morning",
+      text: "Проверь backup",
+      cron: "5 8 * * *",
+      timezone: "Europe/Kyiv",
+    });
+    assert.ok(recurring);
+    assert.equal(isTaskDue(recurring!, new Date("2026-10-07T05:05:00Z")), true);
+
+    assert.equal(
+      createRecurringTask({
+        id: "bad-minute",
+        text: "Проверь backup",
+        cron: "60 8 * * *",
+        timezone: "Europe/Kyiv",
+      }),
+      null,
+    );
+    assert.equal(
+      createOneTimeTask({
+        id: "bad-zone",
+        text: "Проверка",
+        runAt: "2026-10-08T08:00:00Z",
+        timezone: "Mars/Olympus",
+      }),
+      null,
+    );
+
+    const root = dir();
+    fs.writeFileSync(
+      path.join(root, "schedule.json"),
+      JSON.stringify([
+        {
+          id: "bad-persisted",
+          text: "never",
+          timezone: "Europe/Kyiv",
+          cron: "99 8 * * *",
+          status: "active",
+          history: [],
+        },
+      ]),
+    );
+    assert.deepEqual(loadTasks(root), []);
   });
 
   it("uses IANA timezones for cron and follows Kyiv DST", () => {
