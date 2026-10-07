@@ -27,12 +27,20 @@ function boundedInteger(
     : fallback;
 }
 
+function hasControlCharacters(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
 function validKey(key: string): boolean {
   return (
     key.length > 0 &&
     key.length <= 512 &&
     !FORBIDDEN_KEYS.has(key) &&
-    !/[\u0000-\u001F\u007F]/u.test(key)
+    !hasControlCharacters(key)
   );
 }
 
