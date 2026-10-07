@@ -3,6 +3,7 @@ import path from "node:path";
 import { admitRegisteredTool } from "./tool-registry.ts";
 
 export type PluginPermission =
+  | "read"
   | "inventory:read"
   | "memory:read"
   | "artifact:write"
@@ -16,7 +17,7 @@ export type PluginManifest = {
   inputs: string[];
   outputs: string[];
   risk: 0 | 1 | 2 | 3;
-  permissions: PluginPermission[];
+  permissions: string[];
   supported_targets: string[];
   runbook: string;
 };
@@ -33,6 +34,7 @@ const VERSION = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/;
 const RUNBOOK = /^[a-z][a-z0-9.-]{1,95}$/;
 const FIELD = /^[A-Za-z0-9_.:-]{1,96}$/;
 const PERMISSIONS = new Set<PluginPermission>([
+  "read",
   "inventory:read",
   "memory:read",
   "artifact:write",
@@ -148,6 +150,9 @@ export function admitPlugin(
   manifest: PluginManifest,
   target: string,
 ): { code: "DENY" | "GATEWAY"; reason?: string } {
+  const checked = validatePlugin(manifest);
+  if (!checked.ok) return { code: "DENY", reason: `plugin manifest отклонён: ${checked.code}` };
+  manifest = checked.manifest;
   if (!manifest.supported_targets.includes(target)) {
     return { code: "DENY", reason: "plugin manifest не разрешает target" };
   }
