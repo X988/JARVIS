@@ -3,8 +3,10 @@ import { listRunbooks, runbookById } from "../server/runbooks.ts";
 
 export type ToolSpec = {
   name: string;
+  title: string;
   schema: string[];
   risk: 0 | 1 | 2 | 3;
+  mutates: boolean;
   executor: string;
   runbook: string;
   allowedTargets: string[];
@@ -20,8 +22,10 @@ export type ToolAdmission =
 export function listTools(): ToolSpec[] {
   return listRunbooks().map((book) => ({
     name: book.id,
+    title: book.title,
     schema: [...book.inputSchema],
     risk: book.risk,
+    mutates: book.mutates,
     executor: book.executor,
     runbook: book.id,
     allowedTargets: [...book.targets],
@@ -36,8 +40,10 @@ export function toolByName(name: string): ToolSpec | null {
   if (!book) return null;
   return {
     name: book.id,
+    title: book.title,
     schema: [...book.inputSchema],
     risk: book.risk,
+    mutates: book.mutates,
     executor: book.executor,
     runbook: book.id,
     allowedTargets: [...book.targets],
