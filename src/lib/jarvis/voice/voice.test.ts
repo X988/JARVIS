@@ -7,7 +7,7 @@ import { acceptTelegram, type TelegramActor } from "../plane/telegram.ts";
 import { bargeIn, classifyPcm, normalizeTranscript, prependPreroll, sentences, stripWake, voiceLine, wavConvertArgs } from "./gate.ts";
 import { acceptTelegramVoice } from "./turn.ts";
 import { safeAudioFile } from "./whisper.ts";
-import { speechText, synthesizeVoice, ttsProbe } from "./tts.ts";
+import { speechText, synthesizeVoice, ttsProbe, ttsProviderFromEnv } from "./tts.ts";
 
 const actors: Record<string, TelegramActor> = { "100842": { actorId: "admin1", role: "operator" } };
 
@@ -107,6 +107,14 @@ describe("voice gate", () => {
     const noPunctuation = speechText("очень длинная строка с несколькими словами для проверки безопасного обрезания ответа", 40);
     assert.equal(noPunctuation.endsWith(" "), false);
     assert.equal(noPunctuation.length <= 40, true);
+  });
+
+  it("selects TTS providers without implicit cloud transmission", () => {
+    assert.equal(ttsProviderFromEnv({}).id, "disabled");
+    assert.equal(ttsProviderFromEnv({ JARVIS_TTS_PROVIDER: "piper" }).id, "piper");
+    const cloud = ttsProviderFromEnv({ JARVIS_TTS_PROVIDER: "cloud" });
+    assert.equal(cloud.id, "cloud");
+    assert.equal("code" in cloud.synthesize("секретный текст") && cloud.synthesize("секретный текст").code, "NOT_CONFIGURED");
   });
 
   it("keeps local TTS disabled until Piper and a model are explicitly configured", () => {
