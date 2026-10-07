@@ -157,6 +157,40 @@ describe("telegram transport", () => {
     assert.equal((await sendTelegramArtifact(api, 1, { root, relative: "../outside.txt" })).ok, false);
     assert.equal(sent, 1);
   });
+  it("keeps dangerous Telegram text in deterministic policy even when AI is enabled", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-tg-ai-"));
+    let reply = "";
+    const result = await dispatchTelegram(
+      {
+        update_id: 62,
+        message: {
+          from: { id: 100842 },
+          chat: { id: 100842 },
+          text: "Удали базу utp",
+        },
+      },
+      {
+        stateDir: root,
+        actors,
+        env: {
+          JARVIS_AI_AGENT_ENABLED: "1",
+          EXECUTION_MODE: "dry-run",
+        },
+        api: {
+          getFile: async () => null,
+          download: async () => null,
+          sendMessage: async (_chatId, text) => {
+            reply = text;
+            return true;
+          },
+        },
+      },
+    );
+    assert.equal(result.code, "POLICY_DENIED");
+    assert.equal(result.sent, true);
+    assert.match(reply, /запрещ|удален|политик|deny/i);
+  });
+
   it("turns an ogg voice note into a 16 kHz wav before recognition", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-audio-"));
     const decoded = decodeTelegramAudio(silenceOgg(), { JARVIS_AUDIO_DIR: root });
