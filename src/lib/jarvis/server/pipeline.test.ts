@@ -291,20 +291,29 @@ describe("server pipeline", () => {
   });
 
   it("reports an unconfigured read-only adapter instead of success", () => {
-    const windows = process.env.JARVIS_WINDOWS_HOST;
-    const ssh = process.env.JARVIS_SSH_HOST;
-    delete process.env.JARVIS_WINDOWS_HOST;
-    delete process.env.JARVIS_SSH_HOST;
+    const names = [
+      "JARVIS_WINDOWS_HOST",
+      "JARVIS_WINDOWS_TARGETS_JSON",
+      "JARVIS_WINDOWS_USER",
+      "JARVIS_WINDOWS_PASSWORD",
+      "JARVIS_SSH_HOST",
+      "JARVIS_SSH_TARGETS_JSON",
+      "JARVIS_SSH_USER",
+      "JARVIS_SSH_KEY_FILE",
+    ] as const;
+    const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    for (const name of names) delete process.env[name];
     try {
       const result = run("Проверь сервер", { mode: "real" });
       assert.equal(result.executionCalled, false);
       assert.equal(result.code, "EXECUTION_DISABLED");
-      assert.match(result.trace.execution, /не подключён/);
+      assert.match(result.trace.execution, /не подключён|NOT_CONFIGURED/);
     } finally {
-      if (windows === undefined) delete process.env.JARVIS_WINDOWS_HOST;
-      else process.env.JARVIS_WINDOWS_HOST = windows;
-      if (ssh === undefined) delete process.env.JARVIS_SSH_HOST;
-      else process.env.JARVIS_SSH_HOST = ssh;
+      for (const name of names) {
+        const value = previous[name];
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
     }
   });
 });
