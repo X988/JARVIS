@@ -11,7 +11,8 @@ describe("repository secret scan", () => {
   });
 
   it("detects private keys and common cloud API credentials", () => {
-    assert.deepEqual(scanText("-----BEGIN PRIVATE KEY-----\nredacted"), ["private-key"]);
+    const privateKeyMarker = "-----BEGIN " + "PRIVATE KEY-----\nredacted";
+    assert.deepEqual(scanText(privateKeyMarker), ["private-key"]);
     assert.deepEqual(scanText("AKIA" + "A".repeat(16)), ["aws-access-key"]);
   });
 
