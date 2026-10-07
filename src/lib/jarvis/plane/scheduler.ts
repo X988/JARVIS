@@ -44,12 +44,54 @@ function atomicSave(dir: string, tasks: ScheduledTask[]): void {
   fs.renameSync(temp, target);
 }
 
+function validHistory(value: unknown): value is ScheduledTask["history"] {
+  return (
+    Array.isArray(value) &&
+    value.length <= 10_000 &&
+    value.every(
+      (row) =>
+        Boolean(row) &&
+        typeof row === "object" &&
+        typeof (row as { at?: unknown }).at === "string" &&
+        Number.isFinite(Date.parse((row as { at: string }).at)) &&
+        typeof (row as { code?: unknown }).code === "string" &&
+        (row as { code: string }).code.length <= 120,
+    )
+  );
+}
+
+function validPersistedTask(value: unknown): value is ScheduledTask {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const task = value as Partial<ScheduledTask>;
+  if (
+    typeof task.id !== "string" ||
+    !/^[a-zA-Z0-9._:-]{1,80}$/.test(task.id) ||
+    typeof task.text !== "string" ||
+    !task.text.trim() ||
+    task.text.length > 4_000 ||
+    typeof task.timezone !== "string" ||
+    !localClock(new Date(0), task.timezone || "UTC") ||
+    !["active", "paused", "cancelled", "completed"].includes(String(task.status)) ||
+    !validHistory(task.history)
+  ) return false;
+
+  const hasCron = typeof task.cron === "string" && task.cron.trim().length > 0;
+  const hasRunAt = typeof task.runAt === "string" && Number.isFinite(Date.parse(task.runAt));
+  if (hasCron === hasRunAt) return false;
+  if (hasCron && task.cron!.trim().split(/\s+/).length !== 5) return false;
+  return true;
+}
+
 export function loadTasks(dir: string): ScheduledTask[] {
   const target = scheduleFile(dir);
   if (!fs.existsSync(target)) return [];
   try {
     const parsed = JSON.parse(fs.readFileSync(target, "utf8")) as unknown;
-    return Array.isArray(parsed) ? (parsed as ScheduledTask[]) : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .filter(validPersistedTask)
+          .map((task) => ({ ...task, history: [...task.history] }))
+      : [];
   } catch {
     return [];
   }
