@@ -100,5 +100,6 @@
     "playwright": "^1.62.0",
     "prettier": "^3.4.0",
     "typescript-eslint": "^8.56.1"
-  }
+  },
+  "version": "0.1.0"
 }
