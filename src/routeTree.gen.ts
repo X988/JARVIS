@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as MetricsRouteImport } from './routes/metrics'
 import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as StatusRouteImport } from './routes/status'
+import { Route as ApiAgentRouteImport } from './routes/api/agent'
 import { Route as ApiCommandsRouteImport } from './routes/api/commands'
 import { Route as ApiSessionRouteImport } from './routes/api/session'
 import { Route as ApiTelegramRouteImport } from './routes/api/telegram'
@@ -48,6 +49,11 @@ const ReadyRoute = ReadyRouteImport.update({
 const StatusRoute = StatusRouteImport.update({
   id: '/status',
   path: '/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAgentRoute = ApiAgentRouteImport.update({
+  id: '/api/agent',
+  path: '/api/agent',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCommandsRoute = ApiCommandsRouteImport.update({
@@ -117,6 +123,9 @@ export interface FileRouteTypes {
     | '/metrics'
     | '/ready'
     | '/status'
+    | '/api/agent'
+    | '/api/agent'
+    | '/api/agent'
     | '/api/commands'
     | '/api/session'
     | '/api/telegram'
@@ -154,6 +163,7 @@ export interface RootRouteChildren {
   MetricsRoute: typeof MetricsRoute
   ReadyRoute: typeof ReadyRoute
   StatusRoute: typeof StatusRoute
+  ApiAgentRoute: typeof ApiAgentRoute
   ApiCommandsRoute: typeof ApiCommandsRoute
   ApiSessionRoute: typeof ApiSessionRoute
   ApiTelegramRoute: typeof ApiTelegramRoute
@@ -204,6 +214,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StatusRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/agent': {
+      id: '/api/agent'
+      path: '/api/agent'
+      fullPath: '/api/agent'
+      preLoaderRoute: typeof ApiAgentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/commands': {
       id: '/api/commands'
       path: '/api/commands'
@@ -242,6 +259,7 @@ const rootRouteChildren: RootRouteChildren = {
   MetricsRoute: MetricsRoute,
   ReadyRoute: ReadyRoute,
   StatusRoute: StatusRoute,
+  ApiAgentRoute: ApiAgentRoute,
   ApiCommandsRoute: ApiCommandsRoute,
   ApiSessionRoute: ApiSessionRoute,
   ApiTelegramRoute: ApiTelegramRoute,
