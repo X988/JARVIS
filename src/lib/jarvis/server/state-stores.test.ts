@@ -114,6 +114,27 @@ describe("filesystem state stores", () => {
     assert.equal(jobs.list()[0]?.status, "cancelled");
   });
 
+  it("prunes old terminal worker jobs but keeps old active jobs", () => {
+    const dir = tempDir();
+    const jobs = new FileJobStore(dir);
+    const previous = process.env.JARVIS_JOB_RETENTION_MS;
+    process.env.JARVIS_JOB_RETENTION_MS = String(60 * 60 * 1000);
+    try {
+      const old = new Date("2026-01-01T00:00:00Z");
+      jobs.enqueue("old-terminal", "coding", old);
+      jobs.claim(1, new Date("2026-01-01T00:00:01Z"));
+      jobs.cancel("old-terminal", new Date("2026-01-01T00:00:02Z"));
+      jobs.enqueue("old-active", "research", new Date("2026-01-01T00:00:03Z"));
+
+      jobs.enqueue("new-job", "general", new Date("2026-10-07T05:30:00Z"));
+      const ids = jobs.list().map((job) => job.id).sort();
+      assert.deepEqual(ids, ["new-job", "old-active"]);
+    } finally {
+      if (previous === undefined) delete process.env.JARVIS_JOB_RETENTION_MS;
+      else process.env.JARVIS_JOB_RETENTION_MS = previous;
+    }
+  });
+
   it("stores execution metadata without persisting the raw actor identifier", () => {
     const dir = tempDir();
     const store = new FileExecutionStore(dir);
