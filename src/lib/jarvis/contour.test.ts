@@ -347,7 +347,7 @@ describe("locks, audit, git", () => {
       async (_url, init) => {
         assert.equal(init?.method, "POST");
         assert.doesNotMatch(String(init?.body), /password|secret/i);
-        return new Response("", { status: 204 });
+        return new Response(null, { status: 204 });
       },
     );
     assert.equal(delivered.delivered, 1);
