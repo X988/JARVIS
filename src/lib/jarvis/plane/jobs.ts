@@ -7,12 +7,47 @@ function jobsFile(dir: string): string {
   return path.join(dir, "jobs.json");
 }
 
+const JOB_KINDS = new Set<JobKind>(["general", "research", "coding", "ci-diagnosis", "security-audit"]);
+const JOB_STATUSES = new Set<Job["status"]>(["queued", "running", "done", "failed", "cancelled", "denied"]);
+
+function validPersistedJob(value: unknown): value is Job {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const job = value as Partial<Job>;
+  return (
+    typeof job.id === "string" &&
+    /^[A-Za-z0-9._:-]{1,96}$/.test(job.id) &&
+    typeof job.kind === "string" &&
+    JOB_KINDS.has(job.kind as JobKind) &&
+    typeof job.status === "string" &&
+    JOB_STATUSES.has(job.status as Job["status"]) &&
+    typeof job.progress === "number" &&
+    Number.isFinite(job.progress) &&
+    job.progress >= 0 &&
+    job.progress <= 100 &&
+    typeof job.phase === "string" &&
+    job.phase.length <= 200 &&
+    Array.isArray(job.logs) &&
+    job.logs.length <= 10_000 &&
+    job.logs.every((line) => typeof line === "string" && line.length <= 4_000) &&
+    (job.result === null || typeof job.result === "string") &&
+    (job.error === null || typeof job.error === "string") &&
+    typeof job.createdAt === "string" &&
+    Number.isFinite(Date.parse(job.createdAt)) &&
+    typeof job.updatedAt === "string" &&
+    Number.isFinite(Date.parse(job.updatedAt))
+  );
+}
+
 export function loadJobs(dir: string): Job[] {
   const target = jobsFile(dir);
   if (!fs.existsSync(target)) return [];
   try {
     const parsed = JSON.parse(fs.readFileSync(target, "utf8")) as unknown;
-    return Array.isArray(parsed) ? (parsed as Job[]) : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .filter(validPersistedJob)
+          .map((job) => ({ ...job, logs: [...job.logs] }))
+      : [];
   } catch {
     return [];
   }
