@@ -13,7 +13,17 @@ import type { Session } from "./session.ts";
 
 export type Mode = "dry-run" | "mock" | "real";
 
-export type ExecCall = { runbook: string; target: string; mode: Mode };
+export type ExecCall = {
+  runbook: string;
+  target: string;
+  mode: Mode;
+  /**
+   * Server-derived parameters only. Client-supplied security fields are ignored
+   * before this structure is built, and approved mutations bind these values
+   * into the approval hash before Gateway is reached.
+   */
+  parameters?: Readonly<Record<string, string>>;
+};
 
 export type ExecResult = { called: boolean; code: string; detail: string };
 
@@ -133,7 +143,14 @@ function finish(
   };
 }
 
-function gateway(runbook: Runbook, target: string, mode: Mode, stateDir: string, execute?: (call: ExecCall) => ExecResult): ExecResult {
+function gateway(
+  runbook: Runbook,
+  target: string,
+  mode: Mode,
+  stateDir: string,
+  execute?: (call: ExecCall) => ExecResult,
+  parameters: Readonly<Record<string, string>> = {},
+): ExecResult {
   if (mode === "dry-run") return { called: false, code: "DRY_RUN", detail: "исполнитель не вызывался" };
   if (runbook.policy === "DENY_ALWAYS") return { called: false, code: "POLICY_DENIED", detail: "запрет не исполняется" };
   const lockKey = runbook.lock ? `${runbook.lock}:${target}` : "";
@@ -149,7 +166,7 @@ function gateway(runbook: Runbook, target: string, mode: Mode, stateDir: string,
   try {
     if (mode === "mock") return { called: true, code: "MOCK", detail: "mock, это не живой сервер" };
     const runner = execute ?? defaultRealExecute;
-    return runner({ runbook: runbook.id, target, mode });
+    return runner({ runbook: runbook.id, target, mode, parameters: { ...parameters } });
   } finally {
     if (lockKey) locks.release(lockKey);
   }
@@ -345,7 +362,14 @@ function confirmApproval(
   }
 
   saveApproval(current.stateDir, { ...row, status: "confirmed" });
-  const exec = gateway(book, hinted.id, current.mode, current.stateDir, current.execute);
+  const exec = gateway(
+    book,
+    hinted.id,
+    current.mode,
+    current.stateDir,
+    current.execute,
+    normalizedParametersOf(parsed),
+  );
   const ok = exec.code === "DRY_RUN" || exec.code === "MOCK" || exec.code === "OK";
   const decision: Decision = {
     ...parsed, verdict: ok ? "allow" : "deny", reason: ok ? null : exec.detail, risk: book.risk, runbook: book.id, target: hinted.id, forceDeny: !ok,
@@ -456,7 +480,14 @@ function fresh(
       trace: traceOf(text, parsed.normalized, constraint, target.id, book, current.mode, "заявка, исполнитель не вызывался", "ждёт заявку"),
     });
   }
-  const exec = gateway(book, target.id, current.mode, current.stateDir, current.execute);
+  const exec = gateway(
+    book,
+    target.id,
+    current.mode,
+    current.stateDir,
+    current.execute,
+    normalizedParametersOf(parsed),
+  );
   const ok = exec.code === "DRY_RUN" || exec.code === "MOCK" || exec.code === "OK";
   const decision: Decision = {
     ...parsed,
