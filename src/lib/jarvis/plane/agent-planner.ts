@@ -33,19 +33,18 @@ const PLAN_SCHEMA: JsonSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
-    objective: { type: "string", maxLength: 500 },
+    objective: { type: "string" },
     responseMode: { type: "string", enum: ["execute", "clarify", "answer"] },
-    message: { type: "string", maxLength: 1000 },
+    message: { type: "string" },
     steps: {
       type: "array",
-      maxItems: 8,
       items: {
         type: "object",
         additionalProperties: false,
         properties: {
-          tool: { type: "string", maxLength: 128 },
-          target: { type: "string", maxLength: 96 },
-          reason: { type: "string", maxLength: 300 },
+          tool: { type: "string" },
+          target: { type: "string" },
+          reason: { type: "string" },
         },
         required: ["tool", "target", "reason"],
       },
