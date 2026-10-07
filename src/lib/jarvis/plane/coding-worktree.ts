@@ -32,7 +32,7 @@ function localRunner(command: string, args: string[], cwd: string): GitRun {
 }
 
 function safeBaseRef(value: string): boolean {
-  return /^(?:HEAD|origin\/[A-Za-z0-9._\/-]+|[A-Fa-f0-9]{7,40})$/.test(value) && !value.includes("..");
+  return /^(?:HEAD|origin\/[A-Za-z0-9._/-]+|[A-Fa-f0-9]{7,40})$/.test(value) && !value.includes("..");
 }
 
 export function prepareCodingWorktree(
