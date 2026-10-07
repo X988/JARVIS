@@ -109,10 +109,10 @@ describe("LLM prompt safety", () => {
     const value = [
       "password=hunter2-secret",
       "Authorization: Bearer abcdefghijklmnop",
-      "sk-proj-abcdefghijklmnop",
-      "-----BEGIN TEST PRIVATE KEY-----",
+      ["sk", "proj", "abcdefghijklmnop"].join("-"),
+      ["-----BEGIN TEST PRIVATE", " KEY-----"].join(""),
       "private-material",
-      "-----END TEST PRIVATE KEY-----",
+      ["-----END TEST PRIVATE", " KEY-----"].join(""),
     ].join("\n");
     const safe = sanitizeLlmText(value);
     assert.equal(safe.redacted, true);
