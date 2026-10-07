@@ -6,7 +6,7 @@ import {
 } from "../server/pipeline.ts";
 import { toolByName } from "./tool-registry.ts";
 import { callJsonModel, type FetchLike } from "./llm-client.ts";
-import { planAgentTurn, type AgentPlanResult } from "./agent-planner.ts";
+import { planAgentTurn, type AgentPlan, type AgentPlanResult } from "./agent-planner.ts";
 
 export type AgentObservation = {
   tool: string;
@@ -21,7 +21,7 @@ export type AgentObservation = {
 export type AgentTurnResult = {
   code: string;
   answer: string;
-  plan: AgentPlanResult extends { ok: true; plan: infer P } ? P | null : never;
+  plan: AgentPlan | null;
   observations: AgentObservation[];
   provider: string | null;
   model: string | null;
