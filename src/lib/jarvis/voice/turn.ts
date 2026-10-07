@@ -83,6 +83,23 @@ export function runVoiceWav(
   };
 }
 
+export function decodeTelegramAudio(
+  bytes: Buffer,
+  env: NodeJS.ProcessEnv = process.env,
+): { wav: string; cleanup: string[] } | { code: "AUDIO_DECODE_FAILED" } {
+  const root = audioRoot(env);
+  fs.mkdirSync(root, { recursive: true });
+  const source = safeAudioFile(root, `ogg-${randomUUID()}.ogg`);
+  if (!source) return { code: "AUDIO_DECODE_FAILED" };
+  fs.writeFileSync(source, bytes);
+  const wav = convertToWav(source, env);
+  if (!wav) {
+    fs.rmSync(source, { force: true });
+    return { code: "AUDIO_DECODE_FAILED" };
+  }
+  return { wav, cleanup: [source, wav] };
+}
+
 export function convertToWav(source: string, env: NodeJS.ProcessEnv = process.env): string | null {
   const root = audioRoot(env);
   fs.mkdirSync(root, { recursive: true });
@@ -103,7 +120,7 @@ export function acceptTelegramVoice(
     download?: (fileId: string) => Buffer | null;
     env?: NodeJS.ProcessEnv;
   },
-): VoiceTurn | { code: "ACTOR_DENIED" | "EMPTY" | "AUDIO_TOO_LARGE" } {
+): VoiceTurn | { code: "ACTOR_DENIED" | "EMPTY" | "AUDIO_TOO_LARGE" | "AUDIO_DECODE_FAILED" } {
   const actors = opts.actors ?? actorsFromEnv(opts.env);
   if (!actors[String(update.userId)] || actors[String(update.userId)].role !== "operator") return { code: "ACTOR_DENIED" };
   if (!update.voiceFileId) {
@@ -120,16 +137,12 @@ export function acceptTelegramVoice(
   const bytes = opts.download?.(update.voiceFileId) ?? null;
   if (!bytes) return { code: "EMPTY" };
   if (bytes.length > 8 * 1024 * 1024) return { code: "AUDIO_TOO_LARGE" };
-  const root = audioRoot(opts.env);
-  fs.mkdirSync(root, { recursive: true });
-  const leaf = `tg-${update.updateId}.wav`;
-  const target = safeAudioFile(root, leaf);
-  if (!target) return { code: "EMPTY" };
-  fs.writeFileSync(target, bytes);
+  const decoded = decodeTelegramAudio(bytes, opts.env);
+  if ("code" in decoded) return decoded;
   try {
     const session = sessionForTelegram(update.userId, actors, opts.now?.getTime());
     if (!session) return { code: "ACTOR_DENIED" };
-    return runVoiceWav(target, {
+    return runVoiceWav(decoded.wav, {
       session,
       stateDir: opts.stateDir,
       requestId: `tg-${update.userId}-${update.updateId}`,
@@ -137,6 +150,6 @@ export function acceptTelegramVoice(
       now: opts.now,
     });
   } finally {
-    fs.rmSync(target, { force: true });
+    for (const file of decoded.cleanup) fs.rmSync(file, { force: true });
   }
 }

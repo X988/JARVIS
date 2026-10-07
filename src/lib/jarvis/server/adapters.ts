@@ -2,6 +2,7 @@ import type { ExecCall, ExecResult } from "./pipeline.ts";
 import { runbookById, type Runbook } from "./runbooks.ts";
 import { targetById } from "./inventory.ts";
 import { FileOnecExecutor } from "../onec/executor.ts";
+import { sqlDatabase, runSql } from "./sql.ts";
 
 export type ExecutorKind = Runbook["executor"];
 
@@ -72,10 +73,18 @@ export class SQLExecutor implements Executor {
       "База берётся только из inventory, каталог резервной копии только из JARVIS_SQL_BACKUP_DIR.",
     );
     if (blocked) return blocked;
-    if (call.runbook === "sql.backup" && !process.env.JARVIS_SQL_BACKUP_DIR) {
-      return missing("sql", "NOT_CONFIGURED", "JARVIS_SQL_BACKUP_DIR не задан. BACKUP не запускался, строка SQL из текста не собиралась.");
+    const database = sqlDatabase(call.target);
+    if (!database) return missing("sql", "NOT_CONFIGURED", "База не из inventory. Запрос не собирался.");
+    if (!process.env.JARVIS_SQL_PASSWORD) {
+      return missing("sql", "CREDENTIAL_UNAVAILABLE", "JARVIS_SQL_PASSWORD не задан. Запрос не отправлялся.");
     }
-    return missing("sql", "ADAPTER_DISABLED", "SQL-клиент не подключён. ONLINE, файл копии и VERIFYONLY не проверялись.");
+    if (call.runbook === "sql.backup" && !process.env.JARVIS_SQL_BACKUP_DIR) {
+      return missing("sql", "NOT_CONFIGURED", "JARVIS_SQL_BACKUP_DIR не задан. BACKUP не запускался.");
+    }
+    if (call.runbook !== "sql.health" && call.runbook !== "sql.backup") {
+      return missing("sql", "NOT_CONFIGURED", "Для этой цели нет фиксированного SQL-запроса.");
+    }
+    return runSql(call.runbook === "sql.backup" ? "backup" : "health", database);
   }
 }
 

@@ -16,7 +16,7 @@
     "preview:stop": "node scripts/preview.mjs stop",
     "typecheck": "tsc --noEmit",
     "check:auth": "node scripts/check-auth-invariant.mjs",
-    "test": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/app-data/readiness-schedule.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/jarvis/contour.test.ts src/lib/jarvis/server/pipeline.test.ts src/lib/jarvis/server/config.test.ts src/lib/jarvis/server/state-race.test.ts src/lib/jarvis/plane/plane.test.ts src/lib/jarvis/plane/plane-rest.test.ts src/lib/jarvis/voice/voice.test.ts",
+    "test": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/app-data/readiness-schedule.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/jarvis/contour.test.ts src/lib/jarvis/server/pipeline.test.ts src/lib/jarvis/server/config.test.ts src/lib/jarvis/server/state-race.test.ts src/lib/jarvis/plane/plane.test.ts src/lib/jarvis/plane/plane-rest.test.ts src/lib/jarvis/plane/telegram-bot.test.ts src/lib/jarvis/voice/voice.test.ts",
     "e2e": "playwright test",
     "lint": "eslint .",
     "format": "prettier --write ."
@@ -72,6 +72,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.3.0",
+    "tedious": "^20.3.3",
     "tw-animate-css": "^1.3.4",
     "typescript": "^5.7.0",
     "vaul": "^1.1.2",

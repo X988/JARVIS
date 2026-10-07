@@ -130,6 +130,8 @@ export function voiceLine(code: string, reason: string | null, approvalId?: stri
   }
   if (code === "CLARIFY" || code === "STT_LOW_CONFIDENCE") return "Не расслышал уверенно. Повторите команду.";
   if (code === "NO_SPEECH") return "Речи не было. Ничего не запускал.";
+  if (code === "AUDIO_DECODE_FAILED") return "Голосовое не открылось. Ничего не запускал.";
+  if (code === "EMPTY" || code === "AUDIO_TOO_LARGE") return "Голосовое не получено. Ничего не запускал.";
   const first = sentences(reason ?? "")[0];
   return first ? first.slice(0, 180) : "Готово. Подробности в тексте.";
 }
