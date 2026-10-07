@@ -49,12 +49,17 @@ describe("remaining project ideas", () => {
     fs.mkdirSync(path.join(root, "onec"));
     fs.writeFileSync(path.join(root, "onec", "Module.bsl"), "Процедура ПроверитьUTP()\n// backup utp\nКонецПроцедуры");
     fs.writeFileSync(path.join(root, "query.sql"), "SELECT state_desc FROM sys.databases WHERE name = @name");
+    fs.writeFileSync(path.join(root, "credentials.json"), JSON.stringify({ user: "u", password: "never-index" }));
+    fs.writeFileSync(path.join(root, "runtime.json"), JSON.stringify({ token: "live-secret-value" }));
     const chunks = indexFolder(root);
     const found = searchChunks(chunks, "mailcow");
     assert.equal(found[0]?.source, "mail.md");
     assert.equal(searchChunks(chunks, "backup utp")[0]?.kind, "bsl");
     assert.equal(searchChunks(chunks, "state_desc")[0]?.kind, "sql");
     assert.equal(searchChunks(chunks, "state_desc")[0]?.source, "query.sql");
+    assert.equal(chunks.some((chunk) => chunk.source === "credentials.json"), false);
+    assert.equal(chunks.some((chunk) => chunk.source === "runtime.json"), false);
+    assert.equal(chunks.some((chunk) => chunk.text.includes("live-secret-value")), false);
     assert.equal(researchReport("CVE", []).ok, false);
   });
 
