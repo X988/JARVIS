@@ -1,7 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { actorsFromEnv, type TelegramActor, type TelegramUpdate } from "./telegram.ts";
+import { actorsFromEnv, sessionForTelegram, type TelegramActor, type TelegramUpdate } from "./telegram.ts";
+import { runHybridTurn } from "./hybrid.ts";
 import { acceptTelegramVoice } from "../voice/turn.ts";
 import { voiceLine } from "../voice/gate.ts";
 import { synthesizeVoice } from "../voice/tts.ts";
@@ -308,6 +309,45 @@ export async function dispatchTelegram(
         attachmentStored,
       };
     }
+  }
+
+  if (!parsed.update.voiceFileId && parsed.update.text?.trim() && env.JARVIS_AI_AGENT_ENABLED === "1") {
+    const session = sessionForTelegram(parsed.update.userId, actors, opts.now?.getTime());
+    if (!session) return { code: "ACTOR_DENIED", sent: false, attachmentStored };
+    const mode = env.EXECUTION_MODE === "real" || env.EXECUTION_MODE === "mock"
+      ? env.EXECUTION_MODE
+      : "dry-run";
+    const hybrid = await runHybridTurn(parsed.update.text, {
+      session,
+      stateDir: opts.stateDir,
+      requestId: `tg-${parsed.update.userId}-${parsed.update.updateId}`,
+      env,
+      now: opts.now,
+      mode,
+    });
+    const contextBits = [
+      parsed.update.replyTo ? `reply=${parsed.update.replyTo}` : "",
+      parsed.update.forwardedFromId ? `forwarded_from=${parsed.update.forwardedFromId}` : "",
+      attachmentStored ? "attachment=stored-untrusted" : "",
+    ].filter(Boolean);
+    const contextLine = contextBits.length ? "\nContext: " + contextBits.join("; ") : "";
+
+    if (hybrid.kind === "agent") {
+      const sent = await opts.api.sendMessage(parsed.chatId, hybrid.answer + contextLine);
+      return { code: hybrid.code, sent, attachmentStored };
+    }
+
+    const spoken = voiceLine(hybrid.code, hybrid.decision.reason, hybrid.approval?.id, {
+      mode: hybrid.mode,
+      executionCalled: hybrid.executionCalled,
+      target: hybrid.trace.target,
+      runbook: hybrid.trace.runbook,
+      execution: hybrid.trace.execution,
+    });
+    const approvalPhrase = hybrid.approval?.phrase;
+    const text = approvalPhrase ? spoken + "\n" + approvalPhrase + contextLine : spoken + contextLine;
+    const sent = await opts.api.sendMessage(parsed.chatId, text);
+    return { code: hybrid.code, sent, attachmentStored };
   }
 
   let download: ((fileId: string) => Buffer | null) | undefined;
