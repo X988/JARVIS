@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { increment, observeDuration } from "../metrics.ts";
 import { appendAudit, externalSinkLabel } from "../audit-log.ts";
 import { createLockProvider } from "../locks.ts";
 import { OPERATORS, evaluate, type Decision } from "../model.ts";
@@ -156,7 +157,9 @@ function gateway(
   const lockKey = runbook.lock ? `${runbook.lock}:${target}` : "";
   const locks = createLockProvider(lockKey ? `${stateDir}/locks` : undefined);
   if (lockKey) {
+    const lockStarted = Date.now();
     const held = locks.acquire(lockKey, "pipeline", 30 * 60 * 1000);
+    observeDuration("jarvis_lock_wait_seconds", (Date.now() - lockStarted) / 1000);
     if (!held.ok) {
       const code = held.reason === "held" ? "POLICY_DENIED" : "NOT_CONFIGURED";
       const detail = held.reason === "held" ? "уже выполняется такая операция" : `блокировка ${locks.id}: ${held.reason}`;
@@ -164,9 +167,22 @@ function gateway(
     }
   }
   try {
-    if (mode === "mock") return { called: true, code: "MOCK", detail: "mock, это не живой сервер" };
-    const runner = execute ?? defaultRealExecute;
-    return runner({ runbook: runbook.id, target, mode, parameters: { ...parameters } });
+    increment("jarvis_executor_calls_total");
+    const started = Date.now();
+    const result =
+      mode === "mock"
+        ? { called: true, code: "MOCK", detail: "mock, это не живой сервер" }
+        : (execute ?? defaultRealExecute)({
+            runbook: runbook.id,
+            target,
+            mode,
+            parameters: { ...parameters },
+          });
+    observeDuration("jarvis_executor_duration_seconds", (Date.now() - started) / 1000);
+    if (result.code !== "OK" && result.code !== "MOCK") {
+      increment("jarvis_executor_failures_total");
+    }
+    return result;
   } finally {
     if (lockKey) locks.release(lockKey);
   }
@@ -184,18 +200,51 @@ export function processCommand(input: {
   approval?: { id: string; confirmation: string };
   capabilities?: ServerCapabilities;
 }): PipelineResult {
+  const startedAt = Date.now();
+  increment("jarvis_commands_total");
   const now = input.now ?? new Date();
   const mode = modeOf(input.mode);
   const requestId = input.requestId || randomUUID();
   const actorId = input.session?.accountId ?? "anonymous";
-  const stored = rememberRequest(
-    input.stateDir,
-    actorId,
-    requestId,
-    () => runOnce({ ...input, requestId, now, mode }),
-  );
-  if (stored.duplicate) return { ...stored.value, duplicate: true };
-  return stored.value;
+  try {
+    const stored = rememberRequest(
+      input.stateDir,
+      actorId,
+      requestId,
+      () => runOnce({ ...input, requestId, now, mode }),
+    );
+    if (stored.duplicate) increment("jarvis_idempotency_duplicates_total");
+    const result = stored.duplicate ? { ...stored.value, duplicate: true } : stored.value;
+
+    if (result.verdict === "allow") increment("jarvis_commands_allowed_total");
+    else if (result.verdict === "deny") increment("jarvis_commands_denied_total");
+
+    if (
+      ["EXECUTION_DISABLED", "EXECUTION_TIMEOUT", "VERIFICATION_FAILED", "CONNECT_FAILED"].includes(
+        result.code,
+      )
+    ) {
+      increment("jarvis_commands_failed_total");
+    }
+
+    if (result.code === "APPROVAL_REQUIRED") increment("jarvis_approval_requested_total");
+    if (result.code === "APPROVAL_EXPIRED") increment("jarvis_approval_expired_total");
+    if (input.approval && result.code === "OK") increment("jarvis_approval_approved_total");
+    if (
+      input.approval &&
+      result.verdict === "deny" &&
+      result.code !== "APPROVAL_EXPIRED" &&
+      result.code !== "APPROVAL_REQUIRED"
+    ) {
+      increment("jarvis_approval_denied_total");
+    }
+    return result;
+  } catch (error) {
+    increment("jarvis_commands_failed_total");
+    throw error;
+  } finally {
+    observeDuration("jarvis_command_duration_seconds", (Date.now() - startedAt) / 1000);
+  }
 
   function runOnce(current: typeof input & { now: Date; mode: Mode; requestId: string }): PipelineResult {
     void current.forged;

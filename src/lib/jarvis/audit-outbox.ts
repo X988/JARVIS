@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { withStateLock } from "./server/state-lock.ts";
 import type { AuditRow } from "./audit-log.ts";
+import { increment } from "./metrics.ts";
 
 export type AuditSinkId = "http" | "loki" | "syslog";
 
@@ -172,7 +173,10 @@ export async function flushAuditOutbox(
     for (const sink of envelope.pending) {
       attempted += 1;
       if (await deliver(sink, envelope.row, env, fetcher, timeoutMs)) delivered += 1;
-      else pending.push(sink);
+      else {
+        pending.push(sink);
+        increment("jarvis_audit_delivery_failures_total");
+      }
     }
     results.set(envelope.id, pending);
   }

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { increment } from "../metrics.ts";
 import { takeToken } from "../rate-limit.ts";
 import { adapterStatus } from "./adapters.ts";
 import { monitoringStatus } from "../monitoring.ts";
@@ -55,7 +56,7 @@ function httpStatus(code:string):number{
   if(code==="APPROVAL_EXPIRED" || code==="APPROVAL_MISMATCH" || code==="PRECONDITION_FAILED") return 409;
   if(code==="TARGET_NOT_FOUND" || code==="RUNBOOK_NOT_FOUND") return 404;
   if(code==="SCHEMA_INVALID") return 400;
-  if(code==="EXECUTION_DISABLED" || code==="NOT_CONFIGURED" || code==="CREDENTIAL_UNAVAILABLE" || code==="ADAPTER_DISABLED") return 503;
+  if(code==="EXECUTION_DISABLED" || code==="NOT_CONFIGURED" || code==="CREDENTIAL_UNAVAILABLE" || code==="ADAPTER_DISABLED" || code==="SECURITY_STATE_UNAVAILABLE") return 503;
   if(code==="EXECUTION_TIMEOUT" || code==="VERIFICATION_FAILED") return 504;
   return 403;
 }
@@ -107,7 +108,17 @@ export async function handleCommand(request:Request):Promise<Response>{
   const auth=await authenticateRequest(request);
   if(!auth.session || auth.code!=="OK") return json({code:auth.code,verdict:"deny"},httpStatus(auth.code));
   if(!csrfOk(request,auth.channel)) return json({code:"AUTH_REQUIRED",verdict:"deny"},401);
-  if(!takeToken("cmd:"+auth.session.accountId,30,60_000)) return json({code:"RATE_LIMIT",verdict:"deny"},429);
+  let rateAllowed=false;
+  try{
+    rateAllowed=takeToken("cmd:"+auth.session.accountId,30,60_000);
+  }catch{
+    increment("jarvis_rate_limit_denied_total");
+    return json({code:"SECURITY_STATE_UNAVAILABLE",verdict:"deny"},503);
+  }
+  if(!rateAllowed){
+    increment("jarvis_rate_limit_denied_total");
+    return json({code:"RATE_LIMIT",verdict:"deny"},429);
+  }
   const contentLength=Number(request.headers.get("content-length") ?? "0");
   if(Number.isFinite(contentLength) && contentLength>64*1024){
     return json({code:"SCHEMA_INVALID",verdict:"deny"},413);

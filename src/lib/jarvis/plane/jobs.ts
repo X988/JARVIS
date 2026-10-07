@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { increment } from "../metrics.ts";
 import { withStateLock } from "../server/state-lock.ts";
 import { claimNext, openJob, updateJob, type Job, type JobKind } from "./workers.ts";
 
@@ -73,6 +74,7 @@ export function enqueue(dir: string, id: string, kind: JobKind = "general", now 
     const job = openJob(id, kind, now);
     jobs.push(job);
     writeJobs(dir, jobs);
+    increment("jarvis_worker_jobs_total");
     return job;
   });
 }
@@ -95,9 +97,13 @@ export function updateJobState(
     const jobs = loadJobs(dir);
     const index = jobs.findIndex((item) => item.id === id);
     if (index < 0) return null;
-    const job = updateJob(jobs[index], patch, now);
+    const before = jobs[index];
+    const job = updateJob(before, patch, now);
     jobs[index] = job;
     writeJobs(dir, jobs);
+    if (before.status !== "failed" && job.status === "failed") {
+      increment("jarvis_worker_failures_total");
+    }
     return job;
   });
 }
