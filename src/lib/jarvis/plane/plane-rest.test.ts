@@ -8,13 +8,14 @@ import { deliverArtifact } from "./artifacts.ts";
 import { browserIntent } from "./browser.ts";
 import { activateRunbook, proposeRunbook } from "./drafts.ts";
 import { cancelJob, enqueue, planForBranch, prMayLandOnMain } from "./jobs.ts";
-import { admitMcp } from "./mcp.ts";
-import { loadPluginDir } from "./plugins.ts";
+import { admitMcp, admitMcpRunbook } from "./mcp.ts";
+import { admitPlugin, loadPluginDir } from "./plugins.ts";
 import { indexFolder, searchChunks } from "./rag.ts";
 import { researchReport } from "./research.ts";
 import { isTaskDue, runDue, saveTasks, type ScheduledTask } from "./scheduler.ts";
 import { telegramContext } from "./telegram.ts";
 import { recordUndo } from "./undo.ts";
+import { admitRegisteredTool, listTools } from "./tool-registry.ts";
 
 function dir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-rest-"));
@@ -52,8 +53,35 @@ describe("remaining project ideas", () => {
     assert.equal(runAgents("critic", ["опасно"]).mayExecute, false);
     assert.equal(admitMcp("unknown", ["docs.read"]).code, "DENY");
     assert.equal(admitMcp("docs.read", ["docs.read"]).code, "GATEWAY");
+    assert.equal(admitMcpRunbook("mailcow.health", "mail01", ["mailcow.health"]).code, "GATEWAY");
+    assert.equal(admitMcpRunbook("database.drop", "utp", ["database.drop"]).code, "DENY");
+    assert.equal(admitMcpRunbook("mailcow.health", "sql01", ["mailcow.health"]).code, "DENY");
     assert.equal(browserIntent("login").code, "DENY");
     assert.equal(browserIntent("read").code, "READ");
+  });
+
+  it("derives tool authority from runbooks and inventory", () => {
+    const tools = listTools();
+    const mailcow = tools.find((tool) => tool.name === "mailcow.health");
+    assert.equal(mailcow?.audit, true);
+    assert.equal(mailcow?.risk, 0);
+    assert.equal(admitRegisteredTool("mailcow.health", "mail01").code, "GATEWAY");
+    assert.equal(admitRegisteredTool("mailcow.health", "sql01").code, "DENY");
+    assert.equal(admitRegisteredTool("database.drop", "utp").code, "DENY");
+
+    const plugin = {
+      id: "mailcow-status",
+      version: "1",
+      description: "status",
+      inputs: [],
+      outputs: ["status"],
+      risk: 0 as const,
+      permissions: ["read"],
+      supported_targets: ["mail01"],
+      runbook: "mailcow.health",
+    };
+    assert.equal(admitPlugin(plugin, "mail01").code, "GATEWAY");
+    assert.equal(admitPlugin({ ...plugin, risk: 2 }, "mail01").code, "DENY");
   });
 
   it("loads only a valid plugin and cancels a coding job off main", () => {
