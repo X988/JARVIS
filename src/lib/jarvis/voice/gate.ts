@@ -16,14 +16,19 @@ export const SPOKEN: SpokenAlias[] = [
   { from: "ютп", to: "utp" },
   { from: "утепе", to: "utp" },
   { from: "ютепе", to: "utp" },
+  { from: "ю ти пи", to: "utp" },
+  { from: "у ти пи", to: "utp" },
   { from: "уп", to: "utp" },
   { from: "майлков", to: "mailcow" },
   { from: "мейлков", to: "mailcow" },
   { from: "мейлкау", to: "mailcow" },
+  { from: "майл кау", to: "mailcow" },
   { from: "микрот", to: "mikrotik" },
   { from: "микротик", to: "mikrotik" },
+  { from: "микро тик", to: "mikrotik" },
   { from: "вайргард", to: "wireguard" },
   { from: "вайр гард", to: "wireguard" },
+  { from: "ваер гард", to: "wireguard" },
 ];
 
 export function classifyPcm(samples: Int16Array, sampleRate = 16_000): VoiceKind {
@@ -85,21 +90,22 @@ export function normalizeTranscript(
   text: string,
   confidence: number,
   aliases: SpokenAlias[] = SPOKEN,
+  minConfidence = MIN_CONFIDENCE,
 ): { text: string; changed: boolean; code: "OK" | "CLARIFY" } {
-  if (confidence < MIN_CONFIDENCE) return { text, changed: false, code: "CLARIFY" };
-  let next = text.replace(/[.,!?;:]+/g, " ");
-  for (const alias of aliases) {
-  if (alias.from.length < 2 || alias.from === alias.to) continue;
+  if (confidence < minConfidence) return { text, changed: false, code: "CLARIFY" };
+  let next = text.normalize("NFKC").replace(/[.,!?;:()[\\]{}"«»]+/g, " ");
+  for (const alias of [...aliases].sort((left, right) => right.from.length - left.from.length)) {
+    if (alias.from.length < 2 || alias.from === alias.to) continue;
     const pattern = new RegExp(`(^|\\s)${alias.from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\s|$)`, "gi");
     next = next.replace(pattern, `$1${alias.to}`);
   }
   next = next.replace(/\s+/g, " ").trim();
-  return { text: next, changed: next !== text.trim(), code: "OK" };
+  return { text: next, changed: next.toLowerCase() !== text.trim().toLowerCase(), code: "OK" };
 }
 
 export function stripWake(text: string, enabled: boolean): string {
   if (!enabled) return text;
-  return text.replace(/^(джарвис|жарвис)[, ]+/i, "").trim();
+  return text.replace(/^(джарвис|жарвис)(?:[,.:;!?\\s]+|$)/i, "").trim();
 }
 
 export function sanitizeForSpeech(text: string): string {
@@ -122,20 +128,102 @@ export function sentences(text: string): string[] {
     .slice(0, 3);
 }
 
-export function voiceLine(code: string, reason: string | null, approvalId?: string | null): string {
+export type VoiceContext = {
+  mode?: string;
+  executionCalled?: boolean;
+  target?: string;
+  runbook?: string;
+  execution?: string;
+};
+
+function metric(detail: string, key: string): number | null {
+  const hit = detail.match(new RegExp("(?:^|[;\\\\s])" + key + "=(\\\\d+(?:\\\\.\\\\d+)?)", "i"));
+  return hit ? Number(hit[1]) : null;
+}
+
+function textMetric(detail: string, key: string): string | null {
+  const hit = detail.match(new RegExp("(?:^|[;\\\\s])" + key + "=([^;]+)", "i"));
+  return hit?.[1]?.trim() || null;
+}
+
+function uptimeText(seconds: number): string {
+  if (seconds >= 86400) return Math.floor(seconds / 86400) + " дн.";
+  if (seconds >= 3600) return Math.floor(seconds / 3600) + " ч.";
+  return Math.max(1, Math.floor(seconds / 60)) + " мин.";
+}
+
+export function voiceLine(
+  code: string,
+  reason: string | null,
+  approvalId?: string | null,
+  context: VoiceContext = {},
+): string {
+  const detail = context.execution ?? reason ?? "";
   if (code === "POLICY_DENIED" && /баз/i.test(reason ?? "")) return "Отказ. Удаление рабочей базы запрещено.";
-  if (code === "POLICY_DENIED") return "Отказ. Политика это не разрешает.";
-  if (code === "APPROVAL_REQUIRED") {
-    return approvalId ? `Нужно подтверждение заявки ${approvalId}. Само не делаю.` : "Нужно подтверждение. Само не делаю.";
+  if (code === "POLICY_DENIED") return "Отказ. Политика безопасности это не разрешает.";
+  if (code === "APPROVAL_REQUIRED") return approvalId ? "Нужно подтверждение. Код заявки отправил текстом." : "Нужно подтверждение. Сам ничего не запускаю.";
+  if (code === "CLARIFY" || code === "STT_LOW_CONFIDENCE") return "Не расслышал достаточно уверенно. Повторите команду чуть медленнее.";
+  if (code === "NO_SPEECH") return "Речь не распознана. Ничего не запускал.";
+  if (code === "AUDIO_DECODE_FAILED") return "Не удалось открыть голосовое сообщение. Ничего не запускал.";
+  if (code === "EMPTY") return "Голосовое сообщение пустое. Ничего не запускал.";
+  if (code === "AUDIO_TOO_LARGE") return "Голосовое сообщение слишком большое. Ничего не запускал.";
+  if (code === "AUDIO_TOO_LONG") return "Голосовая команда слишком длинная. Скажите команду короче.";
+  if (code === "TARGET_NOT_FOUND") return "Не нашёл такую цель в inventory. Уточните сервер или сервис.";
+  if (code === "RUNBOOK_NOT_FOUND") return "Для этой команды нет разрешённого сценария.";
+  if (code === "CONNECT_FAILED") return "Не удалось подключиться к " + (context.target || "цели") + ". Ничего не считаю выполненным.";
+  if (code === "EXECUTION_TIMEOUT") return "Проверка превысила допустимое время. Результат не засчитан.";
+  if (code === "VERIFICATION_FAILED") return "Ответ получен, но проверка результата не прошла. Успех не засчитан.";
+  if (code === "EXECUTION_DISABLED" || code === "NOT_CONFIGURED" || code === "CREDENTIAL_UNAVAILABLE" || code === "ADAPTER_DISABLED") {
+    const first = sentences(reason ?? detail)[0];
+    return first ? first.slice(0, 190) : "Исполнитель ещё не настроен. Ничего не запускал.";
   }
-  if (code === "CLARIFY" || code === "STT_LOW_CONFIDENCE") return "Не расслышал уверенно. Повторите команду.";
-  if (code === "NO_SPEECH") return "Речи не было. Ничего не запускал.";
-  if (code === "AUDIO_DECODE_FAILED") return "Голосовое не открылось. Ничего не запускал.";
-  if (code === "EMPTY" || code === "AUDIO_TOO_LARGE") return "Голосовое не получено. Ничего не запускал.";
-  const first = sentences(reason ?? "")[0];
-  return first ? first.slice(0, 180) : "Готово. Подробности в тексте.";
+  if (code === "OK" && context.mode === "dry-run") return "Команда проверена. Сейчас режим dry-run, реальное подключение не выполнялось.";
+  if (code === "OK" && context.mode === "mock") return "Команда прошла в тестовом режиме. Реальная инфраструктура не менялась.";
+  if (code === "OK" && context.runbook === "sql.health") return "База " + (context.target || "SQL").toUpperCase() + " отвечает. Состояние онлайн.";
+  if (code === "OK" && context.runbook === "sql.backup") return "Резервная копия " + (context.target || "SQL").toUpperCase() + " создана и проверена.";
+
+  if (code === "OK" && context.runbook === "mailcow.health") {
+    const services = metric(detail, "services");
+    const running = metric(detail, "running");
+    const unhealthy = metric(detail, "unhealthy");
+    const queue = metric(detail, "queue");
+    if (services !== null && running !== null && unhealthy !== null && queue !== null) {
+      return "Mailcow отвечает. Сервисов " + services + ", запущено " + running + ", проблемных " + unhealthy + ", писем в очереди " + queue + ".";
+    }
+  }
+  if (code === "OK" && context.runbook === "mikrotik.status") {
+    const cpu = metric(detail, "cpu_load");
+    const interfaces = metric(detail, "interfaces");
+    const running = metric(detail, "running");
+    const routes = metric(detail, "active_routes");
+    if (cpu !== null && interfaces !== null && running !== null && routes !== null) {
+      return "MikroTik отвечает. Загрузка процессора " + cpu + " процентов. Интерфейсов " + interfaces + ", работают " + running + ", активных маршрутов " + routes + ".";
+    }
+  }
+  if (code === "OK" && context.runbook === "wireguard.status") {
+    const peers = metric(detail, "peers");
+    const recent = metric(detail, "recent");
+    const stale = metric(detail, "stale_or_never");
+    if (peers !== null && recent !== null && stale !== null) {
+      return "WireGuard: пиров " + peers + ", со свежим соединением " + recent + ", без свежего соединения " + stale + ".";
+    }
+  }
+  if (code === "OK" && context.runbook === "disk.check") {
+    const worst = metric(detail, "worst_used_pct");
+    if (worst !== null) return "Диски " + (context.target || "") + ": максимальное заполнение " + worst + " процентов.";
+  }
+  if (code === "OK" && context.runbook === "server.health") {
+    const host = textMetric(detail, "host") || context.target || "сервер";
+    const uptime = metric(detail, "uptime_s");
+    const failed = metric(detail, "failed_services") ?? metric(detail, "failed_auto_services");
+    if (uptime !== null) {
+      return "Сервер " + host + " отвечает. Время работы " + uptimeText(uptime) + (failed !== null ? ". Проблемных служб: " + failed : "") + ".";
+    }
+  }
+  const first = sentences(detail)[0];
+  return first ? first.slice(0, 190) : "Готово. Подробности отправил текстом.";
 }
 
 export function wavConvertArgs(input: string, output: string): string[] {
-  return ["-nostdin", "-y", "-i", input, "-ac", "1", "-ar", "16000", "-f", "wav", output];
+  return ["-nostdin", "-y", "-i", input, "-ac", "1", "-ar", "16000", "-sample_fmt", "s16", "-f", "wav", output];
 }
