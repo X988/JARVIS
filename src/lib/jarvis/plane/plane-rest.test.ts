@@ -16,6 +16,7 @@ import { researchReport } from "./research.ts";
 import { isTaskDue, runDue, saveTasks, type ScheduledTask } from "./scheduler.ts";
 import { telegramContext } from "./telegram.ts";
 import { recordUndo } from "./undo.ts";
+import { applyPrObservation, createPrWatch, prWatchMayMutateRepository } from "./pr-watch.ts";
 import { admitRegisteredTool, listTools } from "./tool-registry.ts";
 
 function dir(): string {
@@ -114,6 +115,38 @@ describe("remaining project ideas", () => {
     assert.equal(workerMayPublish("push"), false);
     assert.equal(workerMayPublish("merge"), false);
     assert.equal(workerMayPublish("deploy"), false);
+  });
+
+  it("watches PR CI read-only and resets to pending when head changes", () => {
+    const watch = createPrWatch({
+      id: "pr-1",
+      repository: "X988/honey-granite-fair-hazel",
+      pr: 1,
+      head: "abcdef1234567",
+      now: new Date("2026-10-07T00:00:00Z"),
+    });
+    assert.ok(watch);
+    const passed = applyPrObservation(
+      watch!,
+      {
+        head: "abcdef1234567",
+        merged: false,
+        checks: [{ name: "ci", conclusion: "success" }],
+      },
+      new Date("2026-10-07T00:01:00Z"),
+    );
+    assert.equal(passed.status, "passed");
+    const moved = applyPrObservation(
+      passed,
+      {
+        head: "1234567abcdef",
+        merged: false,
+        checks: [{ name: "ci", conclusion: "success" }],
+      },
+      new Date("2026-10-07T00:02:00Z"),
+    );
+    assert.equal(moved.status, "pending");
+    assert.equal(prWatchMayMutateRepository(), false);
   });
 
   it("loads only a valid plugin and cancels a coding job off main", () => {
