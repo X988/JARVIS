@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import { closeIncident, correlate, createIncident, loadIncidents, openIncident, updateIncident } from "./incidents.ts";
 import { agentMayEscalate, routeModel } from "./llm.ts";
 import { proposeCriticalInfrastructureFact, remember, searchMemory } from "./memory.ts";
+import { admitMonitoringAction, monitoringStatus, providersFromEnv } from "../monitoring.ts";
 import { loadPluginDir, validatePlugin } from "./plugins.ts";
 import {
   cancelTask,
@@ -365,6 +366,39 @@ describe("plugins, incidents, models", () => {
     });
     assert.equal(incident.status, "open");
     assert.match(correlate([{ title: "sql backup" }, { title: "disk io" }, { title: "1С тормозит" }]) ?? "", /связь/);
+  });
+
+  it("denies monitoring self-heal unless policy explicitly routes it through Gateway", () => {
+    assert.equal(admitMonitoringAction("observe").code, "ALLOW");
+    assert.equal(admitMonitoringAction("suggest").code, "ALLOW");
+    assert.equal(admitMonitoringAction("self-heal").code, "DENY");
+
+    const unknown = admitMonitoringAction("self-heal", {
+      policyAllowsRepair: true,
+      runbook: "unknown.repair",
+      target: "mail01",
+    });
+    assert.equal(unknown.code, "DENY");
+
+    const admitted = admitMonitoringAction("self-heal", {
+      policyAllowsRepair: true,
+      runbook: "sql.backup",
+      target: "utp",
+    });
+    assert.equal(admitted.code, "GATEWAY");
+  });
+
+  it("reports Alertmanager and actual SSH/Mailcow env names without pretending they are live", () => {
+    const env = {
+      JARVIS_ALERTMANAGER_URL: "https://alerts.example",
+      JARVIS_SSH_TARGETS_JSON: '{"mail01":"mail01.example"}',
+      JARVIS_DOCKER_HOST: "mail01.example",
+    };
+    assert.match(monitoringStatus(env), /alertmanager:ADAPTER_DISABLED/);
+    const ids = providersFromEnv(env).map((provider) => provider.id);
+    assert.equal(ids.includes("alertmanager"), true);
+    assert.equal(ids.includes("linux"), true);
+    assert.equal(ids.includes("mailcow"), true);
   });
 
   it("does not let model choice raise permission", () => {
