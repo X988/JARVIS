@@ -31,7 +31,12 @@ export class DisabledTtsProvider implements TextToSpeechProvider {
 
 export class PiperTtsProvider implements TextToSpeechProvider {
   readonly id = "piper" as const;
-  constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
+  private readonly env: NodeJS.ProcessEnv;
+
+  constructor(env: NodeJS.ProcessEnv = process.env) {
+    this.env = env;
+  }
+
   synthesize(text: string): TtsHit | TtsFailure {
     return synthesizeVoice(text, this.env);
   }
