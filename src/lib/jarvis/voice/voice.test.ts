@@ -7,7 +7,7 @@ import { acceptTelegram, type TelegramActor } from "../plane/telegram.ts";
 import { bargeIn, classifyPcm, normalizeTranscript, prependPreroll, sentences, stripWake, voiceLine, wavConvertArgs } from "./gate.ts";
 import { acceptTelegramVoice } from "./turn.ts";
 import { safeAudioFile } from "./whisper.ts";
-import { synthesizeVoice, ttsProbe } from "./tts.ts";
+import { speechText, synthesizeVoice, ttsProbe } from "./tts.ts";
 
 const actors: Record<string, TelegramActor> = { "100842": { actorId: "admin1", role: "operator" } };
 
@@ -50,6 +50,10 @@ describe("voice gate", () => {
     assert.equal(normalizeTranscript("проверь вайргард", 0.91).text, "проверь wireguard");
     assert.equal(normalizeTranscript("проверь ю ти пи", 0.91).text, "проверь utp");
     assert.equal(normalizeTranscript("проверь майл кау", 0.91).text, "проверь mailcow");
+    assert.equal(normalizeTranscript("проверь эс кью эль", 0.91).text, "проверь sql");
+    assert.equal(normalizeTranscript("проверь один эс", 0.91).text, "проверь 1с");
+    assert.equal(normalizeTranscript("проверь диси ноль один", 0.91).text, "проверь dc01");
+    assert.equal(normalizeTranscript("проверь эр би пять тысяч девять", 0.91).text, "проверь rb5009");
     assert.equal(normalizeTranscript("проверь крендель", 0.95).text, "проверь крендель");
     assert.equal(normalizeTranscript("проверь ютп", 0.2).code, "CLARIFY");
   });
@@ -95,6 +99,14 @@ describe("voice gate", () => {
       /процессора 7.*работают 10.*маршрутов 6/,
     );
     assert.match(voiceLine("OK", null, null, { mode: "dry-run" }), /dry-run/);
+  });
+
+  it("clips spoken answers at a natural boundary", () => {
+    const text = speechText("Первая короткая фраза. Вторая фраза заметно длиннее и содержит подробности. Третья.", 45);
+    assert.equal(text, "Первая короткая фраза.");
+    const noPunctuation = speechText("очень длинная строка с несколькими словами для проверки безопасного обрезания ответа", 40);
+    assert.equal(noPunctuation.endsWith(" "), false);
+    assert.equal(noPunctuation.length <= 40, true);
   });
 
   it("keeps local TTS disabled until Piper and a model are explicitly configured", () => {
