@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { checkBsl } from "./bsl.ts";
 import { analyzeQuery } from "./query.ts";
+import { validateOnecExport, type ValidationRunner } from "./validation.ts";
 
 export type OnecEnv = "development" | "test" | "production";
 
@@ -49,9 +50,16 @@ function diffText(before: string, after: string): string {
 export class FileOnecExecutor {
   readonly adapter = "file" as const;
   private readonly root: string;
+  private readonly env: NodeJS.ProcessEnv;
+  private readonly validationRunner?: ValidationRunner;
 
-  constructor(root: string) {
+  constructor(
+    root: string,
+    options: { env?: NodeJS.ProcessEnv; validationRunner?: ValidationRunner } = {},
+  ) {
     this.root = root;
+    this.env = options.env ?? process.env;
+    this.validationRunner = options.validationRunner;
   }
 
   private gate(environment: OnecEnv, write: boolean): OnecResult | null {
@@ -110,10 +118,42 @@ export class FileOnecExecutor {
     if (!full || !full.endsWith(".bsl")) {
       return deny(environment, this.adapter, "Писать можно только .bsl внутри выгрузки.");
     }
-    const before = fs.existsSync(full) ? fs.readFileSync(full, "utf8") : "";
+    const existed = fs.existsSync(full);
+    const before = existed ? fs.readFileSync(full, "utf8") : "";
     fs.mkdirSync(path.dirname(full), { recursive: true });
     fs.writeFileSync(full, next);
-    return { ok: true, code: "OK", environment, adapter: this.adapter, message: "Модуль записан в выгрузку. База не обновлялась.", path: full, diff: diffText(before, next) };
+
+    const validation = validateOnecExport(
+      this.root,
+      full,
+      next,
+      this.env,
+      this.validationRunner,
+    );
+    if (!validation.ok) {
+      if (existed) fs.writeFileSync(full, before);
+      else fs.rmSync(full, { force: true });
+      return {
+        ok: false,
+        code: "FAIL",
+        environment,
+        adapter: this.adapter,
+        message: `Validation ${validation.level} не прошла. Файл откатан; база не обновлялась.`,
+        path: full,
+        detail: validation,
+      };
+    }
+
+    return {
+      ok: true,
+      code: "OK",
+      environment,
+      adapter: this.adapter,
+      message: `Модуль записан в выгрузку. Validation: ${validation.level}. База не обновлялась.`,
+      path: full,
+      diff: diffText(before, next),
+      detail: validation,
+    };
   }
 
   query(text: string, environment: OnecEnv): OnecResult {
