@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const SOURCE_ROOTS = ["src"];
 const SOURCE_RULES = [
-  { id: "child-process-exec", pattern: /\bexecSync?\s*\(/ },
+  { id: "child-process-exec", pattern: /\bexec(?:Sync)?\s*\(/ },
   { id: "shell-true", pattern: /\bshell\s*:\s*true\b/ },
   { id: "ssh-hostkey-disabled", pattern: /StrictHostKeyChecking\s*=\s*no/i },
   { id: "tls-verification-disabled", pattern: /rejectUnauthorized\s*:\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*["']?0/i },
