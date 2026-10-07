@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { admitRegisteredTool } from "./tool-registry.ts";
 
 export type PluginManifest = {
   id: string;
@@ -45,4 +46,20 @@ export function loadPluginDir(dir: string): { accepted: PluginManifest[]; reject
     else rejected.push(name);
   }
   return { accepted, rejected };
+}
+
+
+export function admitPlugin(
+  manifest: PluginManifest,
+  target: string,
+): { code: "DENY" | "GATEWAY"; reason?: string } {
+  if (!manifest.supported_targets.includes(target)) {
+    return { code: "DENY", reason: "plugin manifest не разрешает target" };
+  }
+  const admission = admitRegisteredTool(manifest.runbook, target);
+  if (admission.code === "DENY") return { code: "DENY", reason: admission.reason };
+  if (manifest.risk !== admission.tool.risk) {
+    return { code: "DENY", reason: "risk в plugin manifest не совпадает с Runbook Registry" };
+  }
+  return { code: "GATEWAY" };
 }
