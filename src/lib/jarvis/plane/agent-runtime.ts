@@ -34,7 +34,7 @@ const ANSWER_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    answer: { type: "string", maxLength: 4000 },
+    answer: { type: "string" },
   },
   required: ["answer"],
 };
