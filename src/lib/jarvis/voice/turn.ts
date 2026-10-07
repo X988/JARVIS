@@ -51,14 +51,23 @@ export function runVoiceWav(
   if (!pcm || classifyPcm(pcm) !== "speech") {
     return { code: "NO_SPEECH", voiceSummary: voiceLine("NO_SPEECH", null), technical: null, stt: null, originalAudioId: null };
   }
+  const sttStarted = Date.now();
   const heard = transcribeWav(wavPath, env);
+  mark("stt_ms", Date.now() - sttStarted);
   mark("voice_turns");
   if ("code" in heard) {
     mark("stt_failures");
     return { code: heard.code, voiceSummary: voiceLine(heard.code, null), technical: null, stt: null, originalAudioId: path.basename(wavPath) };
   }
-  const normalized = normalizeTranscript(stripWake(heard.text, env.JARVIS_WAKE_WORD_ENABLED === "1"), heard.confidence, aliasesFromInventory());
-  if (normalized.code === "CLARIFY") {
+  const minConfidenceRaw = Number(env.JARVIS_STT_MIN_CONFIDENCE ?? "0.55");
+  const minConfidence = Number.isFinite(minConfidenceRaw) ? Math.min(0.95, Math.max(0.1, minConfidenceRaw)) : 0.55;
+  const normalized = normalizeTranscript(
+    stripWake(heard.text, env.JARVIS_WAKE_WORD_ENABLED === "1"),
+    heard.confidence,
+    aliasesFromInventory(),
+    minConfidence,
+  );
+  if (normalized.code === "CLARIFY" || !normalized.text.trim()) {
     return {
       code: "CLARIFY",
       voiceSummary: voiceLine("CLARIFY", null),
@@ -76,7 +85,13 @@ export function runVoiceWav(
   });
   return {
     code: technical.code,
-    voiceSummary: voiceLine(technical.code, technical.decision.reason, technical.approval?.id),
+    voiceSummary: voiceLine(technical.code, technical.decision.reason, technical.approval?.id, {
+      mode: technical.mode,
+      executionCalled: technical.executionCalled,
+      target: technical.trace.target,
+      runbook: technical.trace.runbook,
+      execution: technical.trace.execution,
+    }),
     technical,
     stt: { ...heard, text: normalized.text },
     originalAudioId: path.basename(wavPath),
@@ -128,7 +143,13 @@ export function acceptTelegramVoice(
     if (!text.accepted) return { code: text.code === "ACTOR_DENIED" ? "ACTOR_DENIED" : "EMPTY" };
     return {
       code: text.result.code,
-      voiceSummary: voiceLine(text.result.code, text.result.decision.reason, text.result.approval?.id),
+      voiceSummary: voiceLine(text.result.code, text.result.decision.reason, text.result.approval?.id, {
+        mode: text.result.mode,
+        executionCalled: text.result.executionCalled,
+        target: text.result.trace.target,
+        runbook: text.result.trace.runbook,
+        execution: text.result.trace.execution,
+      }),
       technical: text.result,
       stt: null,
       originalAudioId: null,
