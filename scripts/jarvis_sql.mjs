@@ -20,7 +20,11 @@ function finish(code, detail) {
 function envInt(name, fallback, min, max) {
   const value = Number(process.env[name]);
   if (!Number.isFinite(value)) return fallback;
-  return Math.min(max, Math.max(min, Math.trunc(value)));
+  return Math.min(maximum(max, min), Math.max(min, Math.trunc(value)));
+}
+
+function maximum(max, min) {
+  return Math.max(max, min);
 }
 
 function backupPath(root, name) {
@@ -87,7 +91,7 @@ const connection = new tedious.Connection({
   },
 });
 
-function query(sql, parameters) {
+function query(sql, parameters = []) {
   return new Promise((resolve, reject) => {
     const rows = [];
     const request = new tedious.Request(sql, (error) => (error ? reject(error) : resolve(rows)));
@@ -101,6 +105,45 @@ function query(sql, parameters) {
   });
 }
 
+async function databaseState() {
+  const rows = await query("SELECT state_desc FROM sys.databases WHERE name = @name", [["name", name]]);
+  return String(rows[0]?.state_desc ?? "");
+}
+
+async function activeBackupOrRestore() {
+  const rows = await query(
+    "SELECT COUNT_BIG(*) AS active_count FROM sys.dm_exec_requests WHERE database_id = DB_ID(@name) AND (command LIKE 'BACKUP%' OR command LIKE 'RESTORE%')",
+    [["name", name]],
+  );
+  return Number(rows[0]?.active_count ?? 0);
+}
+
+async function backupAndVerify() {
+  const state = await databaseState();
+  if (state !== "ONLINE") {
+    return finish(
+      "PRECONDITION_FAILED",
+      state ? `state_desc=${state}; BACKUP не запускался.` : "База не найдена; BACKUP не запускался.",
+    );
+  }
+
+  const active = await activeBackupOrRestore();
+  if (!Number.isFinite(active) || active > 0) {
+    return finish(
+      "PRECONDITION_FAILED",
+      "Для базы уже выполняется BACKUP/RESTORE либо состояние нельзя подтвердить. Новый BACKUP не запускался.",
+    );
+  }
+
+  await query(`BACKUP DATABASE [${name}] TO DISK = @path WITH CHECKSUM`, [["path", backupFile]]);
+  const header = await query("RESTORE HEADERONLY FROM DISK = @path", [["path", backupFile]]);
+  if (!Array.isArray(header) || header.length === 0) {
+    return finish("VERIFICATION_FAILED", "BACKUP завершился, но HEADERONLY не подтвердил backup set.");
+  }
+  await query("RESTORE VERIFYONLY FROM DISK = @path WITH CHECKSUM", [["path", backupFile]]);
+  return finish("OK", `Копия ${backupFile} создана с CHECKSUM; HEADERONLY и VERIFYONLY прошли.`);
+}
+
 connection.on("connect", (error) => {
   if (error) {
     finish("CONNECT_FAILED", "SQL Server не принял соединение. Запрос не выполнен.");
@@ -108,15 +151,12 @@ connection.on("connect", (error) => {
   }
   const job =
     mode === "health"
-      ? query("SELECT state_desc FROM sys.databases WHERE name = @name", [["name", name]]).then((rows) => {
-          const state = String(rows[0]?.state_desc ?? "");
+      ? databaseState().then((state) => {
           if (state === "ONLINE") finish("OK", "state_desc=ONLINE");
           else finish("VERIFICATION_FAILED", state ? `state_desc=${state}` : "База не найдена.");
         })
-      : query(`BACKUP DATABASE [${name}] TO DISK = @path WITH CHECKSUM`, [["path", backupFile]])
-          .then(() => query("RESTORE VERIFYONLY FROM DISK = @path WITH CHECKSUM", [["path", backupFile]]))
-          .then(() => finish("OK", `Копия ${backupFile} создана с CHECKSUM, VERIFYONLY прошёл.`));
-  job.catch(() => finish("VERIFICATION_FAILED", "Запрос выполнен с ошибкой. Успех не подменяется."));
+      : backupAndVerify();
+  job.catch(() => finish("VERIFICATION_FAILED", "SQL preflight/backup/verification завершились ошибкой. Успех не подменяется."));
 });
 
 connection.connect();
