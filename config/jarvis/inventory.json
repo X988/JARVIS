@@ -123,9 +123,11 @@
         "mail01",
         "mailcow",
         "мейлкау",
+        "майлков",
         "почта",
         "почтовый сервер"
       ],
+      "voiceCanonical": "mailcow",
       "enabled": true,
       "allowedRunbooks": [
         "server.health",
@@ -146,8 +148,10 @@
         "rb5009",
         "mikrotik",
         "микротик",
+        "микрот",
         "router"
       ],
+      "voiceCanonical": "mikrotik",
       "enabled": true,
       "allowedRunbooks": [
         "mikrotik.status"
@@ -165,8 +169,10 @@
       "aliases": [
         "wireguard",
         "вайргард",
+        "вайр гард",
         "wg"
       ],
+      "voiceCanonical": "wireguard",
       "enabled": true,
       "allowedRunbooks": [
         "wireguard.status"
@@ -185,9 +191,11 @@
         "utp",
         "утп",
         "ютп",
+        "утепе",
         "база utp",
         "база ютп"
       ],
+      "voiceCanonical": "utp",
       "enabled": true,
       "allowedRunbooks": [
         "sql.health",

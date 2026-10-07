@@ -117,14 +117,15 @@ function phaseTone(phase: Phase, verdict: Turn["decision"]["verdict"]): string {
   return "text-moss";
 }
 
-function Wave() {
+function Wave({ levels }: { levels?: number[] }) {
+  const bars = levels && levels.length > 0 ? levels : [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2];
   return (
-    <div className="flex h-8 items-center gap-1" aria-hidden="true">
-      {Array.from({ length: 12 }, (_, index) => (
+    <div className="flex h-8 items-end gap-1" aria-hidden="true">
+      {bars.slice(0, 12).map((level, index) => (
         <span
           key={index}
-          className="wave-bar h-6 w-1 rounded-sm bg-moss"
-          style={{ animationDelay: `${index * 60}ms` }}
+          className="w-1 rounded-sm bg-moss"
+          style={{ height: `${Math.max(4, Math.round(level * 32))}px` }}
         />
       ))}
     </div>
@@ -775,7 +776,7 @@ export function Console() {
             <Thread notices={notices} turns={turns} now={now} locked={locked} onOpen={(command) => void send(command, "text")} />
             {hearing ? (
               <div className="turn-in rounded-xl border border-line bg-surface p-4">
-                <p className="font-mono text-xs text-moss">Whisper</p>
+                <p className="font-mono text-xs text-moss">TRANSCRIBING</p>
                 <div className="mt-3">
                   <Wave />
                 </div>
@@ -905,7 +906,7 @@ export function Console() {
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold tracking-tight">{listening ? "Слушаю" : "Голос"}</h2>
+                <h2 className="text-lg font-semibold tracking-tight">{listening ? "LISTENING" : "Голос"}</h2>
                 <p className="mt-1 text-pretty text-sm text-muted">
                   Говорите целиком и сделайте короткую паузу. Похожие слова сверяю со списком команд, опасные не угадываю.
                 </p>

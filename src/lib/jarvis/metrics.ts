@@ -1,4 +1,14 @@
-export type MetricName = "requests" | "allowed" | "denied" | "approvals" | "failed" | "duration_ms";
+export type MetricName =
+  | "requests"
+  | "allowed"
+  | "denied"
+  | "approvals"
+  | "failed"
+  | "duration_ms"
+  | "stt_ms"
+  | "voice_turns"
+  | "stt_failures"
+  | "telegram_updates";
 
 const counters: Record<MetricName, number> = {
   requests: 0,
@@ -7,6 +17,10 @@ const counters: Record<MetricName, number> = {
   approvals: 0,
   failed: 0,
   duration_ms: 0,
+  stt_ms: 0,
+  voice_turns: 0,
+  stt_failures: 0,
+  telegram_updates: 0,
 };
 
 export function mark(name: MetricName, by = 1): void {

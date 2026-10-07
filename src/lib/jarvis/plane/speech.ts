@@ -1,3 +1,5 @@
+import { normalizeTranscript, SPOKEN } from "../voice/gate.ts";
+
 export type SpeechHit = { text: string; confidence: number; provider: string };
 
 export interface SpeechToTextProvider {
@@ -15,26 +17,19 @@ export class MockSpeechProvider implements SpeechToTextProvider {
 
 export class FasterWhisperProvider implements SpeechToTextProvider {
   readonly id = "faster-whisper" as const;
-  transcribe(): { code: "NOT_CONFIGURED" } {
-    return { code: "NOT_CONFIGURED" };
+  transcribe(input: { transcript?: string }): SpeechHit | { code: "NOT_CONFIGURED" } {
+    if (!input.transcript) return { code: "NOT_CONFIGURED" };
+    return { text: input.transcript, confidence: 1, provider: this.id };
   }
 }
 
-const ALIASES: [RegExp, string][] = [
-  [/ютп/gi, "utp"],
-  [/майлков|мейлков/gi, "mailcow"],
-  [/микрот\w*/gi, "MikroTik"],
-];
-
 export function normalizeHeard(text: string, confidence: number): { text: string; changed: boolean } {
-  if (confidence < 0.6) return { text, changed: false };
-  let next = text;
-  for (const [pattern, value] of ALIASES) next = next.replace(pattern, value);
-  return { text: next, changed: next !== text };
+  const next = normalizeTranscript(text, confidence, SPOKEN);
+  return { text: next.text, changed: next.changed };
 }
 
 export function wakeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.JARVIS_WAKE_WORD === "1";
+  return env.JARVIS_WAKE_WORD === "1" || env.JARVIS_WAKE_WORD_ENABLED === "1";
 }
 
 export type TtsMode = "disabled" | "local" | "cloud";
