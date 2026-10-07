@@ -1,8 +1,18 @@
 import { admitRegisteredTool } from "./tool-registry.ts";
 
-export function admitMcp(name: string, known: string[]): { code: "DENY" | "GATEWAY"; name: string } {
-  if (!known.includes(name)) return { code: "DENY", name };
-  return { code: "GATEWAY", name };
+export type McpDiscovery =
+  | { code: "DENY"; name: string; reason: string }
+  | { code: "DISCOVERED"; name: string };
+
+/**
+ * Discovery is not execution authority. A known MCP capability still needs
+ * a server-owned runbook and inventory target before it may reach Gateway.
+ */
+export function admitMcp(name: string, known: string[]): McpDiscovery {
+  if (!known.includes(name)) {
+    return { code: "DENY", name, reason: "MCP tool не опубликован" };
+  }
+  return { code: "DISCOVERED", name };
 }
 
 export function admitMcpRunbook(
