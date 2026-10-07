@@ -64,8 +64,13 @@ export function sshArgs(call: ExecCall, env: NodeJS.ProcessEnv = process.env): s
   if (knownHosts && safePath(knownHosts)) args.push("-o", `UserKnownHostsFile=${knownHosts}`);
   const key = env.JARVIS_SSH_KEY_FILE?.trim();
   if (key && safePath(key)) args.push("-i", key);
-  args.push(`${user}@${host}`, "--", "sh", "-c", sshCommand(call.runbook));
+  const remote = sshCommand(call.runbook);
+  args.push(`${user}@${host}`, `sh -c ${shellQuote(remote)}`);
   return args;
+}
+
+function shellQuote(value: string): string {
+  return "'" + value.replace(/'/g, "'\\\"'\\\"'") + "'";
 }
 
 function sshCommand(runbook: string): string {
