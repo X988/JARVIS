@@ -33,7 +33,7 @@ export function speechText(sourceText: string, maxChars = 360): string {
   const clean = sanitizeForSpeech(sourceText);
   if (!clean) return "";
   if (clean.length <= maxChars) return clean;
-  const complete = sentences(clean).filter((sentence) => sentence.length <= maxChars);
+  const complete = sentences(clean);
   let out = "";
   for (const sentence of complete) {
     const candidate = out ? out + " " + sentence : sentence;
