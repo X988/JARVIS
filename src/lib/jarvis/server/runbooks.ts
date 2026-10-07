@@ -9,7 +9,7 @@ export type PolicyName =
 export type Runbook = {
   id: string;
   title: string;
-  executor: "mock" | "powershell" | "ssh" | "sql" | "routeros" | "docker" | "onec-file";
+  executor: "mock" | "powershell" | "ssh" | "sql" | "routeros" | "docker" | "github" | "onec-file";
   risk: 0 | 1 | 2 | 3;
   mutates: boolean;
   policy: PolicyName;
@@ -139,7 +139,7 @@ const BOOKS: Runbook[] = [
   readOnly({
     id: "github.ci",
     title: "GitHub CI diagnostics",
-    executor: "mock",
+    executor: "github",
     targets: ["repo-honey"],
     inputSchema: ["repository inventory id"],
     timeoutSec: 30,
