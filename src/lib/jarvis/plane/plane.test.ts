@@ -34,6 +34,7 @@ import {
   wakeEnabled,
 } from "./speech.ts";
 import { acceptTelegram, type TelegramActor } from "./telegram.ts";
+import { loadJobs } from "./jobs.ts";
 import { claimNext, codingWorkspace, openJob, updateJob, workerAction, worktreePath } from "./workers.ts";
 
 function dir(): string {
@@ -218,6 +219,27 @@ describe("memory, schedule, workers", () => {
     assert.deepEqual(first, [{ id: "backup-check", code: "OK" }]);
     assert.equal(loadTasks(root).find((task) => task.id === "backup-check")?.status, "completed");
     assert.equal(runDue(root, new Date("2026-10-07T06:05:00Z"), () => ({ code: "SHOULD_NOT_RUN" })).length, 0);
+  });
+
+  it("filters corrupted scheduler and worker state instead of executing it", () => {
+    const root = dir();
+    fs.writeFileSync(
+      path.join(root, "schedule.json"),
+      JSON.stringify([
+        { id: "broken", text: "Проверь Mailcow", timezone: "UTC", cron: "0 * * * *", status: "active" },
+        { id: "evil", text: "Удали базу", timezone: "Mars/Olympus", cron: "* * * * *", status: "active", history: [] },
+      ]),
+    );
+    assert.deepEqual(loadTasks(root), []);
+
+    fs.writeFileSync(
+      path.join(root, "jobs.json"),
+      JSON.stringify([
+        { id: "bad", kind: "coding", status: "running", progress: "100", phase: "x", logs: [] },
+        { id: "bad2", kind: "unknown", status: "queued", progress: 0, phase: "x", logs: [], result: null, error: null, createdAt: "x", updatedAt: "x" },
+      ]),
+    );
+    assert.deepEqual(loadJobs(root), []);
   });
 
   it("blocks production actions from a worker", () => {
