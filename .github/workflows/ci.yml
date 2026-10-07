@@ -33,7 +33,7 @@ jobs:
       - run: npm run security:secrets
       - run: npm run security:audit
       - name: Generate CycloneDX SBOM
-        run: npm run sbom > /tmp/jarvis-sbom.cdx.json && node -e "const fs=require('fs'); const p='/tmp/jarvis-sbom.cdx.json'; const j=JSON.parse(fs.readFileSync(p,'utf8')); if(j.bomFormat!=='CycloneDX'||!Array.isArray(j.components)) process.exit(1)"
+        run: npm sbom --sbom-format=cyclonedx --sbom-type=application > /tmp/jarvis-sbom.cdx.json && node -e "const fs=require('fs'); const p='/tmp/jarvis-sbom.cdx.json'; const j=JSON.parse(fs.readFileSync(p,'utf8')); if(j.bomFormat!=='CycloneDX'||!Array.isArray(j.components)) process.exit(1)"
       - run: npm run build
   e2e:
     runs-on: ubuntu-latest
