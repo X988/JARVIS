@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { audioRoot, safeAudioFile } from "./whisper.ts";
-import { sanitizeForSpeech } from "./gate.ts";
+import { sanitizeForSpeech, sentences } from "./gate.ts";
 
 export type TtsHit = {
   provider: "piper";
@@ -19,7 +19,7 @@ export type TtsFailure = {
 
 function bounded(raw: string | undefined, fallback: number, min: number, max: number): number {
   const value = Number(raw);
-  return Number.isFinite(value) ? Math.min(max, Math.max(min, Math.trunc(value))) : fallback;
+  return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 }
 
 function modelPath(env: NodeJS.ProcessEnv): string | null {
@@ -27,6 +27,23 @@ function modelPath(env: NodeJS.ProcessEnv): string | null {
   if (!raw) return null;
   const resolved = path.resolve(raw);
   return fs.existsSync(resolved) && fs.statSync(resolved).isFile() ? resolved : null;
+}
+
+export function speechText(sourceText: string, maxChars = 360): string {
+  const clean = sanitizeForSpeech(sourceText);
+  if (!clean) return "";
+  if (clean.length <= maxChars) return clean;
+  const complete = sentences(clean).filter((sentence) => sentence.length <= maxChars);
+  let out = "";
+  for (const sentence of complete) {
+    const candidate = out ? out + " " + sentence : sentence;
+    if (candidate.length > maxChars) break;
+    out = candidate;
+  }
+  if (out) return out;
+  const clipped = clean.slice(0, maxChars + 1);
+  const boundary = clipped.lastIndexOf(" ");
+  return (boundary >= Math.floor(maxChars * 0.6) ? clipped.slice(0, boundary) : clean.slice(0, maxChars)).trim();
 }
 
 export function ttsProbe(env: NodeJS.ProcessEnv = process.env): {
@@ -44,15 +61,13 @@ export function ttsProbe(env: NodeJS.ProcessEnv = process.env): {
   return { provider, model: resolved, ready: probe.status === 0 };
 }
 
-export function synthesizeVoice(
-  sourceText: string,
-  env: NodeJS.ProcessEnv = process.env,
-): TtsHit | TtsFailure {
+export function synthesizeVoice(sourceText: string, env: NodeJS.ProcessEnv = process.env): TtsHit | TtsFailure {
   if ((env.JARVIS_TTS_PROVIDER || "disabled") !== "piper") return { code: "NOT_CONFIGURED" };
   const model = modelPath(env);
   if (!model) return { code: "NOT_CONFIGURED" };
 
-  const text = sanitizeForSpeech(sourceText).slice(0, bounded(env.JARVIS_TTS_MAX_CHARS, 360, 80, 600));
+  const maxChars = Math.trunc(bounded(env.JARVIS_TTS_MAX_CHARS, 360, 80, 600));
+  const text = speechText(sourceText, maxChars);
   if (!text) return { code: "TTS_FAILED" };
 
   const root = audioRoot(env);
@@ -62,12 +77,23 @@ export function synthesizeVoice(
   if (!wav || !ogg) return { code: "TTS_FAILED" };
 
   const bin = env.JARVIS_TTS_BIN?.trim() || "piper";
-  const timeout = bounded(env.JARVIS_TTS_TIMEOUT_MS, 30_000, 5_000, 120_000);
-  const run = spawnSync(bin, ["--model", model, "--output_file", wav], {
-    encoding: "utf8",
-    timeout,
-    input: text + "\n",
-  });
+  const timeout = Math.trunc(bounded(env.JARVIS_TTS_TIMEOUT_MS, 30_000, 5_000, 120_000));
+  const lengthScale = bounded(env.JARVIS_TTS_LENGTH_SCALE, 1.0, 0.65, 1.5);
+  const sentenceSilence = bounded(env.JARVIS_TTS_SENTENCE_SILENCE, 0.18, 0, 1.0);
+  const run = spawnSync(
+    bin,
+    [
+      "--model",
+      model,
+      "--output_file",
+      wav,
+      "--length_scale",
+      String(lengthScale),
+      "--sentence_silence",
+      String(sentenceSilence),
+    ],
+    { encoding: "utf8", timeout, input: text + "\n" },
+  );
   const error = run.error as NodeJS.ErrnoException | undefined;
   if (error || run.status !== 0 || !fs.existsSync(wav) || fs.statSync(wav).size === 0) {
     fs.rmSync(wav, { force: true });
@@ -78,21 +104,8 @@ export function synthesizeVoice(
   const encoded = spawnSync(
     "ffmpeg",
     [
-      "-nostdin",
-      "-y",
-      "-i",
-      wav,
-      "-ac",
-      "1",
-      "-ar",
-      "48000",
-      "-c:a",
-      "libopus",
-      "-b:a",
-      "32k",
-      "-application",
-      "voip",
-      ogg,
+      "-nostdin", "-y", "-i", wav, "-ac", "1", "-ar", "48000",
+      "-c:a", "libopus", "-b:a", "32k", "-application", "voip", ogg,
     ],
     { timeout: 15_000 },
   );
@@ -101,6 +114,5 @@ export function synthesizeVoice(
     fs.rmSync(ogg, { force: true });
     return { code: "AUDIO_ENCODE_FAILED" };
   }
-
   return { provider: "piper", wav, ogg, text, cleanup: [wav, ogg] };
 }
