@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { callJsonModel, type FetchLike } from "./llm-client.ts";
+import { containsLlmSecret, sanitizeLlmText } from "./llm-safety.ts";
 import { validateAgentPlan, type AgentPlanResult } from "./agent-planner.ts";
 import { runAgentTurn } from "./agent-runtime.ts";
 import { processRegisteredReadOnlyTool, type RegisteredToolResult } from "../server/pipeline.ts";
@@ -52,7 +53,7 @@ describe("LLM JSON gateway", () => {
       "intent",
       {
         system: "Return JSON.",
-        user: "diagnose",
+        user: "diagnose password=super-secret-value",
         schema: {
           type: "object",
           additionalProperties: false,
@@ -75,6 +76,8 @@ describe("LLM JSON gateway", () => {
     assert.equal(seenUrl, "https://api.openai.com/v1/responses");
     assert.match(seenAuth, /^Bearer /);
     assert.equal(seenBody.includes("secret-key-value"), false);
+    assert.equal(seenBody.includes("super-secret-value"), false);
+    assert.equal(seenBody.includes("[REDACTED]"), true);
     const request = JSON.parse(seenBody) as { store?: boolean; text?: { format?: { type?: string } } };
     assert.equal(request.store, false);
     assert.equal(request.text?.format?.type, "json_schema");
@@ -97,6 +100,26 @@ describe("LLM JSON gateway", () => {
     );
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.code, "MODEL_UNAVAILABLE");
+  });
+});
+
+describe("LLM prompt safety", () => {
+  it("redacts common credentials and private keys locally", () => {
+    const value = [
+      "password=hunter2-secret",
+      "Authorization: Bearer abcdefghijklmnop",
+      "sk-proj-abcdefghijklmnop",
+      "-----BEGIN TEST PRIVATE KEY-----",
+      "private-material",
+      "-----END TEST PRIVATE KEY-----",
+    ].join("\n");
+    const safe = sanitizeLlmText(value);
+    assert.equal(safe.redacted, true);
+    assert.equal(safe.matches >= 4, true);
+    assert.equal(safe.text.includes("hunter2-secret"), false);
+    assert.equal(safe.text.includes("abcdefghijklmnop"), false);
+    assert.equal(safe.text.includes("private-material"), false);
+    assert.equal(containsLlmSecret("plain infrastructure request"), false);
   });
 });
 
