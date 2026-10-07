@@ -45,6 +45,71 @@ function inboundRoot(stateDir: string, env: NodeJS.ProcessEnv): string {
   return path.resolve(env.JARVIS_INBOUND_DIR || path.join(stateDir, "inbound"));
 }
 
+function boundedInteger(
+  raw: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const value = Number(raw);
+  return Number.isFinite(value)
+    ? Math.max(min, Math.min(max, Math.trunc(value)))
+    : fallback;
+}
+
+function inboundRetentionMs(env: NodeJS.ProcessEnv): number {
+  return boundedInteger(
+    env.JARVIS_TELEGRAM_INBOUND_RETENTION_MS,
+    24 * 60 * 60 * 1000,
+    60_000,
+    30 * 24 * 60 * 60 * 1000,
+  );
+}
+
+function inboundMaxFiles(env: NodeJS.ProcessEnv): number {
+  return boundedInteger(
+    env.JARVIS_TELEGRAM_INBOUND_MAX_FILES,
+    2_000,
+    10,
+    20_000,
+  );
+}
+
+export function cleanupTelegramInbound(
+  stateDir: string,
+  env: NodeJS.ProcessEnv = process.env,
+  now = Date.now(),
+): { removed: number; remaining: number } {
+  const root = inboundRoot(stateDir, env);
+  if (!fs.existsSync(root)) return { removed: 0, remaining: 0 };
+  const retentionMs = inboundRetentionMs(env);
+  let removed = 0;
+  let remaining = 0;
+
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const full = path.resolve(root, entry.name);
+    if (!full.startsWith(root + path.sep)) continue;
+    try {
+      const stat = fs.lstatSync(full);
+      if (stat.isSymbolicLink()) {
+        fs.rmSync(full, { force: true });
+        removed += 1;
+        continue;
+      }
+      if (!stat.isFile()) continue;
+      if (now - stat.mtimeMs > retentionMs) {
+        fs.rmSync(full, { force: true });
+        removed += 1;
+      } else {
+        remaining += 1;
+      }
+    } catch {
+      // A concurrent cleanup/store may have removed the file.
+    }
+  }
+  return { removed, remaining };
+}
+
 function storeInbound(
   stateDir: string,
   env: NodeJS.ProcessEnv,
@@ -56,6 +121,8 @@ function storeInbound(
   if (bytes.length === 0 || bytes.length > maxInboundBytes(env)) return null;
   const root = inboundRoot(stateDir, env);
   fs.mkdirSync(root, { recursive: true });
+  const cleanup = cleanupTelegramInbound(stateDir, env);
+  if (cleanup.remaining >= inboundMaxFiles(env)) return null;
   const fallback = kind === "image" ? "image.bin" : "document.bin";
   const leaf = safeLeaf(originalName, fallback);
   const target = path.resolve(root, `${updateId}-${leaf}`);
