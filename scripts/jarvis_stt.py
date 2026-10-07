@@ -8,8 +8,24 @@ import sys
 
 
 def fail(code: str, detail: str) -> None:
-    print(json.dumps({"code": code, "detail": detail}))
+    print(json.dumps({"code": code, "detail": detail}, ensure_ascii=False))
     raise SystemExit(0)
+
+
+def env_int(name: str, fallback: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.environ.get(name, ""))
+    except ValueError:
+        return fallback
+    return min(maximum, max(minimum, value))
+
+
+def env_float(name: str, fallback: float, minimum: float, maximum: float) -> float:
+    try:
+        value = float(os.environ.get(name, ""))
+    except ValueError:
+        return fallback
+    return min(maximum, max(minimum, value))
 
 
 def main() -> None:
@@ -27,6 +43,15 @@ def main() -> None:
     language = os.environ.get("JARVIS_STT_LANGUAGE", "ru")
     requested = os.environ.get("JARVIS_STT_DEVICE", "auto")
     root = os.environ.get("JARVIS_MODEL_DIR") or None
+    prompt = os.environ.get(
+        "JARVIS_STT_PROMPT",
+        "Джарвис. UTP. Mailcow. MikroTik. WireGuard. SQL. 1С. сервер. резервная копия. проверь состояние.",
+    )[:600]
+    beam_size = env_int("JARVIS_STT_BEAM_SIZE", 5, 1, 10)
+    vad_silence = env_int("JARVIS_STT_VAD_SILENCE_MS", 500, 200, 2000)
+    speech_pad = env_int("JARVIS_STT_VAD_PAD_MS", 200, 0, 1000)
+    no_speech = env_float("JARVIS_STT_NO_SPEECH_THRESHOLD", 0.65, 0.1, 0.95)
+
     device = "cpu"
     compute = "int8"
     if requested in ("auto", "cuda"):
@@ -44,26 +69,52 @@ def main() -> None:
         segments, info = model.transcribe(
             wav,
             language=None if language == "auto" else language,
-            vad_filter=False,
+            beam_size=beam_size,
+            condition_on_previous_text=False,
+            initial_prompt=prompt,
+            vad_filter=True,
+            vad_parameters={
+                "min_silence_duration_ms": vad_silence,
+                "speech_pad_ms": speech_pad,
+            },
+            no_speech_threshold=no_speech,
+            log_prob_threshold=-1.0,
+            compression_ratio_threshold=2.4,
         )
     except Exception as error:  # noqa: BLE001
         fail("STT_FAILED", str(error))
 
     parts = []
-    weights = []
+    weighted = 0.0
+    total_weight = 0.0
+    segment_count = 0
     for segment in segments:
         text = (segment.text or "").strip()
+        duration = max(0.05, float(segment.end or 0) - float(segment.start or 0))
+        probability = max(0.0, min(1.0, math.exp(float(segment.avg_logprob or -20))))
+        speech_probability = max(
+            0.0,
+            min(1.0, 1.0 - float(getattr(segment, "no_speech_prob", 0.0) or 0.0)),
+        )
+        confidence = probability * speech_probability
+        weighted += confidence * duration
+        total_weight += duration
+        segment_count += 1
         if text:
             parts.append(text)
-        weights.append(math.exp(segment.avg_logprob))
-    confidence = sum(weights) / len(weights) if weights else 0
+
+    confidence = weighted / total_weight if total_weight else 0.0
     print(
         json.dumps(
             {
                 "text": " ".join(parts).strip(),
                 "language": info.language,
+                "language_confidence": round(
+                    float(getattr(info, "language_probability", 0.0) or 0.0), 3
+                ),
                 "confidence": round(max(0, min(1, confidence)), 3),
                 "duration_ms": int((info.duration or 0) * 1000),
+                "segments": segment_count,
                 "provider": "faster-whisper",
                 "model": model_name,
                 "device": device,
