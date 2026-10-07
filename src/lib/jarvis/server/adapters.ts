@@ -1,6 +1,6 @@
 import type { ExecCall, ExecResult } from "./pipeline.ts";
 import { runbookById, type Runbook } from "./runbooks.ts";
-import { targetById } from "./inventory.ts";
+import { INVENTORY, targetById } from "./inventory.ts";
 import { FileOnecExecutor } from "../onec/executor.ts";
 import { sqlDatabase, runSql } from "./sql.ts";
 import { runSshProbe, runWindowsProbe } from "./host-probes.ts";
@@ -134,7 +134,40 @@ export class ServerProbeExecutor implements Executor {
   readonly type = "server-probe" as const;
   execute(call: ExecCall): ExecResult {
     const route = probeRoute(call.target);
-    if (route === "fleet") return missing("server-probe","NOT_CONFIGURED","Обход всех узлов не подключён. Сводный успех не рисуется.");
+    if (route === "fleet") {
+      // The current execution contract is synchronous, so fan-out is deliberately
+      // bounded to concurrency=1. This avoids unbounded child-process creation
+      // while still returning an honest per-host aggregate.
+      const members = INVENTORY.filter(
+        (target) =>
+          target.enabled &&
+          target.type !== "fleet" &&
+          target.allowedRunbooks.includes(call.runbook) &&
+          probeRoute(target.id) !== "unrouted",
+      );
+      if (!members.length) {
+        return missing("server-probe", "NOT_CONFIGURED", "В inventory нет доступных fleet members.");
+      }
+      const rows = members.map((target) => {
+        const memberCall = { ...call, target: target.id };
+        const memberRoute = probeRoute(target.id);
+        const result =
+          memberRoute === "powershell"
+            ? new PowerShellExecutor().execute(memberCall)
+            : new SSHExecutor().execute(memberCall);
+        return { id: target.id, code: result.code, called: result.called };
+      });
+      const healthy = rows.filter((row) => row.code === "OK").length;
+      const detail = rows.map((row) => `${row.id}=${row.code}`).join("; ");
+      if (healthy === rows.length) {
+        return { called: rows.some((row) => row.called), code: "OK", detail: `fleet: ${detail}` };
+      }
+      return {
+        called: rows.some((row) => row.called),
+        code: healthy > 0 ? "VERIFICATION_FAILED" : "CONNECT_FAILED",
+        detail: `fleet: healthy=${healthy}/${rows.length}; ${detail}`,
+      };
+    }
     if (route === "unrouted") return missing("server-probe","NOT_CONFIGURED",`У ${call.target} нет пары platform/executor в inventory. Глобальный host маршрут не выбирает.`);
     return (route === "powershell" ? new PowerShellExecutor() : new SSHExecutor()).execute(call);
   }
