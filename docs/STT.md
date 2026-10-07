@@ -1,9 +1,36 @@
 # STT
 
-Провайдер: `scripts/jarvis_stt.py` и `FasterWhisper` через `transcribeWav`. Модель по умолчанию multilingual `small`, не `small.en`.
+Основной провайдер: `faster-whisper` через `scripts/jarvis_stt.py` и `transcribeWav`.
 
-`JARVIS_STT_DEVICE=auto` пробует CUDA и при ошибке остаётся на CPU int8. Нет модуля или каталога модели: `NOT_CONFIGURED`, процесс не падает.
+По умолчанию рекомендуется multilingual `small`; для более мощного GPU можно использовать более крупную multilingual-модель. Англоязычные `.en` модели для русского не подходят.
 
-ffmpeg, если вход не WAV, вызывается только с фиксированными аргументами: mono, 16 kHz. Путь файла должен лежать в `JARVIS_AUDIO_DIR`.
+Распознавание настроено для коротких русских инфраструктурных команд:
 
-Лимиты: 8 МБ и 30 секунд. Временные файлы удаляются после распознавания и вычищаются старше часа.
+- beam search, по умолчанию `beam_size=5`;
+- Silero VAD внутри faster-whisper;
+- `condition_on_previous_text=false` для независимых коротких команд;
+- domain prompt с `UTP`, `Mailcow`, `MikroTik`, `WireGuard`, `SQL`, `1С`;
+- speech/no-speech threshold;
+- duration-weighted confidence;
+- дополнительная нормализация распространённых ошибок распознавания по inventory.
+
+Ключевые параметры:
+
+- `JARVIS_STT_PROVIDER=faster-whisper`
+- `JARVIS_STT_MODEL=small`
+- `JARVIS_STT_LANGUAGE=ru`
+- `JARVIS_STT_DEVICE=auto|cpu|cuda`
+- `JARVIS_STT_BEAM_SIZE=5`
+- `JARVIS_STT_VAD_SILENCE_MS=500`
+- `JARVIS_STT_VAD_PAD_MS=200`
+- `JARVIS_STT_NO_SPEECH_THRESHOLD=0.65`
+- `JARVIS_STT_MIN_CONFIDENCE=0.55`
+- `JARVIS_STT_PROMPT=...`
+- `JARVIS_STT_TIMEOUT_MS=90000`
+- `JARVIS_MODEL_DIR=./models`
+
+`JARVIS_STT_DEVICE=auto` пробует CUDA и при невозможности использует CPU int8. Явно запрошенный CUDA fail-closed, если CUDA недоступна.
+
+Входной Telegram OGG конвертируется фиксированными аргументами ffmpeg в mono PCM 16 kHz WAV. Максимальный вход — 8 МБ, максимальная длительность по умолчанию — 30 секунд.
+
+STT-модель и веса не хранятся в Git.
