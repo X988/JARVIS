@@ -4,9 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { closeIncident, correlate, createIncident, loadIncidents, openIncident, updateIncident } from "./incidents.ts";
-import { agentMayEscalate, llmMayReceiveSecretValues, providersFromEnv, routeModel } from "./llm.ts";
+import { agentMayEscalate, llmMayReceiveSecretValues, providersFromEnv as llmProvidersFromEnv, routeModel } from "./llm.ts";
 import { proposeCriticalInfrastructureFact, remember, searchMemory } from "./memory.ts";
-import { admitMonitoringAction, monitoringStatus, providersFromEnv } from "../monitoring.ts";
+import { admitMonitoringAction, monitoringStatus, providersFromEnv as monitoringProvidersFromEnv } from "../monitoring.ts";
 import { admitPlugin, loadPluginDir, validatePlugin } from "./plugins.ts";
 import {
   cancelTask,
@@ -408,7 +408,7 @@ describe("plugins, incidents, models", () => {
       JARVIS_DOCKER_HOST: "mail01.example",
     };
     assert.match(monitoringStatus(env), /alertmanager:ADAPTER_DISABLED/);
-    const ids = providersFromEnv(env).map((provider) => provider.id);
+    const ids = monitoringProvidersFromEnv(env).map((provider) => provider.id);
     assert.equal(ids.includes("alertmanager"), true);
     assert.equal(ids.includes("linux"), true);
     assert.equal(ids.includes("mailcow"), true);
@@ -431,7 +431,7 @@ describe("plugins, incidents, models", () => {
     assert.equal(routeModel("sensitive", env).local, true);
     assert.equal(agentMayEscalate(), false);
     assert.equal(llmMayReceiveSecretValues(), false);
-    const providers = providersFromEnv(env);
+    const providers = llmProvidersFromEnv(env);
     assert.equal(providers.find((item) => item.id === "openai")?.credentialRef, "OPENAI_API_KEY");
     assert.equal(JSON.stringify(providers).includes("secret-openai"), false);
   });
