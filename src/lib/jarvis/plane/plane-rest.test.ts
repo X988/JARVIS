@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { runAgents } from "./agents.ts";
+import { agentOutputMayCallExecutor, planAgents, runAgents } from "./agents.ts";
 import { deliverArtifact } from "./artifacts.ts";
 import { browserIntent } from "./browser.ts";
 import { codingChecks, codingDiff, prepareCodingWorktree, workerMayPublish, type GitRunner } from "./coding-worktree.ts";
@@ -65,6 +65,9 @@ describe("remaining project ideas", () => {
 
   it("keeps agents, MCP and the browser behind the same deny", () => {
     assert.equal(runAgents("critic", ["опасно"]).mayExecute, false);
+    assert.equal(planAgents("parallel").filter((step) => step.role === "analyst").length, 2);
+    assert.equal(planAgents("sequential")[1]?.dependsOn[0], "collect");
+    assert.equal(agentOutputMayCallExecutor(), false);
     assert.equal(admitMcp("unknown", ["docs.read"]).code, "DENY");
     assert.equal(admitMcp("docs.read", ["docs.read"]).code, "DISCOVERED");
     assert.equal(admitMcpRunbook("mailcow.health", "mail01", ["mailcow.health"]).code, "GATEWAY");
