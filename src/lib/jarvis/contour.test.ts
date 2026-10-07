@@ -10,7 +10,7 @@ import { FileOnecExecutor } from "./onec/executor.ts";
 import { planGitFlow } from "./onec/git-flow.ts";
 import { analyzeQuery } from "./onec/query.ts";
 import { onecValidationProbe, validateOnecExport, type ValidationRunner } from "./onec/validation.ts";
-import { SQLExecutor, ServerProbeExecutor, probeRoute } from "./server/adapters.ts";
+import { OnecFileAdapter, SQLExecutor, ServerProbeExecutor, probeRoute } from "./server/adapters.ts";
 import { takeToken } from "./rate-limit.ts";
 import { OPERATORS, evaluate } from "./model.ts";
 
@@ -206,6 +206,36 @@ describe("executor", () => {
     const result = executor.create("module", "Unsafe", "test");
     assert.equal(result.code, "DENY");
     assert.equal(fs.readdirSync(outside).length, 0);
+  });
+
+  it("uses server-derived terms for 1C reads and refuses query analysis without queryText", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-1c-adapter-"));
+    const module = path.join(root, "CommonModules", "jrvs_Test", "Ext", "Module.bsl");
+    fs.mkdirSync(path.dirname(module), { recursive: true });
+    fs.writeFileSync(
+      module,
+      "Процедура ОбработкаПроведения()\n\tСообщить(\"test\");\nКонецПроцедуры\n",
+    );
+
+    const adapter = new OnecFileAdapter({ JARVIS_ONEC_DUMP: root });
+    const read = adapter.execute({
+      runbook: "onec.read",
+      target: "jarvis-dev",
+      mode: "real",
+      parameters: { procedure: "ОбработкаПроведения" },
+    });
+    assert.equal(read.code, "OK");
+    assert.match(read.detail, /jrvs_Test/);
+
+    const query = adapter.execute({
+      runbook: "onec.query",
+      target: "jarvis-dev",
+      mode: "real",
+      parameters: { source: "МодульОбъекта" },
+    });
+    assert.equal(query.code, "NOT_CONFIGURED");
+    assert.equal(query.called, false);
+    assert.match(query.detail, /queryText/);
   });
 });
 
