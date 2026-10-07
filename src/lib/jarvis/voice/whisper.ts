@@ -119,10 +119,10 @@ export function sttProbe(env: NodeJS.ProcessEnv = process.env): {
   device: string;
   ready: boolean;
 } {
-  const provider = env.JARVIS_STT_PROVIDER || "faster-whisper";
+  const provider = env.JARVIS_STT_PROVIDER || "";
   const model = env.JARVIS_STT_MODEL || "small";
   const device = env.JARVIS_STT_DEVICE || "auto";
-  if (provider !== "faster-whisper") return { provider, model, device, ready: false };
+  if (provider !== "faster-whisper") return { provider: provider || "unset", model, device, ready: false };
   const python = env.JARVIS_PYTHON_BIN?.trim() || "python3";
   const imported = spawnSync(python, ["-c", "import faster_whisper"], { timeout: 8_000 });
   const modelRoot = env.JARVIS_MODEL_DIR || path.join(process.cwd(), "models");
