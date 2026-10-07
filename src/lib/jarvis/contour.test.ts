@@ -256,6 +256,7 @@ describe("locks, audit, git", () => {
     assert.equal(externalSinkLabel({}), "NOT_CONFIGURED");
     assert.equal(externalSinkLabel({ JARVIS_AUDIT_HTTP_URL: "http://127.0.0.1/audit" }), "http:OUTBOX");
     assert.equal(externalSinkLabel({ JARVIS_AUDIT_SYSLOG: "127.0.0.1:514" }), "syslog:ADAPTER_DISABLED");
+    assert.equal(externalSinkLabel({ JARVIS_AUDIT_HTTP_URL: "file:///tmp/audit" }), "http:INVALID");
     const windows = process.env.JARVIS_WINDOWS_HOST;
     const windowsMap = process.env.JARVIS_WINDOWS_TARGETS_JSON;
     const windowsUser = process.env.JARVIS_WINDOWS_USER;
