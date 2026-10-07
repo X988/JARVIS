@@ -94,7 +94,8 @@ function loadInventory(file = path.join(process.cwd(), "config", "jarvis", "inve
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid JARVIS inventory");
   const doc = parsed as Partial<InventoryFile>;
-  if (!Number.isInteger(doc.version) || (doc.version ?? 0) < 1 || !Array.isArray(doc.targets)) {
+  const version = doc.version;
+  if (typeof version !== "number" || !Number.isInteger(version) || version < 1 || !Array.isArray(doc.targets)) {
     throw new Error("Invalid JARVIS inventory");
   }
 
