@@ -1,20 +1,38 @@
-# Откуда взяты идеи
+# Источники архитектурных идей и лицензии
 
-Код из этих репозиториев в JARVIS не копировался. Ниже только идеи, которые реализованы своим кодом.
+JARVIS в этом репозитории остаётся самостоятельной реализацией. В текущем проходе исходный код четырёх внешних JARVIS-проектов не копировался: использовались только архитектурные идеи и публично описанное поведение.
 
-| Репозиторий | Лицензия | Идея | Код заимствован |
-|---|---|---|---|
-| [jackgladowsky/jarvis](https://github.com/jackgladowsky/jarvis) | MIT, Copyright (c) 2026 JARVIS contributors | Telegram как клиент, память, расписание, фоновые задачи, worktree, PR вместо push в main | нет |
-| [Axx33284/jarvis](https://github.com/Axx33284/jarvis) | файла LICENSE нет, поле license у GitHub пустое | Голос, Whisper, TTS, нормализация фразы, журнал отката локальных правок | нет. Без явной лицензии копирование запрещено |
-| [yontanbe/jarvis](https://github.com/yontanbe/jarvis) | MIT, Copyright (c) 2026 | Разные модели на разные задачи, несколько агентов без роста прав, поиск по своим заметкам, MCP только через шлюз | нет |
-| [sukeesh/Jarvis](https://github.com/sukeesh/Jarvis) | MIT, Copyright (c) 2017 Sukeesh | Простой манифест плагина без выдачи shell | нет |
+| Repository | Проверенная лицензия | Что использовано как идея | Заимствован код | Реализовано самостоятельно |
+| --- | --- | --- | --- | --- |
+| `jackgladowsky/jarvis` | MIT, Copyright (c) 2026 JARVIS contributors | Telegram по numeric ID, persistent memory/recall, scheduler/history, background workers, Git worktrees, PR/CI watcher, bounded artifact delivery, guarded browser workbench | Нет | Telegram transport, memory categories/search, scheduler controls, worker/job model, worktree policy, artifact guardrails, browser admission |
+| `Axx33284/jarvis` | **Явный LICENSE в репозитории не найден** | Voice-first UX, wake word/VAD, local STT/TTS, tool registry, undo journal, fail-closed safety gate | Нет. При неясных правах — только идеи | faster-whisper + Silero VAD, optional Piper TTS, barge-in primitives, Tool Registry поверх runbooks, file-only undo |
+| `yontanbe/jarvis` | MIT, Copyright (c) 2026 | Multi-LLM routing, multi-agent modes, RAG/knowledge base, deep research with sources, progress-oriented HUD, MCP layer | Нет | model-routing metadata без роста прав, agent modes, local RAG, source-required research, MCP admission через Gateway |
+| `sukeesh/Jarvis` | MIT, Copyright (c) 2017 Sukeesh | Простая plugin architecture и лёгкое добавление capability | Нет | schema-validated manifest с risk/permissions/targets/runbook и без автоматического shell |
 
-Не переносились игры, шутки и бытовые команды. Модель «фраза сразу становится shell» не переносилась ни из одного проекта.
+## Что сознательно не переносилось
 
-Второй проход добавил свои модули, не файлы из чужих репозиториев:
+Даже из MIT-проектов не переносились модели, несовместимые с корпоративным control plane:
 
-- jackgladowsky: контекст ответа и пересылки, выдача файла с запретом секрета и чужого пути, очередь задач, шаги coding worker до PR, запрет слияния в main.
-- Axx33284: журнал отката только для файла, черновик runbook без самоактивации. Whisper и TTS по-прежнему не вызываются.
-- yontanbe: поиск по локальным заметкам, режимы агентов без права исполнения, MCP только в шлюз, браузерное чтение без входа и оплаты, отчёт research только со источниками.
-- sukeesh: каталог json-манифестов. Плагин с shell по-прежнему отклоняется.
+- `LLM → arbitrary shell → production host`;
+- unrestricted Bash/PowerShell;
+- model-controlled approvals;
+- автоматический push/merge/deploy в `main`;
+- production credentials в prompt/context;
+- auto-heal от monitoring alert без policy/runbook;
+- игры, jokes, cocktails и другие consumer-команды.
 
+Главная архитектура остаётся:
+
+`Client → Authentication → STT → Intent → Constraints → Inventory → Policy → Runbook Registry → Approval → Execution Gateway → Executor → Verification → Audit`.
+
+Внешний plugin, MCP tool, worker, LLM или Telegram client не получает права вызывать executor напрямую.
+
+## Лицензионное решение
+
+MIT разрешает использование, изменение и распространение при сохранении copyright/permission notice в копиях или существенных частях кода.
+
+В этом проходе **код внешних репозиториев не копировался**, поэтому source-level notices для заимствованных фрагментов не требуются. Если позже будет принято решение перенести конкретный MIT-фрагмент, его происхождение и обязательный notice должны быть добавлены до merge.
+
+Для `Axx33284/jarvis` отсутствие явной лицензии трактуется как отсутствие разрешения на копирование. Используются только общие идеи, реализация написана независимо.
+
+Проверено: 2026-10-07.
