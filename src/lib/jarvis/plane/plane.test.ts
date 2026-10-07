@@ -114,10 +114,13 @@ describe("telegram and voice", () => {
         JARVIS_AUDIO_DIR: root,
         JARVIS_WHISPER_CPP_WRAPPER: "/opt/jarvis/bin/whisper-wrapper",
       },
-      (_executable, args) => ({
-        status: 0,
-        stdout: JSON.stringify({ text: "Проверь SQL", confidence: 0.88 }),
-      }),
+      (_executable, args) => {
+        assert.deepEqual(args, [path.join(root, "voice.wav")]);
+        return {
+          status: 0,
+          stdout: JSON.stringify({ text: "Проверь SQL", confidence: 0.88 }),
+        };
+      },
     );
     const hit = whisper.transcribe({ wavPath: path.join(root, "voice.wav") });
     assert.equal("provider" in hit ? hit.provider : "", "whisper-cpp");
