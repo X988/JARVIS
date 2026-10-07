@@ -26,14 +26,45 @@ function file(dir: string): string {
   return path.join(dir, "approvals.json");
 }
 
+function boundedInteger(
+  raw: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const value = Number(raw);
+  return Number.isFinite(value)
+    ? Math.max(min, Math.min(max, Math.trunc(value)))
+    : fallback;
+}
+
+function hasControlCharacters(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
+function validActorId(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= 8_192 &&
+    !hasControlCharacters(value)
+  );
+}
+
 function stringRecord(value: unknown): value is Record<string, string> {
   return Boolean(
     value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.entries(value as Record<string, unknown>).every(
-      ([key, item]) => /^[A-Za-z0-9_.:-]{1,96}$/.test(key) && typeof item === "string" && item.length <= 4_000,
-    ),
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      Object.entries(value as Record<string, unknown>).every(
+        ([key, item]) =>
+          /^[A-Za-z0-9_.:-]{1,96}$/.test(key) &&
+          typeof item === "string" &&
+          item.length <= 4_000,
+      ),
   );
 }
 
@@ -44,9 +75,19 @@ export function parameterHash(parts: {
   constraint: string;
   normalizedParameters: Record<string, string>;
 }): string {
-  const parameters = Object.entries(parts.normalizedParameters).sort(([left], [right]) => left.localeCompare(right));
+  const parameters = Object.entries(parts.normalizedParameters).sort(
+    ([left], [right]) => left.localeCompare(right),
+  );
   return createHash("sha256")
-    .update(JSON.stringify([parts.runbook, parts.target, parts.normalized, parts.constraint, parameters]))
+    .update(
+      JSON.stringify([
+        parts.runbook,
+        parts.target,
+        parts.normalized,
+        parts.constraint,
+        parameters,
+      ]),
+    )
     .digest("hex");
 }
 
@@ -57,7 +98,7 @@ function validApproval(value: unknown): value is ApprovalRecord {
     typeof row.id !== "string" ||
     !/^APPROVAL-[A-Z0-9-]{8,80}$/.test(row.id) ||
     typeof row.actorId !== "string" ||
-    !/^[A-Za-z0-9._:@-]{1,128}$/.test(row.actorId) ||
+    !validActorId(row.actorId) ||
     typeof row.runbook !== "string" ||
     !/^[a-z][a-z0-9.-]{1,95}$/.test(row.runbook) ||
     typeof row.target !== "string" ||
@@ -86,13 +127,16 @@ function validApproval(value: unknown): value is ApprovalRecord {
     return false;
   }
 
-  return row.parameterHash === parameterHash({
-    runbook: row.runbook,
-    target: row.target,
-    normalized: row.normalized,
-    constraint: row.constraint,
-    normalizedParameters: row.normalizedParameters,
-  });
+  return (
+    row.parameterHash ===
+    parameterHash({
+      runbook: row.runbook,
+      target: row.target,
+      normalized: row.normalized,
+      constraint: row.constraint,
+      normalizedParameters: row.normalizedParameters,
+    })
+  );
 }
 
 function readAll(dir: string): ApprovalRecord[] {
@@ -107,11 +151,16 @@ function readAll(dir: string): ApprovalRecord[] {
   if (!Array.isArray(parsed) || !parsed.every(validApproval)) {
     throw new Error("approval state has invalid records");
   }
-  return parsed.map((row) => ({ ...row, normalizedParameters: { ...row.normalizedParameters } }));
+  return parsed.map((row) => ({
+    ...row,
+    normalizedParameters: { ...row.normalizedParameters },
+  }));
 }
 
 function writeAll(dir: string, rows: ApprovalRecord[]): void {
-  if (!rows.every(validApproval)) throw new Error("refusing to persist invalid approval state");
+  if (!rows.every(validApproval)) {
+    throw new Error("refusing to persist invalid approval state");
+  }
   fs.mkdirSync(dir, { recursive: true });
   const target = file(dir);
   const next = `${target}.tmp`;
@@ -119,21 +168,59 @@ function writeAll(dir: string, rows: ApprovalRecord[]): void {
   fs.renameSync(next, target);
 }
 
-export function createApproval(dir: string, row: Omit<ApprovalRecord, "status" | "stage">): ApprovalRecord {
+function retainedApprovals(
+  rows: ApprovalRecord[],
+  now = Date.now(),
+  env: NodeJS.ProcessEnv = process.env,
+): ApprovalRecord[] {
+  const retentionMs = boundedInteger(
+    env.JARVIS_APPROVAL_RETENTION_MS,
+    30 * 24 * 60 * 60 * 1000,
+    60_000,
+    365 * 24 * 60 * 60 * 1000,
+  );
+  // The approval itself is unusable after expiresAt. Retention only controls
+  // how long that security evidence remains in this operational state file;
+  // the append-only audit remains the durable history.
+  return rows.filter((row) => now - row.expiresAt <= retentionMs);
+}
+
+function maxRecords(env: NodeJS.ProcessEnv = process.env): number {
+  return boundedInteger(
+    env.JARVIS_APPROVAL_MAX_RECORDS,
+    20_000,
+    100,
+    100_000,
+  );
+}
+
+export function createApproval(
+  dir: string,
+  row: Omit<ApprovalRecord, "status" | "stage">,
+): ApprovalRecord {
   const stored: ApprovalRecord = { ...row, stage: 1, status: "pending" };
   if (!validApproval(stored)) throw new Error("invalid approval record");
-  withStateLock(dir, () => writeAll(dir, [...readAll(dir), stored]));
+  withStateLock(dir, () => {
+    const rows = retainedApprovals(readAll(dir));
+    if (rows.length >= maxRecords()) {
+      throw new Error("approval state capacity reached");
+    }
+    writeAll(dir, [...rows, stored]);
+  });
   return stored;
 }
 
-export function findApproval(dir: string, id: string): ApprovalRecord | null {
+export function findApproval(
+  dir: string,
+  id: string,
+): ApprovalRecord | null {
   return readAll(dir).find((item) => item.id === id) ?? null;
 }
 
 export function saveApproval(dir: string, next: ApprovalRecord): void {
   if (!validApproval(next)) throw new Error("invalid approval record");
   withStateLock(dir, () => {
-    const rows = readAll(dir);
+    const rows = retainedApprovals(readAll(dir));
     const index = rows.findIndex((item) => item.id === next.id);
     if (index < 0) throw new Error("approval record not found");
     rows[index] = next;
