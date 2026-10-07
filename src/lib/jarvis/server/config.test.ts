@@ -90,5 +90,15 @@ describe("config", () => {
     assert.equal(status.database.state, "CONFIGURED");
     assert.equal(status.llm.state, "CONFIGURED");
     assert.equal(status.inventory.state, "OK");
+    assert.equal(status.onecValidation.state, "DEGRADED");
+    assert.match(status.onecValidation.detail, /level=FALLBACK_ONLY/);
+
+    const onec = componentStatus({
+      JARVIS_BSL_LS_CHECK_BIN: "/opt/jarvis/bin/check-bsl",
+      JARVIS_1CV8_DESIGNER_CHECK_BIN: "/opt/jarvis/bin/check-designer",
+      JARVIS_ONEC_TEST_DB_CHECK_BIN: "/opt/jarvis/bin/check-test-db",
+    });
+    assert.equal(onec.onecValidation.state, "CONFIGURED");
+    assert.match(onec.onecValidation.detail, /level=TEST_DATABASE_VERIFIED/);
   });
 });
