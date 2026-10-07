@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { withStateLock } from "./server/state-lock.ts";
 import type { AuditRow } from "./audit-log.ts";
@@ -47,20 +48,24 @@ export function loadAuditOutbox(dir?: string): AuditEnvelope[] {
   const rows: AuditEnvelope[] = [];
   for (const line of fs.readFileSync(file, "utf8").split("\n")) {
     if (!line.trim()) continue;
+    let item: AuditEnvelope;
     try {
-      const item = JSON.parse(line) as AuditEnvelope;
-      if (
-        item &&
-        typeof item.id === "string" &&
-        typeof item.queuedAt === "string" &&
-        item.row &&
-        Array.isArray(item.pending)
-      ) {
-        rows.push(item);
-      }
+      item = JSON.parse(line) as AuditEnvelope;
     } catch {
-      // Keep malformed source untouched; flush only works with validated rows.
+      throw new Error("audit outbox contains invalid JSON");
     }
+    if (
+      !item ||
+      typeof item.id !== "string" ||
+      !item.id ||
+      typeof item.queuedAt !== "string" ||
+      !item.row ||
+      !Array.isArray(item.pending) ||
+      item.pending.some((sink) => sink !== "http" && sink !== "loki" && sink !== "syslog")
+    ) {
+      throw new Error("audit outbox contains an invalid envelope");
+    }
+    rows.push(item);
   }
   return rows;
 }
@@ -68,7 +73,7 @@ export function loadAuditOutbox(dir?: string): AuditEnvelope[] {
 function rewriteOutbox(dir: string, rows: AuditEnvelope[]): void {
   const file = auditOutboxFile(dir);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const temp = file + ".tmp";
+  const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
   const body = rows.map((row) => JSON.stringify(row)).join("\n");
   fs.writeFileSync(temp, body ? body + "\n" : "");
   fs.renameSync(temp, file);
@@ -86,6 +91,11 @@ export function enqueueAuditDelivery(
   return withStateLock(dir, () => {
     const rows = loadAuditOutbox(dir);
     if (rows.some((item) => item.id === hash)) return false;
+    const rawMax = Number(env.JARVIS_AUDIT_MAX_BACKLOG ?? 10_000);
+    const maxBacklog = Number.isFinite(rawMax) ? Math.max(100, Math.min(100_000, Math.trunc(rawMax))) : 10_000;
+    if (rows.length >= maxBacklog) {
+      throw new Error("audit outbox backlog limit reached");
+    }
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(
       auditOutboxFile(dir),
@@ -117,6 +127,10 @@ async function postJson(
   } finally {
     clearTimeout(timer);
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function deliver(
@@ -171,12 +185,24 @@ export async function flushAuditOutbox(
   for (const envelope of snapshot) {
     const pending: AuditSinkId[] = [];
     for (const sink of envelope.pending) {
-      attempted += 1;
-      if (await deliver(sink, envelope.row, env, fetcher, timeoutMs)) delivered += 1;
-      else {
-        pending.push(sink);
+      const rawAttempts = Number(env.JARVIS_AUDIT_RETRY_ATTEMPTS ?? 3);
+      const attempts = Number.isFinite(rawAttempts) ? Math.max(1, Math.min(5, Math.trunc(rawAttempts))) : 3;
+      const rawBase = Number(env.JARVIS_AUDIT_RETRY_BASE_MS ?? 250);
+      const baseMs = Number.isFinite(rawBase) ? Math.max(10, Math.min(5_000, Math.trunc(rawBase))) : 250;
+      let ok = false;
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        attempted += 1;
+        if (await deliver(sink, envelope.row, env, fetcher, timeoutMs)) {
+          ok = true;
+          delivered += 1;
+          break;
+        }
         increment("jarvis_audit_delivery_failures_total");
+        if (attempt + 1 < attempts) {
+          await sleep(Math.min(10_000, baseMs * 2 ** attempt));
+        }
       }
+      if (!ok) pending.push(sink);
     }
     results.set(envelope.id, pending);
   }
