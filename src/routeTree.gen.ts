@@ -84,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/metrics': typeof MetricsRoute
   '/ready': typeof ReadyRoute
   '/status': typeof StatusRoute
+  '/api/agent': typeof ApiAgentRoute
   '/api/commands': typeof ApiCommandsRoute
   '/api/session': typeof ApiSessionRoute
   '/api/telegram': typeof ApiTelegramRoute
@@ -96,6 +97,7 @@ export interface FileRoutesByTo {
   '/metrics': typeof MetricsRoute
   '/ready': typeof ReadyRoute
   '/status': typeof StatusRoute
+  '/api/agent': typeof ApiAgentRoute
   '/api/commands': typeof ApiCommandsRoute
   '/api/session': typeof ApiSessionRoute
   '/api/telegram': typeof ApiTelegramRoute
@@ -109,6 +111,7 @@ export interface FileRoutesById {
   '/metrics': typeof MetricsRoute
   '/ready': typeof ReadyRoute
   '/status': typeof StatusRoute
+  '/api/agent': typeof ApiAgentRoute
   '/api/commands': typeof ApiCommandsRoute
   '/api/session': typeof ApiSessionRoute
   '/api/telegram': typeof ApiTelegramRoute
@@ -124,8 +127,6 @@ export interface FileRouteTypes {
     | '/ready'
     | '/status'
     | '/api/agent'
-    | '/api/agent'
-    | '/api/agent'
     | '/api/commands'
     | '/api/session'
     | '/api/telegram'
@@ -138,6 +139,7 @@ export interface FileRouteTypes {
     | '/metrics'
     | '/ready'
     | '/status'
+    | '/api/agent'
     | '/api/commands'
     | '/api/session'
     | '/api/telegram'
@@ -150,6 +152,7 @@ export interface FileRouteTypes {
     | '/metrics'
     | '/ready'
     | '/status'
+    | '/api/agent'
     | '/api/commands'
     | '/api/session'
     | '/api/telegram'
