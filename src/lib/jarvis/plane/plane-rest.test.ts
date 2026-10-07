@@ -8,7 +8,7 @@ import { deliverArtifact, resolveArtifactFile } from "./artifacts.ts";
 import { browserIntent, browserMaySubmitCredentials, browserPlan, readBrowserUrl } from "./browser.ts";
 import { codingChecks, codingDiff, prepareCodingWorktree, workerMayPublish, type GitRunner } from "./coding-worktree.ts";
 import { activateRunbook, proposeRunbook } from "./drafts.ts";
-import { cancelJob, enqueue, planForBranch, prMayLandOnMain } from "./jobs.ts";
+import { cancelJob, enqueue, loadJobs, planForBranch, prMayLandOnMain } from "./jobs.ts";
 import { admitMcp, admitMcpRunbook } from "./mcp.ts";
 import { admitPlugin, loadPluginDir } from "./plugins.ts";
 import { indexFolder, searchChunks } from "./rag.ts";
