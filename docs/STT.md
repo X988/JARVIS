@@ -12,7 +12,8 @@
 - domain prompt с `UTP`, `Mailcow`, `MikroTik`, `WireGuard`, `SQL`, `1С`;
 - speech/no-speech threshold;
 - duration-weighted confidence;
-- дополнительная нормализация распространённых ошибок распознавания по inventory.
+- fail-closed language gate: уверенно распознанный неожиданный язык не превращается в команду;
+- дополнительная нормализация распространённых ошибок распознавания по inventory и инфраструктурным терминам SQL, 1С, DC01, SRV1C01, SQL01, RB5009.
 
 Ключевые параметры:
 
@@ -25,6 +26,7 @@
 - `JARVIS_STT_VAD_PAD_MS=200`
 - `JARVIS_STT_NO_SPEECH_THRESHOLD=0.65`
 - `JARVIS_STT_MIN_CONFIDENCE=0.55`
+- `JARVIS_STT_LANGUAGE_MIN_CONFIDENCE=0.55`
 - `JARVIS_STT_PROMPT=...`
 - `JARVIS_STT_TIMEOUT_MS=90000`
 - `JARVIS_MODEL_DIR=./models`
