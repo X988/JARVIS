@@ -1,5 +1,10 @@
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { WATCH_ALERTS, WATCH_HOSTS, type WatchLevel } from "./watch.ts";
 import { admitRegisteredTool } from "./plane/tool-registry.ts";
+
+const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../scripts/jarvis_monitor.mjs");
 
 export type MonitorEvent = {
   source: string;
@@ -19,11 +24,17 @@ export interface MonitoringProvider {
 }
 
 export type MonitoringAction = "observe" | "explain" | "suggest" | "self-heal";
+export type MonitoringStatus = "NOT_CONFIGURED" | "CONFIGURED_UNPROBED" | "OK" | "CONNECT_FAILED";
 
 export type MonitoringAdmission =
   | { code: "ALLOW"; action: "observe" | "explain" | "suggest" }
   | { code: "GATEWAY"; action: "self-heal"; runbook: string; target: string }
   | { code: "DENY"; action: MonitoringAction; reason: string };
+
+export type MonitorRunner = (
+  provider: "prometheus" | "zabbix" | "alertmanager",
+  env: NodeJS.ProcessEnv,
+) => { code: string; detail: string; events: MonitorEvent[] };
 
 export function admitMonitoringAction(
   action: MonitoringAction,
@@ -68,45 +79,109 @@ export class DemoMonitoringProvider implements MonitoringProvider {
   }
 }
 
-export class PrometheusProvider implements MonitoringProvider {
-  readonly id = "prometheus";
-  readonly mode = "live" as const;
-  status(env: NodeJS.ProcessEnv = process.env): "NOT_CONFIGURED" | "ADAPTER_DISABLED" {
-    return env.JARVIS_PROMETHEUS_URL ? "ADAPTER_DISABLED" : "NOT_CONFIGURED";
-  }
-  collect(): MonitorEvent[] {
-    return [];
-  }
-}
-
-export class ZabbixProvider implements MonitoringProvider {
-  readonly id = "zabbix";
-  readonly mode = "live" as const;
-  status(env: NodeJS.ProcessEnv = process.env): "NOT_CONFIGURED" | "ADAPTER_DISABLED" {
-    return env.JARVIS_ZABBIX_URL ? "ADAPTER_DISABLED" : "NOT_CONFIGURED";
-  }
-  collect(): MonitorEvent[] {
-    return [];
+function configuredUrl(value: string | undefined): boolean {
+  if (!value?.trim()) return false;
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password && !url.hash;
+  } catch {
+    return false;
   }
 }
 
-export class AlertmanagerProvider implements MonitoringProvider {
-  readonly id = "alertmanager";
-  readonly mode = "live" as const;
-  status(env: NodeJS.ProcessEnv = process.env): "NOT_CONFIGURED" | "ADAPTER_DISABLED" {
-    return env.JARVIS_ALERTMANAGER_URL ? "ADAPTER_DISABLED" : "NOT_CONFIGURED";
+function runMonitor(
+  provider: "prometheus" | "zabbix" | "alertmanager",
+  env: NodeJS.ProcessEnv,
+): { code: string; detail: string; events: MonitorEvent[] } {
+  const timeoutRaw = Number(env.JARVIS_MONITOR_TIMEOUT_MS ?? 10_000);
+  const timeout = Number.isFinite(timeoutRaw) ? Math.max(2_000, Math.min(70_000, Math.trunc(timeoutRaw) + 5_000)) : 15_000;
+  const run = spawnSync(process.execPath, [script, provider], {
+    encoding: "utf8",
+    timeout,
+    env: { ...process.env, ...env },
+  });
+  const error = run.error as NodeJS.ErrnoException | undefined;
+  if (error?.code === "ETIMEDOUT") return { code: "CONNECT_FAILED", detail: "monitoring timeout", events: [] };
+  if (error?.code === "ENOENT" || !run.stdout?.trim()) return { code: "CONNECT_FAILED", detail: "monitor adapter не запустился", events: [] };
+  try {
+    const body = JSON.parse(run.stdout) as { code?: string; detail?: string; events?: MonitorEvent[] };
+    const events = Array.isArray(body.events)
+      ? body.events.filter(
+          (event) =>
+            event &&
+            typeof event.source === "string" &&
+            typeof event.target === "string" &&
+            typeof event.title === "string" &&
+            (event.severity === "ok" || event.severity === "warn" || event.severity === "bad"),
+        ).slice(0, 100)
+      : [];
+    return { code: body.code ?? "CONNECT_FAILED", detail: body.detail ?? "нет ответа", events };
+  } catch {
+    return { code: "CONNECT_FAILED", detail: "monitor response не разобран", events: [] };
   }
+}
+
+abstract class LiveMonitoringProvider implements MonitoringProvider {
+  abstract readonly id: "prometheus" | "zabbix" | "alertmanager";
+  readonly mode = "live" as const;
+  protected readonly env: NodeJS.ProcessEnv;
+  protected readonly runner: MonitorRunner;
+
+  constructor(env: NodeJS.ProcessEnv = process.env, runner: MonitorRunner = runMonitor) {
+    this.env = env;
+    this.runner = runner;
+  }
+
+  abstract status(): MonitoringStatus;
+
   collect(): MonitorEvent[] {
-    return [];
+    if (this.status() === "NOT_CONFIGURED") return [];
+    return this.runner(this.id, this.env).events;
+  }
+
+  probe(): { status: MonitoringStatus; detail: string; events: MonitorEvent[] } {
+    if (this.status() === "NOT_CONFIGURED") return { status: "NOT_CONFIGURED", detail: "provider не настроен", events: [] };
+    const result = this.runner(this.id, this.env);
+    return {
+      status: result.code === "OK" ? "OK" : "CONNECT_FAILED",
+      detail: result.detail,
+      events: result.events,
+    };
+  }
+}
+
+export class PrometheusProvider extends LiveMonitoringProvider {
+  readonly id = "prometheus" as const;
+  status(): MonitoringStatus {
+    return configuredUrl(this.env.JARVIS_PROMETHEUS_URL) ? "CONFIGURED_UNPROBED" : "NOT_CONFIGURED";
+  }
+}
+
+export class ZabbixProvider extends LiveMonitoringProvider {
+  readonly id = "zabbix" as const;
+  status(): MonitoringStatus {
+    return configuredUrl(this.env.JARVIS_ZABBIX_URL) && Boolean(this.env.JARVIS_ZABBIX_TOKEN?.trim())
+      ? "CONFIGURED_UNPROBED"
+      : "NOT_CONFIGURED";
+  }
+}
+
+export class AlertmanagerProvider extends LiveMonitoringProvider {
+  readonly id = "alertmanager" as const;
+  status(): MonitoringStatus {
+    return configuredUrl(this.env.JARVIS_ALERTMANAGER_URL) ? "CONFIGURED_UNPROBED" : "NOT_CONFIGURED";
   }
 }
 
 export function monitoringStatus(env: NodeJS.ProcessEnv = process.env): string {
   const live = [
-    env.JARVIS_PROMETHEUS_URL ? "prometheus:ADAPTER_DISABLED" : "",
-    env.JARVIS_ZABBIX_URL ? "zabbix:ADAPTER_DISABLED" : "",
-    env.JARVIS_ALERTMANAGER_URL ? "alertmanager:ADAPTER_DISABLED" : "",
-  ].filter(Boolean);
+    new PrometheusProvider(env),
+    new ZabbixProvider(env),
+    new AlertmanagerProvider(env),
+  ]
+    .map((provider) => [provider.id, provider.status()] as const)
+    .filter(([, status]) => status !== "NOT_CONFIGURED")
+    .map(([id, status]) => `${id}:${status}`);
   return live.length === 0 ? "MONITORING_NOT_CONFIGURED" : live.join(",");
 }
 
@@ -125,11 +200,11 @@ function configured(env: Record<string, string | undefined>, ...keys: string[]):
   return keys.some((key) => Boolean(env[key]?.trim()));
 }
 
-export function providersFromEnv(env: Record<string, string | undefined> = process.env): MonitoringProvider[] {
+export function providersFromEnv(env: NodeJS.ProcessEnv = process.env): MonitoringProvider[] {
   const live: MonitoringProvider[] = [];
-  if (env.JARVIS_PROMETHEUS_URL) live.push(new PrometheusProvider());
-  if (env.JARVIS_ZABBIX_URL) live.push(new ZabbixProvider());
-  if (env.JARVIS_ALERTMANAGER_URL) live.push(new AlertmanagerProvider());
+  if (new PrometheusProvider(env).status() !== "NOT_CONFIGURED") live.push(new PrometheusProvider(env));
+  if (new ZabbixProvider(env).status() !== "NOT_CONFIGURED") live.push(new ZabbixProvider(env));
+  if (new AlertmanagerProvider(env).status() !== "NOT_CONFIGURED") live.push(new AlertmanagerProvider(env));
   if (configured(env, "JARVIS_WINDOWS_HOST", "JARVIS_WINDOWS_TARGETS_JSON")) live.push(new UnconfiguredProvider("windows"));
   if (configured(env, "JARVIS_SSH_HOST", "JARVIS_SSH_TARGETS_JSON")) live.push(new UnconfiguredProvider("linux"));
   if (env.JARVIS_SQL_HOST) live.push(new UnconfiguredProvider("sql"));
