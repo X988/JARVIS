@@ -136,11 +136,16 @@ function localClock(now: Date, timezone: string): LocalClock | null {
   }
 }
 
-function cronMatch(field: string, value: number, min: number, max: number): boolean {
+function cronFieldValid(field: string, min: number, max: number): boolean {
   if (field === "*") return true;
   if (!/^\d+$/.test(field)) return false;
   const expected = Number(field);
-  return expected >= min && expected <= max && expected === value;
+  return expected >= min && expected <= max;
+}
+
+function cronMatch(field: string, value: number, min: number, max: number): boolean {
+  if (!cronFieldValid(field, min, max)) return false;
+  return field === "*" || Number(field) === value;
 }
 
 function recurringDue(task: ScheduledTask, now: Date): boolean {
@@ -181,13 +186,20 @@ export function createOneTimeTask(input: {
   runAt: string;
   timezone?: string;
 }): ScheduledTask | null {
-  if (!/^[a-zA-Z0-9._:-]{1,80}$/.test(input.id) || !input.text.trim() || !Number.isFinite(Date.parse(input.runAt))) {
+  const timezone = input.timezone || "UTC";
+  if (
+    !/^[a-zA-Z0-9._:-]{1,80}$/.test(input.id) ||
+    !input.text.trim() ||
+    input.text.length > 4_000 ||
+    !Number.isFinite(Date.parse(input.runAt)) ||
+    !localClock(new Date(0), timezone)
+  ) {
     return null;
   }
   return {
     id: input.id,
     text: input.text.trim(),
-    timezone: input.timezone || "UTC",
+    timezone,
     runAt: new Date(input.runAt).toISOString(),
     status: "active",
     history: [],
@@ -212,11 +224,11 @@ export function createRecurringTask(input: {
   const parts = candidate.cron?.split(/\s+/) ?? [];
   if (parts.length !== 5) return null;
   const probes = [
-    cronMatch(parts[0], 0, 0, 59) || parts[0] === "*",
-    cronMatch(parts[1], 0, 0, 23) || parts[1] === "*",
-    cronMatch(parts[2], 1, 1, 31) || parts[2] === "*",
-    cronMatch(parts[3], 1, 1, 12) || parts[3] === "*",
-    cronMatch(parts[4], 0, 0, 6) || parts[4] === "*",
+    cronFieldValid(parts[0], 0, 59),
+    cronFieldValid(parts[1], 0, 23),
+    cronFieldValid(parts[2], 1, 31),
+    cronFieldValid(parts[3], 1, 12),
+    cronFieldValid(parts[4], 0, 6),
   ];
   return probes.every(Boolean) ? candidate : null;
 }
