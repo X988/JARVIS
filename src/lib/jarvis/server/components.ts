@@ -38,19 +38,21 @@ export function componentStatus(env: NodeJS.ProcessEnv = process.env): Record<st
   let activeScheduled = 0;
   let jobs = 0;
   let runningJobs = 0;
+  let schedulerHealthy = true;
+  let workerHealthy = true;
   try {
     const tasks = loadTasks(dir);
     scheduled = tasks.length;
     activeScheduled = tasks.filter((task) => task.status === "active").length;
   } catch {
-    // Passive readiness reports degraded state below.
+    schedulerHealthy = false;
   }
   try {
     const queue = loadJobs(dir);
     jobs = queue.length;
     runningJobs = queue.filter((job) => job.status === "running").length;
   } catch {
-    // Passive readiness reports degraded state below.
+    workerHealthy = false;
   }
 
   const actors = actorsFromEnv(env);
@@ -80,12 +82,16 @@ export function componentStatus(env: NodeJS.ProcessEnv = process.env): Record<st
       detail: auditSink,
     },
     scheduler: {
-      state: "OK",
-      detail: `tasks=${scheduled}; active=${activeScheduled}`,
+      state: schedulerHealthy ? "OK" : "DEGRADED",
+      detail: schedulerHealthy
+        ? `tasks=${scheduled}; active=${activeScheduled}`
+        : "schedule state invalid",
     },
     worker: {
-      state: "OK",
-      detail: `jobs=${jobs}; running=${runningJobs}`,
+      state: workerHealthy ? "OK" : "DEGRADED",
+      detail: workerHealthy
+        ? `jobs=${jobs}; running=${runningJobs}`
+        : "worker state invalid",
     },
     telegram: telegramConfigured
       ? { state: Object.keys(actors).length > 0 ? "CONFIGURED" : "DEGRADED", detail: `actors=${Object.keys(actors).length}` }
