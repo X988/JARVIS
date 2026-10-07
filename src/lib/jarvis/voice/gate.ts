@@ -30,6 +30,15 @@ export const SPOKEN: SpokenAlias[] = [
   { from: "вайр гард", to: "wireguard" },
   { from: "ваер гард", to: "wireguard" },
   { from: "эс кью эль", to: "sql" },
+  { from: "эс ку эль", to: "sql" },
+  { from: "скуэль", to: "sql" },
+  { from: "один эс", to: "1с" },
+  { from: "один с", to: "1с" },
+  { from: "диси ноль один", to: "dc01" },
+  { from: "ди си ноль один", to: "dc01" },
+  { from: "эр би пять тысяч девять", to: "rb5009" },
+  { from: "эр би пять ноль ноль девять", to: "rb5009" },
+  { from: "эс кью эль", to: "sql" },
   { from: "эскьюэль", to: "sql" },
   { from: "сиквел", to: "sql" },
   { from: "один эс", to: "1с" },
@@ -174,6 +183,7 @@ export function voiceLine(
   if (code === "POLICY_DENIED") return "Отказ. Политика безопасности это не разрешает.";
   if (code === "APPROVAL_REQUIRED") return approvalId ? "Нужно подтверждение. Код заявки отправил текстом." : "Нужно подтверждение. Сам ничего не запускаю.";
   if (code === "CLARIFY" || code === "STT_LOW_CONFIDENCE") return "Не расслышал достаточно уверенно. Повторите команду чуть медленнее.";
+  if (code === "STT_LANGUAGE_MISMATCH") return "Распознал другой язык. Повторите команду на настроенном языке или переключите язык распознавания.";
   if (code === "NO_SPEECH") return "Речь не распознана. Ничего не запускал.";
   if (code === "AUDIO_DECODE_FAILED") return "Не удалось открыть голосовое сообщение. Ничего не запускал.";
   if (code === "EMPTY") return "Голосовое сообщение пустое. Ничего не запускал.";
