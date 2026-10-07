@@ -30,6 +30,14 @@ export type MemorySearchOptions = {
   until?: string;
 };
 
+const MEMORY_KINDS = new Set<MemoryKind>([
+  "conversation",
+  "infrastructure",
+  "incident",
+  "procedure",
+  "development",
+  "preference",
+]);
 const SECRET =
   /(?:password|парол|credential|secret|token|токен|api[_ -]?key|BEGIN (?:RSA |OPENSSH )?PRIVATE KEY)\s*[:=]?/i;
 const CRITICAL_INFRA =
@@ -40,12 +48,22 @@ export function memoryFile(dir: string): string {
   return path.join(dir, "memory.jsonl");
 }
 
-function validNote(note: MemoryNote): boolean {
+function validNote(value: unknown): value is MemoryNote {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const note = value as Partial<MemoryNote>;
   return (
+    typeof note.id === "string" &&
     /^[A-Za-z0-9._:-]{1,96}$/.test(note.id) &&
+    typeof note.kind === "string" &&
+    MEMORY_KINDS.has(note.kind as MemoryKind) &&
+    typeof note.at === "string" &&
+    Number.isFinite(Date.parse(note.at)) &&
+    typeof note.source === "string" &&
     Boolean(note.source.trim()) &&
+    note.source.length <= 500 &&
+    typeof note.text === "string" &&
     Boolean(note.text.trim()) &&
-    Number.isFinite(Date.parse(note.at))
+    note.text.length <= 20_000
   );
 }
 
