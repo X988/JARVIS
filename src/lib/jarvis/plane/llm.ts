@@ -29,6 +29,16 @@ function modelFor(id: LLMProviderId, raw: string | undefined): string {
   return "unconfigured";
 }
 
+function routedModel(
+  id: LLMProviderId,
+  explicit: string | undefined,
+  env: NodeJS.ProcessEnv,
+): string {
+  if (explicit?.trim()) return explicit.trim();
+  if (id === "unconfigured") return "unconfigured";
+  return modelFor(id, env[`JARVIS_${id.toUpperCase()}_MODEL`]);
+}
+
 export function providerDescriptor(
   id: LLMProviderId,
   model: string,
@@ -59,22 +69,22 @@ export function providersFromEnv(env: NodeJS.ProcessEnv = process.env): LLMProvi
 function routed(job: ModelJob, env: NodeJS.ProcessEnv): { id: LLMProviderId; model: string } {
   if (job === "sensitive") {
     const local = providerId(env.JARVIS_LLM_SENSITIVE_PROVIDER || (env.JARVIS_LLM_LOCAL === "1" ? "ollama" : undefined));
-    return { id: local, model: modelFor(local, env.JARVIS_LLM_SENSITIVE_MODEL) };
+    return { id: local, model: routedModel(local, env.JARVIS_LLM_SENSITIVE_MODEL, env) };
   }
   if (job === "coding") {
     const id = providerId(env.JARVIS_LLM_CODING_PROVIDER || env.JARVIS_LLM_CODING);
-    return { id, model: modelFor(id, env.JARVIS_LLM_CODING_MODEL) };
+    return { id, model: routedModel(id, env.JARVIS_LLM_CODING_MODEL, env) };
   }
   if (job === "research") {
     const id = providerId(env.JARVIS_LLM_RESEARCH_PROVIDER || env.JARVIS_LLM_CODING_PROVIDER);
-    return { id, model: modelFor(id, env.JARVIS_LLM_RESEARCH_MODEL || env.JARVIS_LLM_CODING_MODEL) };
+    return { id, model: routedModel(id, env.JARVIS_LLM_RESEARCH_MODEL || env.JARVIS_LLM_CODING_MODEL, env) };
   }
   if (job === "critic") {
     const id = providerId(env.JARVIS_LLM_CRITIC_PROVIDER || env.JARVIS_LLM_CODING_PROVIDER);
-    return { id, model: modelFor(id, env.JARVIS_LLM_CRITIC_MODEL || env.JARVIS_LLM_CODING_MODEL) };
+    return { id, model: routedModel(id, env.JARVIS_LLM_CRITIC_MODEL || env.JARVIS_LLM_CODING_MODEL, env) };
   }
   const id = providerId(env.JARVIS_LLM_INTENT_PROVIDER || env.JARVIS_LLM_INTENT);
-  return { id, model: modelFor(id, env.JARVIS_LLM_INTENT_MODEL) };
+  return { id, model: routedModel(id, env.JARVIS_LLM_INTENT_MODEL, env) };
 }
 
 export function routeModel(
