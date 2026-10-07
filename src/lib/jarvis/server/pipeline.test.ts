@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { handleCommand, handleSession } from "./http.ts";
 import { processCommand, type ExecCall } from "./pipeline.ts";
+import { evaluateRuntimePolicy, maintenanceWindowOpen } from "./policy.ts";
 import type { Session } from "./session.ts";
 
 const now = new Date("2026-10-07T08:00:00Z");
@@ -293,5 +294,35 @@ describe("command http", () => {
     assert.equal(backup.trace.mode, "dry-run");
     assert.equal(backup.trace.risk, 2);
     assert.equal(backup.executionCalled, false);
+  });
+});
+
+
+describe("extended policy gates", () => {
+  it("keeps dry-run-only actions out of mock and real", () => {
+    assert.equal(evaluateRuntimePolicy("DRY_RUN_ONLY", { mode: "dry-run" }).code, "ALLOW");
+    assert.equal(evaluateRuntimePolicy("DRY_RUN_ONLY", { mode: "mock" }).code, "DENY");
+    assert.equal(evaluateRuntimePolicy("DRY_RUN_ONLY", { mode: "real" }).code, "DENY");
+  });
+
+  it("requires explicit server-side elevation", () => {
+    assert.equal(evaluateRuntimePolicy("ELEVATION_REQUIRED", { mode: "real" }).code, "DENY");
+    assert.equal(
+      evaluateRuntimePolicy("ELEVATION_REQUIRED", { mode: "real", elevated: true }).code,
+      "ALLOW",
+    );
+  });
+
+  it("evaluates a Kyiv maintenance window including an overnight range", () => {
+    const env = { JARVIS_TIMEZONE: "Europe/Kyiv", JARVIS_MAINTENANCE_WINDOW: "22:00-06:00" };
+    assert.equal(maintenanceWindowOpen(new Date("2026-10-07T20:30:00Z"), env), true);
+    assert.equal(maintenanceWindowOpen(new Date("2026-10-07T08:00:00Z"), env), false);
+    assert.equal(
+      evaluateRuntimePolicy("MAINTENANCE_WINDOW_REQUIRED", {
+        mode: "real",
+        maintenanceWindow: false,
+      }).code,
+      "DENY",
+    );
   });
 });
