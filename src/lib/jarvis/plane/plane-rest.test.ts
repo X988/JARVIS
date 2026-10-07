@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { agentOutputMayCallExecutor, planAgents, runAgents } from "./agents.ts";
-import { deliverArtifact } from "./artifacts.ts";
+import { deliverArtifact, resolveArtifactFile } from "./artifacts.ts";
 import { browserIntent, browserMaySubmitCredentials, browserPlan, readBrowserUrl } from "./browser.ts";
 import { codingChecks, codingDiff, prepareCodingWorktree, workerMayPublish, type GitRunner } from "./coding-worktree.ts";
 import { activateRunbook, proposeRunbook } from "./drafts.ts";
@@ -28,11 +28,30 @@ describe("remaining project ideas", () => {
     assert.match(telegramContext({ updateId: 1, userId: 1, replyTo: "9", forwardedFromId: 4, documentName: "a.txt", imageFileId: "i", progress: "typing" }), /reply:9/);
   });
 
-  it("refuses a secret and a path outside the outbox", () => {
+  it("refuses secrets, sensitive names, traversal and artifact symlink escapes", () => {
     const root = dir();
     assert.equal(deliverArtifact({ root, relative: "../key.txt", bytes: 10, text: "ok" }).ok, false);
     assert.equal(deliverArtifact({ root, relative: "diff.patch", bytes: 20, text: "password=secret" }).ok, false);
+    assert.equal(deliverArtifact({ root, relative: "diff.patch", bytes: 20, text: "Authorization=BearerValue123456" }).ok, false);
+    assert.equal(deliverArtifact({ root, relative: ".env", bytes: 20, text: "safe" }).ok, false);
+    assert.equal(
+      deliverArtifact({
+        root,
+        relative: "late-secret.log",
+        bytes: 70_100,
+        text: "a".repeat(70_000) + "\ntoken=live-token-value-12345",
+      }).ok,
+      false,
+    );
     assert.equal(deliverArtifact({ root, relative: "diff.patch", bytes: 20, text: "только diff" }).ok, true);
+
+    const outsideDir = dir();
+    const outside = path.join(outsideDir, "outside.txt");
+    fs.writeFileSync(outside, "external");
+    fs.symlinkSync(outside, path.join(root, "report.txt"));
+    const escaped = resolveArtifactFile(root, "report.txt");
+    assert.equal(escaped.ok, false);
+    if (!escaped.ok) assert.equal(escaped.code, "PATH");
   });
 
   it("does not undo a reboot and does not activate a draft", () => {
