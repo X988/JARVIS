@@ -54,8 +54,11 @@ export class RouterOSExecutor implements Executor { readonly type = "routeros" a
 export class DockerExecutor implements Executor { readonly type = "docker" as const; execute(call: ExecCall): ExecResult { return runMailcow(call); } }
 export class OnecFileAdapter implements Executor {
   readonly type = "onec-file" as const;
+  private readonly env: NodeJS.ProcessEnv;
 
-  constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
+  constructor(env: NodeJS.ProcessEnv = process.env) {
+    this.env = env;
+  }
 
   execute(call: ExecCall): ExecResult {
     if (call.runbook === "onec.exec" || call.runbook === "onec.load") {
