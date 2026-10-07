@@ -161,7 +161,8 @@ export function processCommand(input: {
   const now = input.now ?? new Date();
   const mode = modeOf(input.mode);
   const requestId = input.requestId || randomUUID();
-  const stored = rememberRequest(input.stateDir, requestId, () => runOnce({ ...input, requestId, now, mode }));
+  const actorKey = `${input.session?.accountId ?? "anonymous"}:${requestId}`;
+  const stored = rememberRequest(input.stateDir, actorKey, () => runOnce({ ...input, requestId, now, mode }));
   if (stored.duplicate) return { ...stored.value, duplicate: true };
   return stored.value;
 

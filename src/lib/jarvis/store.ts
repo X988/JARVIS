@@ -76,10 +76,8 @@ type JarvisState = {
   tick: (ts: number) => void;
 };
 
-let n = 0;
 function uid(prefix: string): string {
-  n += 1;
-  return `${prefix}-${n}`;
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 function paramsOf(decision: Decision): string {

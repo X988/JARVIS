@@ -125,6 +125,15 @@ describe("server pipeline", () => {
     assert.equal(calls, 1);
   });
 
+  it("does not replay one actor's command for another actor with the same request id", () => {
+    const stateDir = freshDir();
+    const first = run("Проверь сервер", { stateDir, requestId: "shared-id" });
+    const second = run("Удали базу utp", { stateDir, requestId: "shared-id", session: stranger });
+    assert.equal(first.code, "OK");
+    assert.equal(second.code, "ACTOR_DENIED");
+    assert.notEqual(second.trace.runbook, first.trace.runbook);
+  });
+
   it("expires an approval and invalidates it when server-normalized parameters change", () => {
     const stateDir = freshDir();
     const command = "Сделай резервную копию базы utp";
