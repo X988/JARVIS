@@ -91,6 +91,53 @@ describe("telegram transport", () => {
     assert.equal(fs.readFileSync(path.join(inbound, names[0]), "utf8"), "untrusted text");
   });
 
+  it("cleans expired inbound attachments and removes inbound symlinks without touching their targets", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-tg-retention-"));
+    const inbound = path.join(root, "inbound");
+    fs.mkdirSync(inbound, { recursive: true });
+    const old = path.join(inbound, "old.txt");
+    fs.writeFileSync(old, "old");
+    const oldTime = new Date(Date.now() - 120_000);
+    fs.utimesSync(old, oldTime, oldTime);
+
+    const outside = path.join(root, "outside.txt");
+    fs.writeFileSync(outside, "keep");
+    const link = path.join(inbound, "link.txt");
+    fs.symlinkSync(outside, link);
+
+    const result = await dispatchTelegram(
+      {
+        update_id: 61,
+        message: {
+          from: { id: 100842 },
+          chat: { id: 100842 },
+          document: { file_id: "doc-new", file_name: "new.txt", file_size: 3 },
+        },
+      },
+      {
+        stateDir: root,
+        actors,
+        env: {
+          JARVIS_TELEGRAM_INBOUND_RETENTION_MS: "60000",
+          JARVIS_TELEGRAM_INBOUND_MAX_FILES: "10",
+        },
+        api: {
+          getFile: async () => "documents/new.txt",
+          download: async () => Buffer.from("new"),
+          sendMessage: async () => true,
+        },
+      },
+    );
+
+    assert.equal(result.code, "ATTACHMENT_STORED");
+    assert.equal(fs.existsSync(old), false);
+    assert.equal(fs.existsSync(link), false);
+    assert.equal(fs.readFileSync(outside, "utf8"), "keep");
+    const names = fs.readdirSync(inbound);
+    assert.equal(names.length, 1);
+    assert.match(names[0] ?? "", /^61-/);
+  });
+
   it("delivers only bounded non-secret outbound artifacts", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-out-"));
     fs.writeFileSync(path.join(root, "report.txt"), "safe report");
