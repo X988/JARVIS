@@ -29,6 +29,17 @@ export const SPOKEN: SpokenAlias[] = [
   { from: "вайргард", to: "wireguard" },
   { from: "вайр гард", to: "wireguard" },
   { from: "ваер гард", to: "wireguard" },
+  { from: "эс кью эль", to: "sql" },
+  { from: "эскьюэль", to: "sql" },
+  { from: "сиквел", to: "sql" },
+  { from: "один эс", to: "1с" },
+  { from: "один c", to: "1с" },
+  { from: "ван эс", to: "1с" },
+  { from: "диси ноль один", to: "dc01" },
+  { from: "диси один", to: "dc01" },
+  { from: "эс эр ви один эс ноль один", to: "srv1c01" },
+  { from: "эс кью эль ноль один", to: "sql01" },
+  { from: "эр би пять тысяч девять", to: "rb5009" },
 ];
 
 export function classifyPcm(samples: Int16Array, sampleRate = 16_000): VoiceKind {
