@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { closeIncident, correlate, createIncident, loadIncidents, openIncident, updateIncident } from "./incidents.ts";
-import { agentMayEscalate, routeModel } from "./llm.ts";
+import { agentMayEscalate, llmMayReceiveSecretValues, providersFromEnv, routeModel } from "./llm.ts";
 import { proposeCriticalInfrastructureFact, remember, searchMemory } from "./memory.ts";
 import { admitMonitoringAction, monitoringStatus, providersFromEnv } from "../monitoring.ts";
 import { admitPlugin, loadPluginDir, validatePlugin } from "./plugins.ts";
@@ -414,8 +414,25 @@ describe("plugins, incidents, models", () => {
     assert.equal(ids.includes("mailcow"), true);
   });
 
-  it("does not let model choice raise permission", () => {
-    assert.equal(routeModel("coding").permission, "unchanged");
+  it("does not let model choice raise permission or expose secret values", () => {
+    const env = {
+      JARVIS_LLM_INTENT_PROVIDER: "openai",
+      JARVIS_LLM_INTENT_MODEL: "small-model",
+      JARVIS_LLM_CODING_PROVIDER: "anthropic",
+      JARVIS_LLM_CODING_MODEL: "strong-model",
+      JARVIS_LLM_SENSITIVE_PROVIDER: "ollama",
+      JARVIS_LLM_SENSITIVE_MODEL: "local-model",
+      JARVIS_OLLAMA_URL: "http://127.0.0.1:11434",
+      OPENAI_API_KEY: "secret-openai",
+      ANTHROPIC_API_KEY: "secret-anthropic",
+    };
+    assert.equal(routeModel("coding", env).provider, "anthropic");
+    assert.equal(routeModel("coding", env).permission, "unchanged");
+    assert.equal(routeModel("sensitive", env).local, true);
     assert.equal(agentMayEscalate(), false);
+    assert.equal(llmMayReceiveSecretValues(), false);
+    const providers = providersFromEnv(env);
+    assert.equal(providers.find((item) => item.id === "openai")?.credentialRef, "OPENAI_API_KEY");
+    assert.equal(JSON.stringify(providers).includes("secret-openai"), false);
   });
 });
