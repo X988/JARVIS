@@ -50,7 +50,7 @@ function retries(env: NodeJS.ProcessEnv): number {
 
 function stripFence(text: string): string {
   const trimmed = text.trim();
-  const fenced = /^```(?:json)?\\s*([\\s\\S]*?)\\s*```$/i.exec(trimmed);
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
   return fenced ? fenced[1].trim() : trimmed;
 }
 
