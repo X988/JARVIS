@@ -20,11 +20,7 @@ function finish(code, detail) {
 function envInt(name, fallback, min, max) {
   const value = Number(process.env[name]);
   if (!Number.isFinite(value)) return fallback;
-  return Math.min(maximum(max, min), Math.max(min, Math.trunc(value)));
-}
-
-function maximum(max, min) {
-  return Math.max(max, min);
+  return Math.min(max, Math.max(min, Math.trunc(value)));
 }
 
 function backupPath(root, name) {
