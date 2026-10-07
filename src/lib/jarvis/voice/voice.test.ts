@@ -4,9 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { acceptTelegram, type TelegramActor } from "../plane/telegram.ts";
-import { bargeIn, classifyPcm, normalizeTranscript, prependPreroll, sentences, voiceLine, wavConvertArgs } from "./gate.ts";
+import { bargeIn, classifyPcm, normalizeTranscript, prependPreroll, sentences, stripWake, voiceLine, wavConvertArgs } from "./gate.ts";
 import { acceptTelegramVoice } from "./turn.ts";
 import { safeAudioFile } from "./whisper.ts";
+import { synthesizeVoice, ttsProbe } from "./tts.ts";
 
 const actors: Record<string, TelegramActor> = { "100842": { actorId: "admin1", role: "operator" } };
 
@@ -47,15 +48,58 @@ describe("voice gate", () => {
     assert.equal(normalizeTranscript("Проверь базу УП.", 0.9).text.toLowerCase(), "проверь базу utp");
     assert.equal(normalizeTranscript("проверь майлков", 0.9).text, "проверь mailcow");
     assert.equal(normalizeTranscript("проверь вайргард", 0.91).text, "проверь wireguard");
+    assert.equal(normalizeTranscript("проверь ю ти пи", 0.91).text, "проверь utp");
+    assert.equal(normalizeTranscript("проверь майл кау", 0.91).text, "проверь mailcow");
     assert.equal(normalizeTranscript("проверь крендель", 0.95).text, "проверь крендель");
     assert.equal(normalizeTranscript("проверь ютп", 0.2).code, "CLARIFY");
   });
 
   it("speaks a short denial and strips hashes from the spoken line", () => {
     assert.equal(voiceLine("POLICY_DENIED", "Удаления базы нет."), "Отказ. Удаление рабочей базы запрещено.");
-    assert.match(voiceLine("APPROVAL_REQUIRED", "нужна заявка", "APPROVAL-1"), /APPROVAL-1/);
+    assert.match(voiceLine("APPROVAL_REQUIRED", "нужна заявка", "APPROVAL-1"), /Код заявки отправил текстом/);
     assert.equal(sentences("Готово. https://example.invalid/a Подробности a".repeat(1) + " deadbeefdeadbeef.").length >= 1, true);
     assert.equal(wavConvertArgs("/tmp/in.ogg", "/tmp/out.wav").includes("-ar"), true);
+    assert.equal(stripWake("Джарвис, проверь сервер", true), "проверь сервер");
+    assert.equal(stripWake("Джарвис", true), "");
+  });
+
+  it("turns verified infrastructure metrics into concise spoken Russian", () => {
+    assert.equal(
+      voiceLine("OK", null, null, {
+        mode: "real",
+        executionCalled: true,
+        target: "utp",
+        runbook: "sql.health",
+        execution: "sql: state_desc=ONLINE",
+      }),
+      "База UTP отвечает. Состояние онлайн.",
+    );
+    assert.match(
+      voiceLine("OK", null, null, {
+        mode: "real",
+        executionCalled: true,
+        target: "mail01",
+        runbook: "mailcow.health",
+        execution: "mailcow: services=18; running=18; unhealthy=0; queue=2",
+      }),
+      /Сервисов 18.*очереди 2/,
+    );
+    assert.match(
+      voiceLine("OK", null, null, {
+        mode: "real",
+        executionCalled: true,
+        target: "rb5009",
+        runbook: "mikrotik.status",
+        execution: "routeros: uptime=1d; cpu_load=7; interfaces=12; running=10; routes=8; active_routes=6",
+      }),
+      /процессора 7.*работают 10.*маршрутов 6/,
+    );
+    assert.match(voiceLine("OK", null, null, { mode: "dry-run" }), /dry-run/);
+  });
+
+  it("keeps local TTS disabled until Piper and a model are explicitly configured", () => {
+    assert.equal(ttsProbe({}).ready, false);
+    assert.equal(synthesizeVoice("Проверка завершена.", {}).code, "NOT_CONFIGURED");
   });
 
   it("rejects a path outside the audio directory", () => {
