@@ -165,6 +165,33 @@ describe("executor", () => {
     const escaped = executor.writeModule("../outside.bsl", "Функция А() Экспорт\nКонецФункции\n", "test");
     assert.equal(escaped.code, "DENY");
   });
+
+  it("refuses BSL symlinks that escape the export root", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-1c-jail-"));
+    const outside = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-1c-outside-")), "Outside.bsl");
+    fs.writeFileSync(outside, "Процедура Снаружи()\nКонецПроцедуры\n");
+    const link = path.join(root, "Escape.bsl");
+    fs.symlinkSync(outside, link);
+
+    const executor = new FileOnecExecutor(root);
+    assert.equal(executor.readModule("Escape.bsl", "test").code, "NOT_FOUND");
+    assert.equal(
+      executor.writeModule("Escape.bsl", "Процедура Внутри()\nКонецПроцедуры\n", "test").code,
+      "DENY",
+    );
+    assert.equal(fs.readFileSync(outside, "utf8"), "Процедура Снаружи()\nКонецПроцедуры\n");
+  });
+
+  it("fails closed when export search exceeds the configured traversal depth", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-1c-search-"));
+    const deep = path.join(root, "a", "b");
+    fs.mkdirSync(deep, { recursive: true });
+    fs.writeFileSync(path.join(deep, "Target.xml"), "<MetaDataObject><Name>target</Name></MetaDataObject>");
+    const executor = new FileOnecExecutor(root, { env: { JARVIS_ONEC_SEARCH_MAX_DEPTH: "1" } });
+    const result = executor.find("target", "test");
+    assert.equal(result.code, "FAIL");
+    assert.match(result.message, /безопасным лимитом/);
+  });
 });
 
 describe("locks, audit, git", () => {
