@@ -139,14 +139,26 @@ export class LokiAuditSink extends EnvAuditSink {
  * NOT_CONFIGURED or ADAPTER_DISABLED and never reports a delivered copy.
  */
 export function externalSinkLabel(env: NodeJS.ProcessEnv = process.env): string {
-  const sinks = [
-    ["syslog", env.JARVIS_AUDIT_SYSLOG],
+  const rows: string[] = [];
+  if (env.JARVIS_AUDIT_SYSLOG?.trim()) rows.push("syslog:ADAPTER_DISABLED");
+
+  for (const [id, raw] of [
     ["http", env.JARVIS_AUDIT_HTTP_URL],
     ["loki", env.JARVIS_AUDIT_LOKI_URL],
-  ] as const;
-  const active = sinks.filter(([, value]) => Boolean(value));
-  if (active.length === 0) return "NOT_CONFIGURED";
-  return active
-    .map(([id]) => `${id}:${id === "syslog" ? "ADAPTER_DISABLED" : "OUTBOX"}`)
-    .join(",");
+  ] as const) {
+    if (!raw?.trim()) continue;
+    try {
+      const url = new URL(raw);
+      const valid =
+        (url.protocol === "http:" || url.protocol === "https:") &&
+        !url.username &&
+        !url.password &&
+        !url.hash;
+      rows.push(`${id}:${valid ? "OUTBOX" : "INVALID"}`);
+    } catch {
+      rows.push(`${id}:INVALID`);
+    }
+  }
+
+  return rows.length ? rows.join(",") : "NOT_CONFIGURED";
 }
