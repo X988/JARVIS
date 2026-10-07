@@ -97,6 +97,95 @@ export function codingDiff(
   return { ok: true, diff: run.stdout.slice(0, 2_000_000) };
 }
 
+function worktreeRetentionMs(env: NodeJS.ProcessEnv): number {
+  const raw = Number(env.JARVIS_WORKTREE_RETENTION_MS ?? 7 * 24 * 60 * 60 * 1000);
+  return Number.isFinite(raw)
+    ? Math.max(60 * 60 * 1000, Math.min(90 * 24 * 60 * 60 * 1000, Math.trunc(raw)))
+    : 7 * 24 * 60 * 60 * 1000;
+}
+
+export function cleanupCodingWorktrees(
+  repoRoot: string,
+  activeTaskIds: ReadonlySet<string>,
+  options: {
+    env?: NodeJS.ProcessEnv;
+    now?: number;
+    runner?: GitRunner;
+  } = {},
+): {
+  removed: number;
+  skippedActive: number;
+  skippedDirty: number;
+  skippedUnsafe: number;
+  failed: number;
+} {
+  const root = path.resolve(repoRoot);
+  const runner = options.runner ?? localRunner;
+  const now = options.now ?? Date.now();
+  const managedRoot = path.join(root, ".jarvis", "worktrees");
+  const result = {
+    removed: 0,
+    skippedActive: 0,
+    skippedDirty: 0,
+    skippedUnsafe: 0,
+    failed: 0,
+  };
+
+  const probe = runner("git", ["rev-parse", "--show-toplevel"], root);
+  if (probe.status !== 0 || path.resolve(probe.stdout.trim()) !== root) {
+    result.failed += 1;
+    return result;
+  }
+  if (!fs.existsSync(managedRoot)) return result;
+
+  const retentionMs = worktreeRetentionMs(options.env ?? process.env);
+  for (const entry of fs.readdirSync(managedRoot, { withFileTypes: true })) {
+    if (!/^[a-z0-9-]{1,40}$/.test(entry.name)) {
+      result.skippedUnsafe += 1;
+      continue;
+    }
+    if (activeTaskIds.has(entry.name)) {
+      result.skippedActive += 1;
+      continue;
+    }
+
+    const full = path.resolve(managedRoot, entry.name);
+    if (!full.startsWith(managedRoot + path.sep)) {
+      result.skippedUnsafe += 1;
+      continue;
+    }
+
+    let stat: fs.Stats;
+    try {
+      stat = fs.lstatSync(full);
+    } catch {
+      continue;
+    }
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      result.skippedUnsafe += 1;
+      continue;
+    }
+    if (now - stat.mtimeMs <= retentionMs) continue;
+
+    const status = runner("git", ["status", "--porcelain"], full);
+    if (status.status !== 0) {
+      result.failed += 1;
+      continue;
+    }
+    if (status.stdout.trim()) {
+      result.skippedDirty += 1;
+      continue;
+    }
+
+    // Deliberately no --force: cleanup must not destroy a dirty/unregistered
+    // checkout merely to satisfy retention.
+    const removed = runner("git", ["worktree", "remove", full], root);
+    if (removed.status === 0) result.removed += 1;
+    else result.failed += 1;
+  }
+  return result;
+}
+
 /** Publishing is intentionally outside the worker helper. */
 export function workerMayPublish(action: "push" | "merge" | "deploy"): false {
   void action;
