@@ -10,6 +10,8 @@ export type TelegramUpdate = {
   text?: string;
   voiceFileId?: string;
   documentName?: string;
+  documentFileId?: string;
+  documentSize?: number;
   imageFileId?: string;
   forwardedFromId?: number;
   replyTo?: string;
