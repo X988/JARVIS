@@ -19,7 +19,11 @@ export function validRequestId(value: string): boolean {
 }
 
 function validActorId(value: string): boolean {
-  return value.length > 0 && value.length <= 8_192 && !/[\u0000]/u.test(value);
+  return (
+    value.length > 0 &&
+    value.length <= 8_192 &&
+    !value.includes(String.fromCharCode(0))
+  );
 }
 
 export function actorRequestStorageKey(actorId: string, requestId: string): string {
