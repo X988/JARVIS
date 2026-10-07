@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { correlate, openIncident } from "./incidents.ts";
 import { agentMayEscalate, routeModel } from "./llm.ts";
-import { remember, searchMemory } from "./memory.ts";
+import { proposeCriticalInfrastructureFact, remember, searchMemory } from "./memory.ts";
 import { validatePlugin } from "./plugins.ts";
 import { isTaskDue, loadTasks, runDue, saveTasks } from "./scheduler.ts";
 import { normalizeHeard, ttsMode, wakeEnabled } from "./speech.ts";
@@ -98,18 +98,65 @@ describe("memory, schedule, workers", () => {
     assert.equal(saved.ok, false);
   });
 
-  it("finds a past mailcow note", () => {
+  it("finds ranked memory with source, date and snippet", () => {
     const root = dir();
     remember(root, {
       id: "2",
       kind: "incident",
       at: "2026-09-30T00:00:00Z",
-      source: "demo",
-      text: "На прошлой неделе на Mailcow кончалось место.",
+      source: "incident:mailcow-42",
+      text: "На прошлой неделе на Mailcow кончалось место на диске.",
     });
-    const found = searchMemory(root, "mailcow");
+    remember(root, {
+      id: "3",
+      kind: "development",
+      at: "2026-09-29T00:00:00Z",
+      source: "git:repo",
+      text: "В Mailcow документации обновили заметку.",
+    });
+    const found = searchMemory(root, "почему mailcow диск", { kinds: ["incident"], limit: 3 });
     assert.equal(found.length, 1);
-    assert.equal(found[0].source, "demo");
+    assert.equal(found[0].source, "incident:mailcow-42");
+    assert.equal(found[0].at, "2026-09-30T00:00:00Z");
+    assert.match(found[0].snippet, /Mailcow.*диск/i);
+    assert.equal(found[0].score > 0, true);
+  });
+
+  it("never lets memory mutate critical inventory facts", () => {
+    const root = dir();
+    const note = {
+      id: "critical-1",
+      kind: "infrastructure" as const,
+      at: "2026-10-07T00:00:00Z",
+      source: "operator",
+      text: "IP сервера sql01 10.0.0.5",
+    };
+    assert.equal(remember(root, note).ok, false);
+    assert.equal(proposeCriticalInfrastructureFact(note).code, "CONTROLLED_WORKFLOW_REQUIRED");
+    assert.equal(searchMemory(root, "10.0.0.5").length, 0);
+  });
+
+  it("refuses secrets in every memory category and duplicate ids", () => {
+    const root = dir();
+    assert.equal(
+      remember(root, {
+        id: "secret-1",
+        kind: "conversation",
+        at: "2026-10-07T00:00:00Z",
+        source: "chat",
+        text: "password=supersecret",
+      }).ok,
+      false,
+    );
+    const note = {
+      id: "stable-1",
+      kind: "procedure" as const,
+      at: "2026-10-07T00:00:00Z",
+      source: "runbook:mailcow.health",
+      text: "Проверка Mailcow завершилась успешно.",
+    };
+    assert.equal(remember(root, note).ok, true);
+    assert.equal(remember(root, note).ok, false);
   });
 
   it("runs a due check through the callback and not around it", () => {
