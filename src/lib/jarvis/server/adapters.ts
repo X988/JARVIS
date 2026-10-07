@@ -168,12 +168,27 @@ export class ServerProbeExecutor implements Executor {
         return { id: target.id, code: result.code, called: result.called };
       });
       const healthy = rows.filter((row) => row.code === "OK").length;
+      const called = rows.some((row) => row.called);
       const detail = rows.map((row) => `${row.id}=${row.code}`).join("; ");
       if (healthy === rows.length) {
-        return { called: rows.some((row) => row.called), code: "OK", detail: `fleet: ${detail}` };
+        return { called, code: "OK", detail: `fleet: ${detail}` };
+      }
+      if (!called && healthy === 0) {
+        const codes = new Set(rows.map((row) => row.code));
+        const code =
+          codes.has("CREDENTIAL_UNAVAILABLE")
+            ? "CREDENTIAL_UNAVAILABLE"
+            : codes.has("ADAPTER_DISABLED")
+              ? "ADAPTER_DISABLED"
+              : "NOT_CONFIGURED";
+        return {
+          called: false,
+          code,
+          detail: `fleet: healthy=0/${rows.length}; no connection attempted; ${detail}`,
+        };
       }
       return {
-        called: rows.some((row) => row.called),
+        called,
         code: healthy > 0 ? "VERIFICATION_FAILED" : "CONNECT_FAILED",
         detail: `fleet: healthy=${healthy}/${rows.length}; ${detail}`,
       };
