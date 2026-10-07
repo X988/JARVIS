@@ -97,6 +97,17 @@ export function transcribeWav(wavPath: string, env: NodeJS.ProcessEnv = process.
   }
   if (body.code === "NOT_CONFIGURED" || body.code === "STT_FAILED") return { code: body.code };
   if (!body.text?.trim() || hallucination(body.text)) return { code: "NO_SPEECH" };
+  const expectedLanguage = (env.JARVIS_STT_LANGUAGE || "ru").toLowerCase();
+  const languageConfidence = body.language_confidence ?? 0;
+  const languageMin = bounded(env.JARVIS_STT_LANGUAGE_MIN_CONFIDENCE, 0.55, 0.1, 0.95);
+  if (
+    expectedLanguage !== "auto" &&
+    body.language &&
+    body.language.toLowerCase() !== expectedLanguage &&
+    languageConfidence >= languageMin
+  ) {
+    return { code: "STT_LOW_CONFIDENCE" };
+  }
   if ((body.duration_ms ?? 0) > bounded(env.JARVIS_STT_MAX_MS, 30_000, 1_000, 60_000)) {
     return { code: "AUDIO_TOO_LONG" };
   }
