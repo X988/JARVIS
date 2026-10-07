@@ -128,7 +128,7 @@ describe("server pipeline", () => {
 
   it("passes only server-derived parameters to an approved executor", () => {
     const stateDir = freshDir();
-    let captured: ExecCall | null = null;
+    const captured: ExecCall[] = [];
     const command = "Сделай резервную копию базы utp";
     const opened = run(command, {
       stateDir,
@@ -136,7 +136,7 @@ describe("server pipeline", () => {
       mode: "real",
       forged: { parameters: { database: "master", destination: "C:\\evil" }, runbook: "database.drop" },
       execute: (call) => {
-        captured = call;
+        captured.push(call);
         return { called: true, code: "OK", detail: "verified" };
       },
     });
@@ -149,7 +149,7 @@ describe("server pipeline", () => {
       mode: "real",
       forged: { parameters: { database: "master", destination: "C:\\evil" }, approved: true },
       execute: (call) => {
-        captured = call;
+        captured.push(call);
         return { called: true, code: "OK", detail: "verified" };
       },
       approval: {
@@ -159,13 +159,15 @@ describe("server pipeline", () => {
     });
 
     assert.equal(confirmed.code, "OK");
-    assert.ok(captured);
-    assert.equal(captured!.runbook, "sql.backup");
-    assert.equal(captured!.target, "utp");
-    assert.equal(captured!.parameters?.database, "utp");
-    assert.equal(captured!.parameters?.server, "sql01");
-    assert.equal(captured!.parameters?.destination, "nas-backup/sql");
-    assert.notEqual(captured!.parameters?.database, "master");
+    assert.equal(captured.length, 1);
+    const executed = captured[0];
+    assert.ok(executed);
+    assert.equal(executed.runbook, "sql.backup");
+    assert.equal(executed.target, "utp");
+    assert.equal(executed.parameters?.database, "utp");
+    assert.equal(executed.parameters?.server, "sql01");
+    assert.equal(executed.parameters?.destination, "nas-backup/sql");
+    assert.notEqual(executed.parameters?.database, "master");
   });
 
   it("does not replay one actor's command for another actor with the same request id", () => {
