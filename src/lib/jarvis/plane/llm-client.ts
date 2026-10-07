@@ -1,4 +1,5 @@
 import { routeModel, type LLMProviderId, type ModelJob } from "./llm.ts";
+import { sanitizeLlmText } from "./llm-safety.ts";
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -284,7 +285,9 @@ export async function callJsonModel(
       model: route.model,
     };
   }
-  if (input.system.length + input.user.length > maxPromptChars(env)) {
+  const safeSystem = sanitizeLlmText(input.system);
+  const safeUser = sanitizeLlmText(input.user);
+  if (safeSystem.text.length + safeUser.text.length > maxPromptChars(env)) {
     return {
       ok: false,
       code: "REQUEST_TOO_LARGE",
@@ -294,7 +297,7 @@ export async function callJsonModel(
     };
   }
 
-  const request = providerRequest(route.provider, route.model, input.system, input.user, input.schema, env);
+  const request = providerRequest(route.provider, route.model, safeSystem.text, safeUser.text, input.schema, env);
   if (!request) {
     return {
       ok: false,
