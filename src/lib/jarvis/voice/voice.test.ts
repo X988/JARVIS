@@ -114,7 +114,8 @@ describe("voice gate", () => {
     assert.equal(ttsProviderFromEnv({ JARVIS_TTS_PROVIDER: "piper" }).id, "piper");
     const cloud = ttsProviderFromEnv({ JARVIS_TTS_PROVIDER: "cloud" });
     assert.equal(cloud.id, "cloud");
-    assert.equal("code" in cloud.synthesize("секретный текст") && cloud.synthesize("секретный текст").code, "NOT_CONFIGURED");
+    const cloudResult = cloud.synthesize("секретный текст");
+    assert.equal("code" in cloudResult ? cloudResult.code : "OK", "NOT_CONFIGURED");
   });
 
   it("keeps local TTS disabled until Piper and a model are explicitly configured", () => {
