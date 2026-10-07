@@ -4,12 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import {
+  FileApprovalStore,
   FileExecutionStore,
   FileIdempotencyStore,
   FileJobStore,
   FileRateLimitStore,
   createFileStateStores,
 } from "./state-stores.ts";
+import { parameterHash } from "./approvals.ts";
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-stores-"));
@@ -36,6 +38,68 @@ describe("filesystem state stores", () => {
     const rate = new FileRateLimitStore(dir);
     assert.equal(rate.take("actor", 1, 1_000, 1_000), true);
     assert.equal(rate.take("actor", 1, 1_000, 1_100), false);
+  });
+
+  it("supports Unicode approval actors and prunes long-expired approval state", () => {
+    const dir = tempDir();
+    const approvals = new FileApprovalStore(dir);
+    const previous = process.env.JARVIS_APPROVAL_RETENTION_MS;
+    process.env.JARVIS_APPROVAL_RETENTION_MS = "60000";
+    try {
+      const oldParameters = { database: "utp" };
+      approvals.create({
+        id: "APPROVAL-OLD-0001",
+        actorId: "Администратор-№1",
+        runbook: "sql.backup",
+        target: "utp",
+        normalized: "backup_utp",
+        normalizedParameters: oldParameters,
+        constraint: "нет",
+        parameterHash: parameterHash({
+          runbook: "sql.backup",
+          target: "utp",
+          normalized: "backup_utp",
+          constraint: "нет",
+          normalizedParameters: oldParameters,
+        }),
+        risk: 2,
+        createdAt: 1_000,
+        expiresAt: 2_000,
+        required: 1,
+      });
+      assert.equal(approvals.find("APPROVAL-OLD-0001")?.actorId, "Администратор-№1");
+
+      const now = Date.now();
+      const nextParameters = { database: "utp" };
+      approvals.create({
+        id: "APPROVAL-NEW-0002",
+        actorId: "admin@example.com",
+        runbook: "sql.backup",
+        target: "utp",
+        normalized: "backup_utp",
+        normalizedParameters: nextParameters,
+        constraint: "нет",
+        parameterHash: parameterHash({
+          runbook: "sql.backup",
+          target: "utp",
+          normalized: "backup_utp",
+          constraint: "нет",
+          normalizedParameters: nextParameters,
+        }),
+        risk: 2,
+        createdAt: now,
+        expiresAt: now + 300_000,
+        required: 1,
+      });
+
+      const rows = JSON.parse(
+        fs.readFileSync(path.join(dir, "approvals.json"), "utf8"),
+      ) as Array<{ id: string }>;
+      assert.deepEqual(rows.map((row) => row.id), ["APPROVAL-NEW-0002"]);
+    } finally {
+      if (previous === undefined) delete process.env.JARVIS_APPROVAL_RETENTION_MS;
+      else process.env.JARVIS_APPROVAL_RETENTION_MS = previous;
+    }
   });
 
   it("persists durable worker jobs through the JobStore abstraction", () => {
