@@ -76,6 +76,10 @@ export function configProblems(env: NodeJS.ProcessEnv = process.env): JarvisProb
     if (!env.JARVIS_MIKROTIK_USER?.trim()) problems.push("JARVIS_MIKROTIK_USER не задан.");
     if (!env.JARVIS_MIKROTIK_PASSWORD) problems.push("JARVIS_MIKROTIK_PASSWORD не задан.");
   }
+  if (enabled(env.JARVIS_DOCKER_ENABLED)) {
+    if (!env.JARVIS_DOCKER_USER?.trim() && !env.JARVIS_SSH_USER?.trim()) problems.push("JARVIS_DOCKER_USER или JARVIS_SSH_USER не задан.");
+    if (!env.JARVIS_MAILCOW_COMPOSE?.startsWith("/")) problems.push("JARVIS_MAILCOW_COMPOSE должен быть абсолютным Linux-путём.");
+  }
 
   const raw = env.JARVIS_TELEGRAM_ACTORS_JSON?.trim();
   if (raw) {
