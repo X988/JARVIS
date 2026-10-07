@@ -7,7 +7,17 @@ import { correlate, openIncident } from "./incidents.ts";
 import { agentMayEscalate, routeModel } from "./llm.ts";
 import { proposeCriticalInfrastructureFact, remember, searchMemory } from "./memory.ts";
 import { validatePlugin } from "./plugins.ts";
-import { isTaskDue, loadTasks, runDue, saveTasks } from "./scheduler.ts";
+import {
+  cancelTask,
+  createOneTimeTask,
+  createRecurringTask,
+  isTaskDue,
+  loadTasks,
+  pauseTask,
+  resumeTask,
+  runDue,
+  saveTasks,
+} from "./scheduler.ts";
 import { normalizeHeard, ttsMode, wakeEnabled } from "./speech.ts";
 import { acceptTelegram, type TelegramActor } from "./telegram.ts";
 import { workerAction, worktreePath } from "./workers.ts";
@@ -168,6 +178,32 @@ describe("memory, schedule, workers", () => {
     assert.equal(isTaskDue(loadTasks(root)[0], now), true);
     const fired = runDue(root, now, () => ({ code: "DRY" }));
     assert.deepEqual(fired, [{ id: "morning", code: "DRY" }]);
+  });
+
+  it("runs a one-time task once and supports pause/resume/cancel", () => {
+    const root = dir();
+    const once = createOneTimeTask({
+      id: "backup-check",
+      text: "Проверь backup utp",
+      runAt: "2026-10-07T06:00:00Z",
+      timezone: "Europe/Kyiv",
+    });
+    const recurring = createRecurringTask({
+      id: "mailcow-hourly",
+      text: "Проверь Mailcow, ничего не меняй",
+      cron: "0 * * * *",
+      timezone: "Europe/Kyiv",
+    });
+    assert.ok(once);
+    assert.ok(recurring);
+    saveTasks(root, [once!, recurring!]);
+    assert.equal(pauseTask(root, "mailcow-hourly")?.status, "paused");
+    assert.equal(resumeTask(root, "mailcow-hourly")?.status, "active");
+    assert.equal(cancelTask(root, "mailcow-hourly")?.status, "cancelled");
+    const first = runDue(root, new Date("2026-10-07T06:00:01Z"), () => ({ code: "OK" }));
+    assert.deepEqual(first, [{ id: "backup-check", code: "OK" }]);
+    assert.equal(loadTasks(root).find((task) => task.id === "backup-check")?.status, "completed");
+    assert.equal(runDue(root, new Date("2026-10-07T06:05:00Z"), () => ({ code: "SHOULD_NOT_RUN" })).length, 0);
   });
 
   it("blocks production actions from a worker", () => {
