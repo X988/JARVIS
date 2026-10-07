@@ -217,6 +217,12 @@ describe("remaining project ideas", () => {
     assert.equal(prWatchMayMutateRepository(), false);
   });
 
+  it("fails closed on corrupted worker state", () => {
+    const root = dir();
+    fs.writeFileSync(path.join(root, "jobs.json"), JSON.stringify([{ id: "broken" }]));
+    assert.throws(() => loadJobs(root), /worker state invalid/);
+  });
+
   it("loads only a valid plugin and cancels a coding job off main", () => {
     const root = dir();
     fs.writeFileSync(
@@ -288,7 +294,7 @@ describe("remaining project ideas", () => {
         },
       ]),
     );
-    assert.deepEqual(loadTasks(root), []);
+    assert.throws(() => loadTasks(root), /schedule state invalid/);
   });
 
   it("uses IANA timezones for cron and follows Kyiv DST", () => {
