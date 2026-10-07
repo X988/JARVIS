@@ -14,6 +14,16 @@ const TEXT_EXT = new Set([
   ".cjs", ".py", ".sql", ".bsl", ".ps1", ".xml", ".ini", ".conf", ".log",
 ]);
 const WORD = /[\p{L}\p{N}_-]+/gu;
+const SENSITIVE_NAME = /(?:^|[._-])(?:secret|secrets|credential|credentials|token|tokens|private)(?:[._-]|$)|\.(?:key|p12|pfx)$/i;
+const SECRET_CONTENT = [
+  /-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----/i,
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/i,
+  /(?:password|passwd|парол(?:ь|я)?|credential|secret|token|токен|api[_ -]?key|authorization)["']?\s*[:=]\s*["']?(?!\$\{|<[^>]+>|\[?redacted\]?|changeme|example|dummy)[^\s"',;}{]+/i,
+];
+
+function containsSecretLike(text: string): boolean {
+  return SECRET_CONTENT.some((pattern) => pattern.test(text));
+}
 
 function tokens(value: string): string[] {
   return [...new Set((value.toLowerCase().match(WORD) ?? []).filter((item) => item.length > 1))];
@@ -37,7 +47,7 @@ function filesUnder(root: string, maxFiles: number): string[] {
     if (out.length >= maxFiles) return;
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (out.length >= maxFiles) break;
-      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+      if (entry.name.startsWith(".") || entry.name === "node_modules" || SENSITIVE_NAME.test(entry.name)) continue;
       const full = path.join(dir, entry.name);
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) visit(full);
@@ -85,6 +95,7 @@ export function indexFolder(
     const stat = fs.statSync(full);
     if (!stat.isFile() || stat.size > maxFileBytes) continue;
     const body = fs.readFileSync(full, "utf8");
+    if (containsSecretLike(body)) continue;
     const source = path.relative(root, full).split(path.sep).join("/");
     for (const piece of splitText(body, chunkChars, overlap)) {
       chunks.push({
