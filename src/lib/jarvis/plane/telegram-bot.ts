@@ -5,6 +5,7 @@ import { actorsFromEnv, type TelegramActor, type TelegramUpdate } from "./telegr
 import { acceptTelegramVoice } from "../voice/turn.ts";
 import { voiceLine } from "../voice/gate.ts";
 import { synthesizeVoice } from "../voice/tts.ts";
+import { mark } from "../metrics.ts";
 
 export type BotApi = {
   getFile(fileId: string): Promise<string | null>;
@@ -114,10 +115,15 @@ export async function dispatchTelegram(
   const sent = await opts.api.sendMessage(parsed.chatId, text);
   let voiceSent = false;
   if (parsed.update.voiceFileId && opts.api.sendVoice) {
+    const ttsStarted = Date.now();
     const speech = synthesizeVoice(spoken, opts.env);
-    if (!("code" in speech)) {
+    mark("tts_ms", Date.now() - ttsStarted);
+    if ("code" in speech) {
+      if (speech.code !== "NOT_CONFIGURED") mark("tts_failures");
+    } else {
       try {
         voiceSent = await opts.api.sendVoice(parsed.chatId, fs.readFileSync(speech.ogg));
+        if (!voiceSent) mark("tts_failures");
       } finally {
         for (const file of speech.cleanup) fs.rmSync(file, { force: true });
       }
