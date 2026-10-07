@@ -1,10 +1,27 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { configProblems, readiness } from "./config.ts";
+import { componentStatus } from "./components.ts";
 
 describe("config", () => {
   it("rejects a deprecated name instead of reading it", () => {
-    const problems = configProblems({ JARVIS_MAILCOW_COMPOSE_FILE: "/opt/mailcow/compose.yaml" });
+    const problems = configProblems({ JARVIS_MAILCOW_COMPOSE_FILE: "/opt/mailcow/compose.yaml"   it("reports passive component status without requiring network probes", () => {
+    const status = componentStatus({
+      JARVIS_STATE_DIR: "/tmp/jarvis-component-test-does-not-need-network",
+      JARVIS_TELEGRAM_ACTORS_JSON: '{"100842":{"actorId":"admin1","role":"operator"}}',
+      JARVIS_TELEGRAM_TOKEN: "token-placeholder",
+      JARVIS_TELEGRAM_WEBHOOK_SECRET: "secret-placeholder",
+      JARVIS_REDIS_URL: "redis://example.invalid",
+      DATABASE_URL: "postgres://example.invalid/jarvis",
+      JARVIS_LLM_LOCAL: "1",
+    });
+    assert.equal(status.telegram.state, "CONFIGURED");
+    assert.equal(status.redis.state, "CONFIGURED");
+    assert.equal(status.database.state, "CONFIGURED");
+    assert.equal(status.llm.state, "CONFIGURED");
+    assert.equal(status.inventory.state, "OK");
+  });
+});
     assert.match(problems.join("\n"), /JARVIS_MAILCOW_COMPOSE/);
     assert.equal(readiness({ JARVIS_PROFILE: "demo", JARVIS_AUDIT_HTTP: "http://127.0.0.1/audit" }, { dumpPresent: true }).ok, false);
   });
