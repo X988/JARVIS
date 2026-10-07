@@ -99,6 +99,8 @@ Voice input не является authentication или approval factor.
 
 Critical inventory facts не должны изменяться через memory автоматически.
 
+Filesystem state имеет bounded lifecycle: rate-limit buckets, timestamped idempotency results, expired approvals, terminal worker jobs, execution metadata, Telegram inbound attachments и stale clean worktrees ограничиваются retention/cap настройками. Активные jobs и dirty worktrees автоматически не удаляются. Недоставленный audit outbox по возрасту не выбрасывается.
+
 ### Coding workflow
 
 - isolated Git worktrees;
@@ -294,10 +296,16 @@ npm ci
 → ffmpeg install
 → typecheck
 → lint
-→ tests
+→ unit/integration tests
+→ coverage baseline
+→ tracked-file secret scan
+→ npm audit (critical gate)
+→ CycloneDX SBOM validation
 → build
 → Playwright E2E
 ```
+
+GitHub Actions, используемые workflow, закреплены на проверенных immutable commit SHA. Наличие зелёного dependency gate не означает отсутствие уязвимостей более низкой тяжести: их нужно отдельно отслеживать и обновлять без `npm audit fix --force` вслепую.
 
 PR-ветки проверяются через `pull_request`; push-CI оставлен для `main`, чтобы не запускать две одинаковые проверки на каждый commit в PR.
 
