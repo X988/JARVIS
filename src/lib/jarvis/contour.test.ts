@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { appendAudit, externalSinkLabel, verifyAudit } from "./audit-log.ts";
+import { enqueueAuditDelivery, flushAuditOutbox, loadAuditOutbox } from "./audit-outbox.ts";
 import { FileLockProvider, RedisLockProvider, acquireLock, releaseLock } from "./locks.ts";
 import { BslLanguageServerValidator, FallbackBslValidator, OneCDesignerValidator, checkBsl } from "./onec/bsl.ts";
 import { FileOnecExecutor } from "./onec/executor.ts";
@@ -253,7 +254,8 @@ describe("locks, audit, git", () => {
     assert.deepEqual(new RedisLockProvider(undefined).acquire("k", "a"), { ok: false, reason: "NOT_CONFIGURED" });
     assert.deepEqual(new RedisLockProvider("redis://127.0.0.1:6379").acquire("k", "a"), { ok: false, reason: "ADAPTER_DISABLED" });
     assert.equal(externalSinkLabel({}), "NOT_CONFIGURED");
-    assert.equal(externalSinkLabel({ JARVIS_AUDIT_HTTP_URL: "http://127.0.0.1/audit" }), "http:ADAPTER_DISABLED");
+    assert.equal(externalSinkLabel({ JARVIS_AUDIT_HTTP_URL: "http://127.0.0.1/audit" }), "http:OUTBOX");
+    assert.equal(externalSinkLabel({ JARVIS_AUDIT_SYSLOG: "127.0.0.1:514" }), "syslog:ADAPTER_DISABLED");
     const windows = process.env.JARVIS_WINDOWS_HOST;
     const windowsMap = process.env.JARVIS_WINDOWS_TARGETS_JSON;
     const windowsUser = process.env.JARVIS_WINDOWS_USER;
@@ -310,6 +312,46 @@ describe("locks, audit, git", () => {
     appendAudit({ at: "1", executionId: "a", actor: "admin1", action: "read", verdict: "allow" }, dir);
     appendAudit({ at: "2", executionId: "b", actor: "admin1", action: "drop", verdict: "deny" }, dir);
     assert.equal(verifyAudit(dir).ok, true);
+  });
+
+  it("keeps external audit delivery durable across success and failure", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-audit-outbox-"));
+    const row = {
+      at: "2026-10-07T00:00:00Z",
+      executionId: "exec-1",
+      actor: "admin1",
+      action: "mailcow.health",
+      verdict: "allow",
+      previousHash: "GENESIS",
+      hash: "abc123",
+    };
+    assert.equal(
+      enqueueAuditDelivery(row, root, { JARVIS_AUDIT_HTTP_URL: "https://audit.example/events" }),
+      true,
+    );
+    assert.equal(loadAuditOutbox(root).length, 1);
+
+    const failed = await flushAuditOutbox(
+      root,
+      { JARVIS_AUDIT_HTTP_URL: "https://audit.example/events" },
+      async () => new Response("no", { status: 503 }),
+    );
+    assert.equal(failed.delivered, 0);
+    assert.equal(failed.remaining, 1);
+    assert.equal(loadAuditOutbox(root).length, 1);
+
+    const delivered = await flushAuditOutbox(
+      root,
+      { JARVIS_AUDIT_HTTP_URL: "https://audit.example/events" },
+      async (_url, init) => {
+        assert.equal(init?.method, "POST");
+        assert.doesNotMatch(String(init?.body), /password|secret/i);
+        return new Response("", { status: 204 });
+      },
+    );
+    assert.equal(delivered.delivered, 1);
+    assert.equal(delivered.remaining, 0);
+    assert.equal(loadAuditOutbox(root).length, 0);
   });
 
   it("limits a bucket", () => {
