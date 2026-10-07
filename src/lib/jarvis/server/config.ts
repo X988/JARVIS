@@ -9,8 +9,6 @@ const DEPRECATED: Record<string, string> = {
 };
 
 const ENABLED_NEEDS_HOST: Array<[string, string]> = [
-  ["JARVIS_SSH_ENABLED", "JARVIS_SSH_HOST"],
-  ["JARVIS_POWERSHELL_ENABLED", "JARVIS_WINDOWS_HOST"],
   ["JARVIS_SQL_ENABLED", "JARVIS_SQL_HOST"],
   ["JARVIS_ROUTEROS_ENABLED", "JARVIS_MIKROTIK_HOST"],
   ["JARVIS_DOCKER_ENABLED", "JARVIS_DOCKER_HOST"],
@@ -21,10 +19,28 @@ const actorSchema = z.object({
   role: z.enum(["operator", "none"]),
 });
 
+const hostMapSchema = z.record(
+  z.string().min(1),
+  z.string().regex(/^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/),
+);
+
 export type JarvisProblems = string[];
 
 function enabled(value: string | undefined): boolean {
   return value === "1" || value === "true";
+}
+
+function safeJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function validHostMap(raw: string | undefined): boolean {
+  if (!raw?.trim()) return false;
+  return hostMapSchema.safeParse(safeJson(raw)).success;
 }
 
 export function configProblems(env: NodeJS.ProcessEnv = process.env): JarvisProblems {
@@ -35,6 +51,27 @@ export function configProblems(env: NodeJS.ProcessEnv = process.env): JarvisProb
   for (const [flag, host] of ENABLED_NEEDS_HOST) {
     if (enabled(env[flag]) && !env[host]?.trim()) problems.push(`${flag} включён, а ${host} пуст.`);
   }
+
+  if (env.JARVIS_WINDOWS_TARGETS_JSON?.trim() && !validHostMap(env.JARVIS_WINDOWS_TARGETS_JSON)) {
+    problems.push("JARVIS_WINDOWS_TARGETS_JSON должен быть картой target id → hostname.");
+  }
+  if (env.JARVIS_SSH_TARGETS_JSON?.trim() && !validHostMap(env.JARVIS_SSH_TARGETS_JSON)) {
+    problems.push("JARVIS_SSH_TARGETS_JSON должен быть картой target id → hostname.");
+  }
+  if (enabled(env.JARVIS_POWERSHELL_ENABLED)) {
+    if (!env.JARVIS_WINDOWS_HOST?.trim() && !validHostMap(env.JARVIS_WINDOWS_TARGETS_JSON)) {
+      problems.push("JARVIS_POWERSHELL_ENABLED включён, но не задан JARVIS_WINDOWS_TARGETS_JSON или fallback JARVIS_WINDOWS_HOST.");
+    }
+    if (!env.JARVIS_WINDOWS_USER?.trim()) problems.push("JARVIS_WINDOWS_USER не задан.");
+    if (!env.JARVIS_WINDOWS_PASSWORD) problems.push("JARVIS_WINDOWS_PASSWORD не задан.");
+  }
+  if (enabled(env.JARVIS_SSH_ENABLED)) {
+    if (!env.JARVIS_SSH_HOST?.trim() && !validHostMap(env.JARVIS_SSH_TARGETS_JSON)) {
+      problems.push("JARVIS_SSH_ENABLED включён, но не задан JARVIS_SSH_TARGETS_JSON или fallback JARVIS_SSH_HOST.");
+    }
+    if (!env.JARVIS_SSH_USER?.trim()) problems.push("JARVIS_SSH_USER не задан.");
+  }
+
   const raw = env.JARVIS_TELEGRAM_ACTORS_JSON?.trim();
   if (raw) {
     const parsed = z.record(z.string().regex(/^[1-9]\d*$/), actorSchema).safeParse(safeJson(raw));
@@ -48,14 +85,6 @@ export function configProblems(env: NodeJS.ProcessEnv = process.env): JarvisProb
     problems.push("JARVIS_PROFILE должен быть demo или production-infra.");
   }
   return problems;
-}
-
-function safeJson(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
 }
 
 export function readiness(
