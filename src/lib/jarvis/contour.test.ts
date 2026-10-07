@@ -11,7 +11,7 @@ import { FileOnecExecutor } from "./onec/executor.ts";
 import { planGitFlow } from "./onec/git-flow.ts";
 import { analyzeQuery } from "./onec/query.ts";
 import { onecValidationProbe, validateOnecExport, type ValidationRunner } from "./onec/validation.ts";
-import { OnecFileAdapter, SQLExecutor, ServerProbeExecutor, probeRoute } from "./server/adapters.ts";
+import { GithubExecutor, OnecFileAdapter, SQLExecutor, ServerProbeExecutor, probeRoute } from "./server/adapters.ts";
 import { takeToken } from "./rate-limit.ts";
 import { OPERATORS, evaluate } from "./model.ts";
 
@@ -399,6 +399,20 @@ describe("locks, audit, git", () => {
         if (value === undefined) delete process.env[name];
         else process.env[name] = value;
       }
+    }
+  });
+
+  it("does not treat GitHub CI as mock or success without credentials", () => {
+    const token = process.env.JARVIS_GITHUB_TOKEN;
+    delete process.env.JARVIS_GITHUB_TOKEN;
+    try {
+      const result = new GithubExecutor().execute({ runbook: "github.ci", target: "repo-honey", mode: "real" });
+      assert.equal(result.called, false);
+      assert.equal(result.code, "CREDENTIAL_UNAVAILABLE");
+      assert.doesNotMatch(result.detail, /mock/i);
+    } finally {
+      if (token === undefined) delete process.env.JARVIS_GITHUB_TOKEN;
+      else process.env.JARVIS_GITHUB_TOKEN = token;
     }
   });
 
