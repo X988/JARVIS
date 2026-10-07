@@ -192,6 +192,21 @@ describe("executor", () => {
     assert.equal(result.code, "FAIL");
     assert.match(result.message, /безопасным лимитом/);
   });
+
+  it("refuses metadata creation through a directory symlink", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-1c-create-"));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-1c-create-out-"));
+    fs.writeFileSync(
+      path.join(root, "Configuration.xml"),
+      "<MetaDataObject><ChildObjects></ChildObjects></MetaDataObject>",
+    );
+    fs.symlinkSync(outside, path.join(root, "CommonModules"), "dir");
+
+    const executor = new FileOnecExecutor(root);
+    const result = executor.create("module", "Unsafe", "test");
+    assert.equal(result.code, "DENY");
+    assert.equal(fs.readdirSync(outside).length, 0);
+  });
 });
 
 describe("locks, audit, git", () => {
