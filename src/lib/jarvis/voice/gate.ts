@@ -104,7 +104,7 @@ export function normalizeTranscript(
   minConfidence = MIN_CONFIDENCE,
 ): { text: string; changed: boolean; code: "OK" | "CLARIFY" } {
   if (confidence < minConfidence) return { text, changed: false, code: "CLARIFY" };
-  let next = text.normalize("NFKC").replace(/[.,!?;:()[\\]{}"«»]+/g, " ");
+  let next = text.normalize("NFKC").replace(/[.,!?;:()[\]{}"«»]+/g, " ");
   for (const alias of [...aliases].sort((left, right) => right.from.length - left.from.length)) {
     if (alias.from.length < 2 || alias.from === alias.to) continue;
     const pattern = new RegExp(`(^|\\s)${alias.from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\s|$)`, "gi");
