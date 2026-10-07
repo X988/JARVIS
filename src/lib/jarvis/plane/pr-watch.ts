@@ -20,12 +20,42 @@ function file(dir: string): string {
   return path.join(dir, "pr-watch.json");
 }
 
+function validWatch(value: unknown): value is PrWatchState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const watch = value as Partial<PrWatchState>;
+  return (
+    typeof watch.id === "string" &&
+    /^[a-zA-Z0-9._:-]{1,80}$/.test(watch.id) &&
+    typeof watch.repository === "string" &&
+    /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(watch.repository) &&
+    typeof watch.pr === "number" &&
+    Number.isInteger(watch.pr) &&
+    watch.pr >= 1 &&
+    typeof watch.head === "string" &&
+    /^[A-Fa-f0-9]{7,64}$/.test(watch.head) &&
+    typeof watch.status === "string" &&
+    ["pending", "failed", "passed", "merged"].includes(watch.status) &&
+    typeof watch.polls === "number" &&
+    Number.isInteger(watch.polls) &&
+    watch.polls >= 0 &&
+    Array.isArray(watch.lastChecks) &&
+    watch.lastChecks.length <= 100 &&
+    watch.lastChecks.every((item) => typeof item === "string" && item.length <= 300) &&
+    typeof watch.createdAt === "string" &&
+    Number.isFinite(Date.parse(watch.createdAt)) &&
+    typeof watch.updatedAt === "string" &&
+    Number.isFinite(Date.parse(watch.updatedAt))
+  );
+}
+
 function load(dir: string): PrWatchState[] {
   const target=file(dir);
   if(!fs.existsSync(target)) return [];
   try{
     const parsed=JSON.parse(fs.readFileSync(target,"utf8")) as unknown;
-    return Array.isArray(parsed) ? parsed as PrWatchState[] : [];
+    return Array.isArray(parsed)
+      ? parsed.filter(validWatch).map((watch) => ({ ...watch, lastChecks: [...watch.lastChecks] }))
+      : [];
   }catch{return [];}
 }
 
