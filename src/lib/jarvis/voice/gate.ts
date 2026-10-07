@@ -193,6 +193,7 @@ export function voiceLine(
   if (code === "RUNBOOK_NOT_FOUND") return "Для этой команды нет разрешённого сценария.";
   if (code === "CONNECT_FAILED") return "Не удалось подключиться к " + (context.target || "цели") + ". Ничего не считаю выполненным.";
   if (code === "EXECUTION_TIMEOUT") return "Проверка превысила допустимое время. Результат не засчитан.";
+  if (code === "PRECONDITION_FAILED") return "Условия для безопасного выполнения не выполнены. Операция не запускалась.";
   if (code === "VERIFICATION_FAILED") return "Ответ получен, но проверка результата не прошла. Успех не засчитан.";
   if (code === "EXECUTION_DISABLED" || code === "NOT_CONFIGURED" || code === "CREDENTIAL_UNAVAILABLE" || code === "ADAPTER_DISABLED") {
     const first = sentences(reason ?? detail)[0];
