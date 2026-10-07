@@ -233,6 +233,16 @@ describe("memory, schedule, workers", () => {
     const regressed = updateJob(advanced, { progress: 10 });
     assert.equal(regressed.progress, 50);
     assert.match(regressed.logs.join("\n"), /tests running/);
+
+    const completed = updateJob(regressed, { status: "done", progress: 80, result: "ok" });
+    assert.equal(completed.status, "done");
+    assert.equal(completed.progress, 100);
+    const resurrected = updateJob(completed, { status: "running", progress: 100, log: "must not run" });
+    assert.equal(resurrected.status, "done");
+    assert.equal(resurrected.logs.includes("must not run"), false);
+
+    const cancelled = updateJob(openJob("job-3", "coding"), { status: "cancelled", phase: "cancelled" });
+    assert.equal(updateJob(cancelled, { status: "running" }).status, "cancelled");
   });
 });
 
