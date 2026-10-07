@@ -97,16 +97,16 @@ function validPersistedTask(value: unknown): value is ScheduledTask {
 export function loadTasks(dir: string): ScheduledTask[] {
   const target = scheduleFile(dir);
   if (!fs.existsSync(target)) return [];
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(fs.readFileSync(target, "utf8")) as unknown;
-    return Array.isArray(parsed)
-      ? parsed
-          .filter(validPersistedTask)
-          .map((task) => ({ ...task, history: [...task.history] }))
-      : [];
+    parsed = JSON.parse(fs.readFileSync(target, "utf8")) as unknown;
   } catch {
-    return [];
+    throw new Error("schedule state invalid");
   }
+  if (!Array.isArray(parsed) || !parsed.every(validPersistedTask)) {
+    throw new Error("schedule state invalid");
+  }
+  return parsed.map((task) => ({ ...task, history: [...task.history] }));
 }
 
 export function saveTasks(dir: string, tasks: ScheduledTask[]): void {
