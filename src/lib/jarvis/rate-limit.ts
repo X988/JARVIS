@@ -136,6 +136,7 @@ export function takeToken(
     const bucket = readBucket(target);
     cleanup(bucket, now, retentionMs);
 
+    const existed = Object.prototype.hasOwnProperty.call(bucket, key);
     const current = bucket[key] ?? [];
     const fresh = current.filter((stamp) => stamp <= now && now - stamp < windowMs);
     bucket[key] = fresh;
@@ -145,7 +146,8 @@ export function takeToken(
       return false;
     }
 
-    if (!(key in bucket) && Object.keys(bucket).length >= maxBuckets) {
+    if (!existed && Object.keys(bucket).length > maxBuckets) {
+      delete bucket[key];
       atomicWrite(target, bucket);
       return false;
     }
