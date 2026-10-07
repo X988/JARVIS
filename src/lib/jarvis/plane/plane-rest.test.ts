@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { agentOutputMayCallExecutor, planAgents, runAgents } from "./agents.ts";
 import { deliverArtifact } from "./artifacts.ts";
-import { browserIntent } from "./browser.ts";
+import { browserIntent, browserMaySubmitCredentials, browserPlan, readBrowserUrl } from "./browser.ts";
 import { codingChecks, codingDiff, prepareCodingWorktree, workerMayPublish, type GitRunner } from "./coding-worktree.ts";
 import { activateRunbook, proposeRunbook } from "./drafts.ts";
 import { cancelJob, enqueue, planForBranch, prMayLandOnMain } from "./jobs.ts";
@@ -76,6 +76,25 @@ describe("remaining project ideas", () => {
     assert.equal(admitMcpRunbook("mailcow.health", "sql01", ["mailcow.health"]).code, "DENY");
     assert.equal(browserIntent("login").code, "DENY");
     assert.equal(browserIntent("read").code, "READ");
+    assert.equal(browserMaySubmitCredentials(), false);
+  });
+
+  it("keeps browser reads on an explicit allowlist and blocks credential paths", async () => {
+    const env = { JARVIS_BROWSER_ALLOW_HOSTS: "docs.example,github.com", JARVIS_BROWSER_MAX_BYTES: "4096" };
+    assert.equal(browserPlan("https://docs.example/manual", "read", env).code, "READ");
+    assert.equal(browserPlan("https://evil.example/manual", "read", env).code, "DENY");
+    assert.equal(browserPlan("https://docs.example/login", "read", env).code, "DENY");
+    assert.equal(browserPlan("https://user:pass@docs.example/manual", "read", env).code, "DENY");
+    const fetched = await readBrowserUrl("https://docs.example/manual", {
+      env,
+      fetcher: async () =>
+        new Response("safe documentation", {
+          status: 200,
+          headers: { "content-type": "text/plain", "content-length": "18" },
+        }),
+    });
+    assert.equal(fetched.ok, true);
+    if ("text" in fetched) assert.equal(fetched.text, "safe documentation");
   });
 
   it("derives tool authority from runbooks and inventory", () => {
