@@ -41,16 +41,16 @@ function validPersistedJob(value: unknown): value is Job {
 export function loadJobs(dir: string): Job[] {
   const target = jobsFile(dir);
   if (!fs.existsSync(target)) return [];
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(fs.readFileSync(target, "utf8")) as unknown;
-    return Array.isArray(parsed)
-      ? parsed
-          .filter(validPersistedJob)
-          .map((job) => ({ ...job, logs: [...job.logs] }))
-      : [];
+    parsed = JSON.parse(fs.readFileSync(target, "utf8")) as unknown;
   } catch {
-    return [];
+    throw new Error("worker state invalid");
   }
+  if (!Array.isArray(parsed) || !parsed.every(validPersistedJob)) {
+    throw new Error("worker state invalid");
+  }
+  return parsed.map((job) => ({ ...job, logs: [...job.logs] }));
 }
 
 function writeJobs(dir: string, jobs: Job[]): void {
