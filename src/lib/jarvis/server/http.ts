@@ -4,6 +4,7 @@ import { adapterStatus } from "./adapters.ts";
 import { monitoringStatus } from "../monitoring.ts";
 import { authenticateRequest } from "./auth.ts";
 import { processCommand } from "./pipeline.ts";
+import { validRequestId } from "./idempotency.ts";
 
 function stateDir(): string {
   return process.env.JARVIS_STATE_DIR || process.cwd()+"/data";
@@ -113,7 +114,9 @@ export async function handleCommand(request:Request):Promise<Response>{
   for(const key of ["risk","policy","role","allowed","runbook","approved","executor","approvalStatus","parameters"]){
     if(key in body) forged[key]=body[key];
   }
-  const requestId=typeof body.request_id==="string" ? body.request_id : typeof body.requestId==="string" ? body.requestId : randomUUID();
+  const requestIdRaw=typeof body.request_id==="string" ? body.request_id : typeof body.requestId==="string" ? body.requestId : "";
+  const requestId=requestIdRaw ? requestIdRaw.trim() : randomUUID();
+  if(!validRequestId(requestId)) return json({code:"SCHEMA_INVALID",verdict:"deny"},400);
   const approvalId=typeof body.approval_id==="string" ? body.approval_id.trim() : "";
   const confirmation=typeof body.confirmation==="string" ? body.confirmation.trim() : "";
   const approval=approvalId && confirmation ? {id:approvalId,confirmation} : undefined;
