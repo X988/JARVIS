@@ -29,3 +29,20 @@
 Блокировка по умолчанию `FileLockProvider`, на одном хосте. `RedisLockProvider` выбирается `JARVIS_LOCK_BACKEND=redis`. Без `JARVIS_REDIS_URL` он отвечает `NOT_CONFIGURED` и не выдаёт lock. С URL, но без живого клиента, lock тоже не выдаётся (`ADAPTER_DISABLED`), чтобы отсутствие Redis не выглядело как свободный ресурс. Для нескольких хостов нужен настоящий Redis или advisory lock Postgres.
 
 Слежение без URL провайдера показывает `MONITORING_NOT_CONFIGURED`. `PrometheusProvider` и `ZabbixProvider` при заданном URL не рисуют метрики, пока клиент не подключён. Карточки demo — фикстуры, не телеметрия.
+
+
+## State stores
+
+Single-node mode uses explicit filesystem-backed abstractions:
+
+- `ApprovalStore`;
+- `IdempotencyStore`;
+- `RateLimitStore`;
+- `LockProvider`;
+- `JobStore`;
+- `AuditSink`;
+- `ExecutionStore`.
+
+`createFileStateStores()` creates the filesystem implementations. Execution history persists only bounded metadata and hashes the actor identifier before storage. Corrupted security state fails closed.
+
+Redis/PostgreSQL backends are **not implemented** and therefore are not reported as available. The existing Redis lock placeholder continues to return `NOT_CONFIGURED` / `ADAPTER_DISABLED` rather than granting a lock. PostgreSQL/Redis are the intended multi-instance backends after real clients and integration tests are added.
