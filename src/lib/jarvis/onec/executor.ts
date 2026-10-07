@@ -176,6 +176,75 @@ export class FileOnecExecutor {
     return { ok: true, code: "OK", environment, adapter: this.adapter, message: hits.slice(0, 20).join(", "), detail: hits.slice(0, 100) };
   }
 
+  searchSource(term: string, environment: OnecEnv): OnecResult {
+    const blocked = this.gate(environment, false);
+    if (blocked) return blocked;
+    const needle = term.toLowerCase().trim();
+    if (!needle || needle.length > 200) {
+      return deny(environment, this.adapter, "Некорректная строка поиска по исходникам.");
+    }
+
+    const maxFiles = boundedInt(this.env.JARVIS_ONEC_SEARCH_MAX_FILES, 10_000, 100, 50_000);
+    const maxDepth = boundedInt(this.env.JARVIS_ONEC_SEARCH_MAX_DEPTH, 32, 1, 64);
+    const maxFileBytes = boundedInt(this.env.JARVIS_ONEC_SEARCH_MAX_FILE_BYTES, 2 * 1024 * 1024, 4_096, 10 * 1024 * 1024);
+    const hits: string[] = [];
+    let inspected = 0;
+    let truncated = false;
+
+    const walk = (dir: string, depth: number): void => {
+      if (truncated) return;
+      if (depth > maxDepth) {
+        truncated = true;
+        return;
+      }
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (truncated) break;
+        if (entry.isSymbolicLink()) continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full, depth + 1);
+          continue;
+        }
+        if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".bsl")) continue;
+        inspected += 1;
+        if (inspected > maxFiles) {
+          truncated = true;
+          break;
+        }
+        const stat = fs.statSync(full);
+        if (stat.size > maxFileBytes) continue;
+        const body = fs.readFileSync(full, "utf8").toLowerCase();
+        if (body.includes(needle)) {
+          hits.push(path.relative(this.root, full));
+          if (hits.length >= 100) break;
+        }
+      }
+    };
+
+    walk(this.root, 0);
+    if (truncated) {
+      return {
+        ok: false,
+        code: "FAIL",
+        environment,
+        adapter: this.adapter,
+        message: "Поиск по BSL остановлен безопасным лимитом; частичный результат не считается полным.",
+        detail: { inspected, hits: hits.slice(0, 20) },
+      };
+    }
+    if (!hits.length) {
+      return { ok: false, code: "NOT_FOUND", environment, adapter: this.adapter, message: "Текст в BSL выгрузке не найден." };
+    }
+    return {
+      ok: true,
+      code: "OK",
+      environment,
+      adapter: this.adapter,
+      message: hits.slice(0, 20).join(", "),
+      detail: hits,
+    };
+  }
+
   readModule(relativeFile: string, environment: OnecEnv): OnecResult {
     const blocked = this.gate(environment, false);
     if (blocked) return blocked;
