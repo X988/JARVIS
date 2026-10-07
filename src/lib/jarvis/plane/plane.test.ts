@@ -36,6 +36,7 @@ import {
 import { acceptTelegram, type TelegramActor } from "./telegram.ts";
 import { loadJobs } from "./jobs.ts";
 import { claimNext, codingWorkspace, openJob, updateJob, workerAction, worktreePath } from "./workers.ts";
+import { cleanupCodingWorktrees, type GitRunner } from "./coding-worktree.ts";
 
 function dir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-plane-"));
@@ -300,6 +301,63 @@ describe("memory, schedule, workers", () => {
     assert.equal(workerAction("shell-production").code, "DENY");
     assert.equal(worktreePath("/repo", "../x"), null);
     assert.equal(worktreePath("/repo", "task-1")?.endsWith(`${path.sep}task-1`), true);
+  });
+
+  it("removes only old clean inactive coding worktrees and never uses force", () => {
+    const root = dir();
+    const managed = path.join(root, ".jarvis", "worktrees");
+    fs.mkdirSync(managed, { recursive: true });
+    for (const name of ["old-clean", "old-dirty", "active-old"]) {
+      const target = path.join(managed, name);
+      fs.mkdirSync(target, { recursive: true });
+      const old = new Date("2026-01-01T00:00:00Z");
+      fs.utimesSync(target, old, old);
+    }
+    const outside = path.join(root, "outside");
+    fs.mkdirSync(outside);
+    fs.symlinkSync(outside, path.join(managed, "unsafe-link"));
+
+    const calls: Array<{ args: string[]; cwd: string }> = [];
+    const runner: GitRunner = (_command, args, cwd) => {
+      calls.push({ args: [...args], cwd });
+      if (args[0] === "rev-parse") {
+        return { status: 0, stdout: root + "\n", stderr: "" };
+      }
+      if (args[0] === "status") {
+        return {
+          status: 0,
+          stdout: cwd.endsWith("old-dirty") ? " M changed.txt\n" : "",
+          stderr: "",
+        };
+      }
+      if (args[0] === "worktree" && args[1] === "remove") {
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      return { status: 1, stdout: "", stderr: "unexpected" };
+    };
+
+    const result = cleanupCodingWorktrees(
+      root,
+      new Set(["active-old"]),
+      {
+        env: { JARVIS_WORKTREE_RETENTION_MS: String(60 * 60 * 1000) },
+        now: Date.parse("2026-10-07T05:30:00Z"),
+        runner,
+      },
+    );
+    assert.deepEqual(result, {
+      removed: 1,
+      skippedActive: 1,
+      skippedDirty: 1,
+      skippedUnsafe: 1,
+      failed: 0,
+    });
+    const remove = calls.find(
+      (call) => call.args[0] === "worktree" && call.args[1] === "remove",
+    );
+    assert.ok(remove);
+    assert.equal(remove?.args.includes("--force"), false);
+    assert.equal(remove?.args.at(-1), path.join(managed, "old-clean"));
   });
 
   it("keeps coding workers isolated and bounded by concurrency", () => {
