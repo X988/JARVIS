@@ -33,7 +33,11 @@ export interface ApprovalStore {
 }
 
 export class FileApprovalStore implements ApprovalStore {
-  constructor(private readonly dir: string) {}
+  private readonly dir: string;
+
+  constructor(dir: string) {
+    this.dir = dir;
+  }
 
   create(row: Omit<ApprovalRecord, "status" | "stage">): ApprovalRecord {
     return createApproval(this.dir, row);
@@ -57,7 +61,11 @@ export interface IdempotencyStore {
 }
 
 export class FileIdempotencyStore implements IdempotencyStore {
-  constructor(private readonly dir: string) {}
+  private readonly dir: string;
+
+  constructor(dir: string) {
+    this.dir = dir;
+  }
 
   remember<T>(
     actorId: string,
@@ -73,7 +81,11 @@ export interface RateLimitStore {
 }
 
 export class FileRateLimitStore implements RateLimitStore {
-  constructor(private readonly dir: string) {}
+  private readonly dir: string;
+
+  constructor(dir: string) {
+    this.dir = dir;
+  }
 
   take(key: string, limit: number, windowMs: number, now?: number): boolean {
     return takeTokenInDir(this.dir, key, limit, windowMs, now);
@@ -93,7 +105,11 @@ export interface JobStore {
 }
 
 export class FileJobStore implements JobStore {
-  constructor(private readonly dir: string) {}
+  private readonly dir: string;
+
+  constructor(dir: string) {
+    this.dir = dir;
+  }
 
   list(): Job[] {
     return loadJobs(this.dir);
@@ -127,11 +143,19 @@ export interface AuditSink {
 }
 
 export class FileAuditSink implements AuditSink {
+  private readonly dir: string;
+  private readonly env: NodeJS.ProcessEnv;
+  private readonly fetcher: typeof fetch;
+
   constructor(
-    private readonly dir: string,
-    private readonly env: NodeJS.ProcessEnv = process.env,
-    private readonly fetcher: typeof fetch = fetch,
-  ) {}
+    dir: string,
+    env: NodeJS.ProcessEnv = process.env,
+    fetcher: typeof fetch = fetch,
+  ) {
+    this.dir = dir;
+    this.env = env;
+    this.fetcher = fetcher;
+  }
 
   enqueue(row: AuditRow): boolean {
     return enqueueAuditDelivery(row, this.dir, this.env);
@@ -245,10 +269,16 @@ function boundedHistoryMax(raw: string | undefined): number {
 }
 
 export class FileExecutionStore implements ExecutionStore {
+  private readonly dir: string;
+  private readonly env: NodeJS.ProcessEnv;
+
   constructor(
-    private readonly dir: string,
-    private readonly env: NodeJS.ProcessEnv = process.env,
-  ) {}
+    dir: string,
+    env: NodeJS.ProcessEnv = process.env,
+  ) {
+    this.dir = dir;
+    this.env = env;
+  }
 
   append(input: ExecutionRecordInput): ExecutionRecord {
     if (!input.actorId || input.actorId.length > 8_192) {
