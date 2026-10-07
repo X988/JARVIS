@@ -102,6 +102,29 @@ describe("telegram and voice", () => {
     }
   });
 
+  it("keeps browser and whisper.cpp STT providers as untrusted transcription only", () => {
+    const browser = new BrowserSpeechProvider();
+    const browserHit = browser.transcribe({ transcript: "Проверь Mailcow", confidence: 0.72 });
+    assert.equal("provider" in browserHit ? browserHit.provider : "", "browser");
+    assert.equal("confidence" in browserHit ? browserHit.confidence : 0, 0.72);
+
+    const root = dir();
+    const whisper = new WhisperProvider(
+      {
+        JARVIS_AUDIO_DIR: root,
+        JARVIS_WHISPER_CPP_WRAPPER: "/opt/jarvis/bin/whisper-wrapper",
+      },
+      (_executable, args) => ({
+        status: 0,
+        stdout: JSON.stringify({ text: "Проверь SQL", confidence: 0.88 }),
+      }),
+    );
+    const hit = whisper.transcribe({ wavPath: path.join(root, "voice.wav") });
+    assert.equal("provider" in hit ? hit.provider : "", "whisper-cpp");
+    assert.equal("text" in hit ? hit.text : "", "Проверь SQL");
+    assert.equal(whisper.transcribe({ wavPath: path.join(root, "..", "escape.wav") }).code, "STT_FAILED");
+  });
+
   it("keeps a low-confidence alias unchanged", () => {
     assert.equal(normalizeHeard("проверь ютп", 0.4).changed, false);
     assert.equal(normalizeHeard("проверь ютп", 0.9).text.includes("utp"), true);
