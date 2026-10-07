@@ -1,6 +1,8 @@
 const [repo] = process.argv.slice(2);
 const token = process.env.JARVIS_GITHUB_TOKEN?.trim();
-const api = (process.env.JARVIS_GITHUB_API_URL || "https://api.github.com").replace(/\/$/, "");
+// Security boundary: never make the API origin configurable. The bearer token
+// must only be sent to GitHub's public API origin.
+const api = "https://api.github.com";
 if (!repo || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
   process.stdout.write(JSON.stringify({ code: "NOT_CONFIGURED", detail: "invalid inventory repository" }));
   process.exit(0);
