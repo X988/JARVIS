@@ -12,7 +12,16 @@ function timeoutMs(raw: string | undefined): number {
 }
 
 export function runRouterOs(call: ExecCall, env: NodeJS.ProcessEnv = process.env): ExecResult {
-  const mode = call.runbook === "wireguard.status" ? "wireguard" : call.runbook === "mikrotik.status" ? "status" : "";
+  const mode = {
+    "mikrotik.status": "status",
+    "mikrotik.interfaces": "interfaces",
+    "mikrotik.routes": "routes",
+    "mikrotik.dhcp": "dhcp",
+    "mikrotik.wireguard": "wireguard",
+    "wireguard.status": "wireguard",
+    "mikrotik.firewall.counters": "firewall-counters",
+    "mikrotik.wan.status": "wan-status",
+  }[call.runbook] ?? "";
   if (!mode) return { called: false, code: "NOT_CONFIGURED", detail: "routeros: для runbook нет фиксированного read-only REST запроса." };
   if (!env.JARVIS_MIKROTIK_HOST?.trim()) return { called: false, code: "NOT_CONFIGURED", detail: "routeros: JARVIS_MIKROTIK_HOST не задан." };
   if (!env.JARVIS_MIKROTIK_USER?.trim() || !env.JARVIS_MIKROTIK_PASSWORD) {

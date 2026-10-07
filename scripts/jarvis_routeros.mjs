@@ -13,7 +13,7 @@ const password = process.env.JARVIS_MIKROTIK_PASSWORD ?? "";
 const port = Number(process.env.JARVIS_MIKROTIK_PORT || 443);
 const timeout = Number(process.env.JARVIS_ROUTEROS_TIMEOUT_MS || 10000);
 
-if (!["status", "wireguard"].includes(mode)) {
+if (!["status", "interfaces", "routes", "dhcp", "wireguard", "firewall-counters", "wan-status"].includes(mode)) {
   out("NOT_CONFIGURED", "Неизвестный read-only режим.");
   process.exit(0);
 }
@@ -33,6 +33,7 @@ async function get(resource) {
       method: "GET",
       headers: { authorization: `Basic ${auth}`, accept: "application/json" },
       signal: controller.signal,
+      redirect: "error",
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return await response.json();
@@ -76,6 +77,43 @@ try {
       else stale += 1;
     }
     out("OK", `peers=${peers.length}; recent=${up}; stale_or_never=${stale}`);
+  } else if (mode === "interfaces") {
+    const ifaces = array(await get("interface"));
+    const running = ifaces.filter((row) => String(row.running) === "true").length;
+    const disabled = ifaces.filter((row) => String(row.disabled) === "true").length;
+    out("OK", `interfaces=${ifaces.length}; running=${running}; disabled=${disabled}`);
+  } else if (mode === "routes") {
+    const routes = array(await get("ip/route"));
+    const active = routes.filter((row) => String(row.active) === "true").length;
+    const defaults = routes.filter((row) => String(row["dst-address"] ?? row.dstAddress ?? "") === "0.0.0.0/0");
+    const activeDefaults = defaults.filter((row) => String(row.active) === "true").length;
+    out("OK", `routes=${routes.length}; active=${active}; default_routes=${defaults.length}; active_defaults=${activeDefaults}`);
+  } else if (mode === "dhcp") {
+    const leases = array(await get("ip/dhcp-server/lease"));
+    const bound = leases.filter((row) => String(row.status).toLowerCase() === "bound").length;
+    const dynamic = leases.filter((row) => String(row.dynamic) === "true").length;
+    out("OK", `leases=${leases.length}; bound=${bound}; dynamic=${dynamic}`);
+  } else if (mode === "firewall-counters") {
+    const rules = array(await get("ip/firewall/filter"));
+    let packets = 0;
+    let bytes = 0;
+    for (const row of rules) {
+      const p = Number(row.packets ?? 0);
+      const b = Number(row.bytes ?? 0);
+      if (Number.isFinite(p) && p >= 0) packets += p;
+      if (Number.isFinite(b) && b >= 0) bytes += b;
+    }
+    const disabled = rules.filter((row) => String(row.disabled) === "true").length;
+    out("OK", `filter_rules=${rules.length}; disabled=${disabled}; packets=${Math.trunc(packets)}; bytes=${Math.trunc(bytes)}`);
+  } else if (mode === "wan-status") {
+    const [interfaces, routes] = await Promise.all([get("interface"), get("ip/route")]);
+    const ifaces = array(interfaces);
+    const routeRows = array(routes);
+    const running = ifaces.filter((row) => String(row.running) === "true").length;
+    const defaults = routeRows.filter((row) => String(row["dst-address"] ?? row.dstAddress ?? "") === "0.0.0.0/0");
+    const activeDefaults = defaults.filter((row) => String(row.active) === "true").length;
+    const code = activeDefaults > 0 ? "OK" : "VERIFICATION_FAILED";
+    out(code, `interfaces_running=${running}/${ifaces.length}; default_routes=${defaults.length}; active_defaults=${activeDefaults}`);
   } else {
     const [resource, interfaces, routes] = await Promise.all([
       get("system/resource"),

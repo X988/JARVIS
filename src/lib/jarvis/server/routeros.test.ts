@@ -22,6 +22,35 @@ describe("routeros REST adapter", () => {
     assert.equal(result.called, false);
   });
 
+  it("keeps extended diagnostics on a fixed allowlist", () => {
+    const supported = [
+      "mikrotik.status",
+      "mikrotik.interfaces",
+      "mikrotik.routes",
+      "mikrotik.dhcp",
+      "mikrotik.firewall.counters",
+      "mikrotik.wan.status",
+      "mikrotik.wireguard",
+      "wireguard.status",
+    ];
+    for (const runbook of supported) {
+      const result = runRouterOs(
+        { runbook, target: runbook.includes("wireguard") ? "wg" : "rb5009", mode: "real" },
+        {},
+      );
+      assert.notEqual(result.code, "OK");
+    }
+    const arbitrary = runRouterOs(
+      { runbook: "mikrotik.command", target: "rb5009", mode: "real", parameters: { command: "/system reboot" } },
+      {
+        JARVIS_MIKROTIK_HOST: "router.example",
+        JARVIS_MIKROTIK_USER: "jarvis-read",
+        JARVIS_MIKROTIK_PASSWORD: "secret",
+      },
+    );
+    assert.equal(arbitrary.code, "NOT_CONFIGURED");
+  });
+
   it("treats an unreachable HTTPS endpoint as connection failure, not success", () => {
     const result = runRouterOs(
       { runbook: "mikrotik.status", target: "rb5009", mode: "real" },

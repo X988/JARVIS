@@ -164,7 +164,12 @@
       "voiceCanonical": "mikrotik",
       "enabled": true,
       "allowedRunbooks": [
-        "mikrotik.status"
+        "mikrotik.status",
+        "mikrotik.interfaces",
+        "mikrotik.routes",
+        "mikrotik.dhcp",
+        "mikrotik.firewall.counters",
+        "mikrotik.wan.status"
       ]
     },
     {
@@ -185,7 +190,8 @@
       "voiceCanonical": "wireguard",
       "enabled": true,
       "allowedRunbooks": [
-        "wireguard.status"
+        "wireguard.status",
+        "mikrotik.wireguard"
       ]
     },
     {
