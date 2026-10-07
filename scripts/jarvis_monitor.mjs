@@ -24,7 +24,7 @@ function severity(value) {
   const source = String(value ?? "").toLowerCase();
   if (/critical|disaster|high|bad|error|fatal/.test(source)) return "bad";
   if (/warning|warn|medium|average/.test(source)) return "warn";
-  return "info";
+  return "ok";
 }
 
 async function json(url, init = {}) {
@@ -115,7 +115,7 @@ async function zabbix() {
     source: "zabbix",
     target: "zabbix",
     at: new Date(Number(row?.clock ?? 0) * 1000 || Date.now()).toISOString(),
-    severity: Number(row?.severity ?? 0) >= 4 ? "bad" : Number(row?.severity ?? 0) >= 2 ? "warn" : "info",
+    severity: Number(row?.severity ?? 0) >= 4 ? "bad" : Number(row?.severity ?? 0) >= 2 ? "warn" : "ok",
     evidence: `eventid=${String(row?.eventid ?? "")}`,
     runbook: null,
     mode: "live",
