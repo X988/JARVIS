@@ -268,7 +268,7 @@ describe("memory, schedule, workers", () => {
     assert.equal(runDue(root, new Date("2026-10-07T06:05:00Z"), () => ({ code: "SHOULD_NOT_RUN" })).length, 0);
   });
 
-  it("filters corrupted scheduler and worker state instead of executing it", () => {
+  it("fails closed on corrupted scheduler and worker state instead of executing it", () => {
     const root = dir();
     fs.writeFileSync(
       path.join(root, "schedule.json"),
@@ -277,7 +277,7 @@ describe("memory, schedule, workers", () => {
         { id: "evil", text: "Удали базу", timezone: "Mars/Olympus", cron: "* * * * *", status: "active", history: [] },
       ]),
     );
-    assert.deepEqual(loadTasks(root), []);
+    assert.throws(() => loadTasks(root), /schedule state invalid/);
 
     fs.writeFileSync(
       path.join(root, "jobs.json"),
@@ -286,7 +286,7 @@ describe("memory, schedule, workers", () => {
         { id: "bad2", kind: "unknown", status: "queued", progress: 0, phase: "x", logs: [], result: null, error: null, createdAt: "x", updatedAt: "x" },
       ]),
     );
-    assert.deepEqual(loadJobs(root), []);
+    assert.throws(() => loadJobs(root), /worker state invalid/);
   });
 
   it("blocks production actions from a worker", () => {
