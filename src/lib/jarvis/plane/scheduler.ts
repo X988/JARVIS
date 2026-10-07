@@ -78,7 +78,19 @@ function validPersistedTask(value: unknown): value is ScheduledTask {
   const hasCron = typeof task.cron === "string" && task.cron.trim().length > 0;
   const hasRunAt = typeof task.runAt === "string" && Number.isFinite(Date.parse(task.runAt));
   if (hasCron === hasRunAt) return false;
-  if (hasCron && task.cron!.trim().split(/\s+/).length !== 5) return false;
+  if (hasCron) {
+    const fields = task.cron!.trim().split(/\s+/);
+    if (
+      fields.length !== 5 ||
+      !cronFieldValid(fields[0], 0, 59) ||
+      !cronFieldValid(fields[1], 0, 23) ||
+      !cronFieldValid(fields[2], 1, 31) ||
+      !cronFieldValid(fields[3], 1, 12) ||
+      !cronFieldValid(fields[4], 0, 6)
+    ) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -220,7 +232,12 @@ export function createRecurringTask(input: {
     status: "active",
     history: [],
   };
-  if (!/^[a-zA-Z0-9._:-]{1,80}$/.test(input.id) || !candidate.text || !localClock(new Date(), input.timezone)) return null;
+  if (
+    !/^[a-zA-Z0-9._:-]{1,80}$/.test(input.id) ||
+    !candidate.text ||
+    candidate.text.length > 4_000 ||
+    !localClock(new Date(0), input.timezone)
+  ) return null;
   const parts = candidate.cron?.split(/\s+/) ?? [];
   if (parts.length !== 5) return null;
   const probes = [
