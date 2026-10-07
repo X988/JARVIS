@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { mark } from "../metrics.ts";
 import { processCommand, type PipelineResult } from "../server/pipeline.ts";
 import type { Session } from "../server/session.ts";
-import { acceptTelegram, allowlistFromEnv, sessionForTelegram, type TelegramUpdate } from "../plane/telegram.ts";
+import { acceptTelegram, actorsFromEnv, sessionForTelegram, type TelegramActor, type TelegramUpdate } from "../plane/telegram.ts";
 import { classifyPcm, normalizeTranscript, SPOKEN, stripWake, voiceLine, wavConvertArgs, type SpokenAlias } from "./gate.ts";
 import { audioRoot, safeAudioFile, sweepAudio, transcribeWav, type SttHit } from "./whisper.ts";
 
@@ -98,16 +98,16 @@ export function acceptTelegramVoice(
   update: TelegramUpdate,
   opts: {
     stateDir: string;
-    allow?: number[];
+    actors?: Record<string, TelegramActor>;
     now?: Date;
     download?: (fileId: string) => Buffer | null;
     env?: NodeJS.ProcessEnv;
   },
 ): VoiceTurn | { code: "ACTOR_DENIED" | "EMPTY" | "AUDIO_TOO_LARGE" } {
-  const allow = opts.allow ?? allowlistFromEnv(opts.env);
-  if (!allow.includes(update.userId)) return { code: "ACTOR_DENIED" };
+  const actors = opts.actors ?? actorsFromEnv(opts.env);
+  if (!actors[String(update.userId)] || actors[String(update.userId)].role !== "operator") return { code: "ACTOR_DENIED" };
   if (!update.voiceFileId) {
-    const text = acceptTelegram(update, { stateDir: opts.stateDir, allow, now: opts.now });
+    const text = acceptTelegram(update, { stateDir: opts.stateDir, actors, now: opts.now });
     if (!text.accepted) return { code: text.code === "ACTOR_DENIED" ? "ACTOR_DENIED" : "EMPTY" };
     return {
       code: text.result.code,
@@ -127,7 +127,7 @@ export function acceptTelegramVoice(
   if (!target) return { code: "EMPTY" };
   fs.writeFileSync(target, bytes);
   try {
-    const session = sessionForTelegram(update.userId, allow, opts.now?.getTime());
+    const session = sessionForTelegram(update.userId, actors, opts.now?.getTime());
     if (!session) return { code: "ACTOR_DENIED" };
     return runVoiceWav(target, {
       session,

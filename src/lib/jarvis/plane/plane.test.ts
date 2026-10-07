@@ -9,18 +9,20 @@ import { remember, searchMemory } from "./memory.ts";
 import { validatePlugin } from "./plugins.ts";
 import { isTaskDue, loadTasks, runDue, saveTasks } from "./scheduler.ts";
 import { normalizeHeard, ttsMode, wakeEnabled } from "./speech.ts";
-import { acceptTelegram } from "./telegram.ts";
+import { acceptTelegram, type TelegramActor } from "./telegram.ts";
 import { workerAction, worktreePath } from "./workers.ts";
 
 function dir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-plane-"));
 }
 
+const actors: Record<string, TelegramActor> = { "100842": { actorId: "admin1", role: "operator" } };
+
 describe("telegram and voice", () => {
   it("ignores username and denies an unknown numeric id", () => {
     const result = acceptTelegram(
       { updateId: 1, userId: 50, username: "admin1", text: "Проверь сервер" },
-      { stateDir: dir(), allow: [100842], now: new Date("2026-10-07T08:00:00Z") },
+      { stateDir: dir(), actors, now: new Date("2026-10-07T08:00:00Z") },
     );
     assert.equal(result.accepted, false);
     if (!result.accepted) assert.equal(result.code, "ACTOR_DENIED");
@@ -29,7 +31,7 @@ describe("telegram and voice", () => {
   it("does not invent text for a voice message", () => {
     const result = acceptTelegram(
       { updateId: 2, userId: 100842, voiceFileId: "abc" },
-      { stateDir: dir(), allow: [100842], now: new Date("2026-10-07T08:00:00Z") },
+      { stateDir: dir(), actors, now: new Date("2026-10-07T08:00:00Z") },
     );
     assert.equal(result.accepted, false);
     if (!result.accepted) assert.equal(result.code, "STT_UNAVAILABLE");
@@ -38,10 +40,41 @@ describe("telegram and voice", () => {
   it("sends an allowed text through the pipeline and denies a drop", () => {
     const result = acceptTelegram(
       { updateId: 3, userId: 100842, text: "Удали базу utp" },
-      { stateDir: dir(), allow: [100842], now: new Date("2026-10-07T08:00:00Z") },
+      { stateDir: dir(), actors, now: new Date("2026-10-07T08:00:00Z") },
     );
     assert.equal(result.accepted, true);
     if (result.accepted) assert.equal(result.result.code, "POLICY_DENIED");
+  });
+
+  it("accepts a numeric id from the actor map, not from the demo operator list", () => {
+    const result = acceptTelegram(
+      { updateId: 4, userId: 424242, text: "Проверь сервер" },
+      {
+        stateDir: dir(),
+        actors: { "424242": { actorId: "ops2", role: "operator" } },
+        now: new Date("2026-10-07T08:00:00Z"),
+      },
+    );
+    assert.equal(result.accepted, true);
+  });
+
+  it("does not authorize JARVIS_TELEGRAM_IDS", () => {
+    const previous = process.env.JARVIS_TELEGRAM_IDS;
+    const actorsEnv = process.env.JARVIS_TELEGRAM_ACTORS_JSON;
+    process.env.JARVIS_TELEGRAM_IDS = "100842";
+    delete process.env.JARVIS_TELEGRAM_ACTORS_JSON;
+    try {
+      const result = acceptTelegram(
+        { updateId: 5, userId: 100842, text: "Проверь сервер" },
+        { stateDir: dir(), now: new Date("2026-10-07T08:00:00Z") },
+      );
+      assert.equal(result.accepted, false);
+    } finally {
+      if (previous === undefined) delete process.env.JARVIS_TELEGRAM_IDS;
+      else process.env.JARVIS_TELEGRAM_IDS = previous;
+      if (actorsEnv === undefined) delete process.env.JARVIS_TELEGRAM_ACTORS_JSON;
+      else process.env.JARVIS_TELEGRAM_ACTORS_JSON = actorsEnv;
+    }
   });
 
   it("keeps a low-confidence alias unchanged", () => {
