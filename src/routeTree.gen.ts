@@ -14,6 +14,7 @@ import { Route as HealthRouteImport } from './routes/health'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MetricsRouteImport } from './routes/metrics'
 import { Route as ReadyRouteImport } from './routes/ready'
+import { Route as StatusRouteImport } from './routes/status'
 import { Route as ApiCommandsRouteImport } from './routes/api/commands'
 import { Route as ApiSessionRouteImport } from './routes/api/session'
 import { Route as ApiTelegramRouteImport } from './routes/api/telegram'
@@ -44,6 +45,11 @@ const ReadyRoute = ReadyRouteImport.update({
   path: '/ready',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StatusRoute = StatusRouteImport.update({
+  id: '/status',
+  path: '/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCommandsRoute = ApiCommandsRouteImport.update({
   id: '/api/commands',
   path: '/api/commands',
@@ -71,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/metrics': typeof MetricsRoute
   '/ready': typeof ReadyRoute
+  '/status': typeof StatusRoute
   '/api/commands': typeof ApiCommandsRoute
   '/api/session': typeof ApiSessionRoute
   '/api/telegram': typeof ApiTelegramRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/metrics': typeof MetricsRoute
   '/ready': typeof ReadyRoute
+  '/status': typeof StatusRoute
   '/api/commands': typeof ApiCommandsRoute
   '/api/session': typeof ApiSessionRoute
   '/api/telegram': typeof ApiTelegramRoute
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/metrics': typeof MetricsRoute
   '/ready': typeof ReadyRoute
+  '/status': typeof StatusRoute
   '/api/commands': typeof ApiCommandsRoute
   '/api/session': typeof ApiSessionRoute
   '/api/telegram': typeof ApiTelegramRoute
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/metrics'
     | '/ready'
+    | '/status'
     | '/api/commands'
     | '/api/session'
     | '/api/telegram'
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/metrics'
     | '/ready'
+    | '/status'
     | '/api/commands'
     | '/api/session'
     | '/api/telegram'
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/metrics'
     | '/ready'
+    | '/status'
     | '/api/commands'
     | '/api/session'
     | '/api/telegram'
@@ -141,6 +153,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   MetricsRoute: typeof MetricsRoute
   ReadyRoute: typeof ReadyRoute
+  StatusRoute: typeof StatusRoute
   ApiCommandsRoute: typeof ApiCommandsRoute
   ApiSessionRoute: typeof ApiSessionRoute
   ApiTelegramRoute: typeof ApiTelegramRoute
@@ -184,6 +197,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReadyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/status': {
+      id: '/status'
+      path: '/status'
+      fullPath: '/status'
+      preLoaderRoute: typeof StatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/commands': {
       id: '/api/commands'
       path: '/api/commands'
@@ -221,6 +241,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   MetricsRoute: MetricsRoute,
   ReadyRoute: ReadyRoute,
+  StatusRoute: StatusRoute,
   ApiCommandsRoute: ApiCommandsRoute,
   ApiSessionRoute: ApiSessionRoute,
   ApiTelegramRoute: ApiTelegramRoute,
