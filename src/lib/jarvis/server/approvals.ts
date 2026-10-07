@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { withStateLock } from "./state-lock.ts";
 
 export type ApprovalStatus = "pending" | "confirmed" | "expired" | "mismatch";
 
@@ -33,7 +34,10 @@ function readAll(dir: string): ApprovalRecord[] {
 
 function writeAll(dir: string, rows: ApprovalRecord[]): void {
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(file(dir), JSON.stringify(rows));
+  const target = file(dir);
+  const next = `${target}.tmp`;
+  fs.writeFileSync(next, JSON.stringify(rows));
+  fs.renameSync(next, target);
 }
 
 export function parameterHash(parts: {
@@ -51,7 +55,7 @@ export function parameterHash(parts: {
 
 export function createApproval(dir: string, row: Omit<ApprovalRecord, "status" | "stage">): ApprovalRecord {
   const stored: ApprovalRecord = { ...row, stage: 1, status: "pending" };
-  writeAll(dir, [...readAll(dir), stored]);
+  withStateLock(dir, () => writeAll(dir, [...readAll(dir), stored]));
   return stored;
 }
 
@@ -60,5 +64,5 @@ export function findApproval(dir: string, id: string): ApprovalRecord | null {
 }
 
 export function saveApproval(dir: string, next: ApprovalRecord): void {
-  writeAll(dir, readAll(dir).map((item) => (item.id === next.id ? next : item)));
+  withStateLock(dir, () => writeAll(dir, readAll(dir).map((item) => (item.id === next.id ? next : item))));
 }

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { withStateLock } from "./server/state-lock.ts";
 
 export type AuditRow = {
   at: string;
@@ -56,17 +57,19 @@ function canon(row: Omit<AuditRow, "hash">): string {
 
 export function appendAudit(row: Omit<AuditRow, "previousHash" | "hash">, dir?: string): AuditRow {
   const file = auditFile(dir);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  let previousHash = "GENESIS";
-  if (fs.existsSync(file)) {
-    const lines = fs.readFileSync(file, "utf8").trim().split("\n").filter(Boolean);
-    if (lines.length) previousHash = (JSON.parse(lines[lines.length - 1]) as AuditRow).hash || "GENESIS";
-  }
-  const body = { ...row, previousHash };
-  const hash = createHash("sha256").update(canon(body)).digest("hex");
-  const stored = { ...body, hash };
-  fs.appendFileSync(file, `${JSON.stringify(stored)}\n`);
-  return stored;
+  return withStateLock(path.dirname(file), () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    let previousHash = "GENESIS";
+    if (fs.existsSync(file)) {
+      const lines = fs.readFileSync(file, "utf8").trim().split("\n").filter(Boolean);
+      if (lines.length) previousHash = (JSON.parse(lines[lines.length - 1]) as AuditRow).hash || "GENESIS";
+    }
+    const body = { ...row, previousHash };
+    const hash = createHash("sha256").update(canon(body)).digest("hex");
+    const stored = { ...body, hash };
+    fs.appendFileSync(file, `${JSON.stringify(stored)}\n`);
+    return stored;
+  });
 }
 
 export function verifyAudit(dir?: string): { ok: boolean; rows: number } {

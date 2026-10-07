@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { withStateLock } from "../server/state-lock.ts";
 
 export type ScheduledTask = {
   id: string;
@@ -21,8 +22,10 @@ export function loadTasks(dir: string): ScheduledTask[] {
 }
 
 export function saveTasks(dir: string, tasks: ScheduledTask[]): void {
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(scheduleFile(dir), JSON.stringify(tasks, null, 2));
+  withStateLock(dir, () => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(scheduleFile(dir), JSON.stringify(tasks, null, 2));
+  });
 }
 
 /** Five cron fields, compared in UTC. A non-UTC timezone is stored but not converted. */
@@ -46,14 +49,17 @@ export function runDue(
   now: Date,
   run: (text: string) => { code: string },
 ): { id: string; code: string }[] {
-  const tasks = loadTasks(dir);
-  const fired: { id: string; code: string }[] = [];
-  for (const task of tasks) {
-    if (!isTaskDue(task, now)) continue;
-    const result = run(task.text);
-    task.history.push({ at: now.toISOString(), code: result.code });
-    fired.push({ id: task.id, code: result.code });
-  }
-  saveTasks(dir, tasks);
-  return fired;
+  return withStateLock(dir, () => {
+    const tasks = loadTasks(dir);
+    const fired: { id: string; code: string }[] = [];
+    for (const task of tasks) {
+      if (!isTaskDue(task, now)) continue;
+      const result = run(task.text);
+      task.history.push({ at: now.toISOString(), code: result.code });
+      fired.push({ id: task.id, code: result.code });
+    }
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(scheduleFile(dir), JSON.stringify(tasks, null, 2));
+    return fired;
+  });
 }

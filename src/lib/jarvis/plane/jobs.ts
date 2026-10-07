@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { withStateLock } from "../server/state-lock.ts";
 import { openJob, type Job } from "./workers.ts";
 
 function jobsFile(dir: string): string {
@@ -18,21 +19,25 @@ export function saveJobs(dir: string, jobs: Job[]): void {
 }
 
 export function enqueue(dir: string, id: string): Job {
-  const jobs = loadJobs(dir);
-  const job = openJob(id);
-  jobs.push(job);
-  saveJobs(dir, jobs);
-  return job;
+  return withStateLock(dir, () => {
+    const jobs = loadJobs(dir);
+    const job = openJob(id);
+    jobs.push(job);
+    saveJobs(dir, jobs);
+    return job;
+  });
 }
 
 export function cancelJob(dir: string, id: string): Job | null {
-  const jobs = loadJobs(dir);
-  const job = jobs.find((item) => item.id === id);
-  if (!job || job.status === "done") return job ?? null;
-  job.status = "cancelled";
-  job.logs.push("отменено оператором");
-  saveJobs(dir, jobs);
-  return job;
+  return withStateLock(dir, () => {
+    const jobs = loadJobs(dir);
+    const job = jobs.find((item) => item.id === id);
+    if (!job || job.status === "done") return job ?? null;
+    job.status = "cancelled";
+    job.logs.push("отменено оператором");
+    saveJobs(dir, jobs);
+    return job;
+  });
 }
 
 export const CODING_STEPS = ["worktree", "branch", "analyze", "modify", "test", "lint", "typecheck", "diff", "report", "pr"] as const;
