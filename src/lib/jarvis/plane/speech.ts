@@ -23,8 +23,11 @@ export class MockSpeechProvider implements SpeechToTextProvider {
  */
 export class FasterWhisperProvider implements SpeechToTextProvider {
   readonly id = "faster-whisper" as const;
+  private readonly env: NodeJS.ProcessEnv;
 
-  constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
+  constructor(env: NodeJS.ProcessEnv = process.env) {
+    this.env = env;
+  }
 
   transcribe(input: { wavPath?: string }): SttHit | SttFailure {
     if (!input.wavPath) return { code: "NOT_CONFIGURED" };
