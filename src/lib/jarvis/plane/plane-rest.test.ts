@@ -44,8 +44,15 @@ describe("remaining project ideas", () => {
   it("searches local notes and rejects a research answer without sources", () => {
     const root = dir();
     fs.writeFileSync(path.join(root, "mail.md"), "Mailcow на прошлой неделе упирался в диск.\n\nВторое.");
-    const found = searchChunks(indexFolder(root), "mailcow");
+    fs.mkdirSync(path.join(root, "onec"));
+    fs.writeFileSync(path.join(root, "onec", "Module.bsl"), "Процедура ПроверитьUTP()\n// backup utp\nКонецПроцедуры");
+    fs.writeFileSync(path.join(root, "query.sql"), "SELECT state_desc FROM sys.databases WHERE name = @name");
+    const chunks = indexFolder(root);
+    const found = searchChunks(chunks, "mailcow");
     assert.equal(found[0]?.source, "mail.md");
+    assert.equal(searchChunks(chunks, "backup utp")[0]?.kind, "bsl");
+    assert.equal(searchChunks(chunks, "state_desc")[0]?.kind, "sql");
+    assert.equal(searchChunks(chunks, "state_desc")[0]?.source, "query.sql");
     assert.equal(researchReport("CVE", []).ok, false);
   });
 
