@@ -84,12 +84,18 @@ describe("locks, audit, git", () => {
     assert.equal(externalSinkLabel({}), "NOT_CONFIGURED");
     assert.equal(externalSinkLabel({ JARVIS_AUDIT_HTTP_URL: "http://127.0.0.1/audit" }), "http:ADAPTER_DISABLED");
     const windows = process.env.JARVIS_WINDOWS_HOST;
+    const windowsMap = process.env.JARVIS_WINDOWS_TARGETS_JSON;
     const windowsUser = process.env.JARVIS_WINDOWS_USER;
+    const windowsPassword = process.env.JARVIS_WINDOWS_PASSWORD;
     const ssh = process.env.JARVIS_SSH_HOST;
+    const sshMap = process.env.JARVIS_SSH_TARGETS_JSON;
     const sqlHost = process.env.JARVIS_SQL_HOST;
     delete process.env.JARVIS_WINDOWS_HOST;
+    delete process.env.JARVIS_WINDOWS_TARGETS_JSON;
     delete process.env.JARVIS_WINDOWS_USER;
+    delete process.env.JARVIS_WINDOWS_PASSWORD;
     delete process.env.JARVIS_SSH_HOST;
+    delete process.env.JARVIS_SSH_TARGETS_JSON;
     delete process.env.JARVIS_SQL_HOST;
     try {
       const health = new ServerProbeExecutor().execute({ runbook: "server.health", target: "dc01", mode: "real" });
@@ -105,18 +111,24 @@ describe("locks, audit, git", () => {
       assert.equal(probeRoute("mail01"), "ssh");
       assert.equal(probeRoute("dc01"), "powershell");
       assert.equal(mail.code, "NOT_CONFIGURED");
-      assert.match(mail.detail, /JARVIS_SSH_HOST/);
+      assert.match(mail.detail, /JARVIS_SSH_TARGETS_JSON/);
       assert.doesNotMatch(mail.detail, /WinRM/);
-      assert.equal(controller.code, "ADAPTER_DISABLED");
-      assert.match(controller.detail, /WinRM/);
+      assert.equal(controller.code, "CREDENTIAL_UNAVAILABLE");
+      assert.match(controller.detail, /user\/password/);
       assert.doesNotMatch(controller.detail, /SSH/);
     } finally {
       if (windows === undefined) delete process.env.JARVIS_WINDOWS_HOST;
       else process.env.JARVIS_WINDOWS_HOST = windows;
+      if (windowsMap === undefined) delete process.env.JARVIS_WINDOWS_TARGETS_JSON;
+      else process.env.JARVIS_WINDOWS_TARGETS_JSON = windowsMap;
       if (windowsUser === undefined) delete process.env.JARVIS_WINDOWS_USER;
       else process.env.JARVIS_WINDOWS_USER = windowsUser;
+      if (windowsPassword === undefined) delete process.env.JARVIS_WINDOWS_PASSWORD;
+      else process.env.JARVIS_WINDOWS_PASSWORD = windowsPassword;
       if (ssh === undefined) delete process.env.JARVIS_SSH_HOST;
       else process.env.JARVIS_SSH_HOST = ssh;
+      if (sshMap === undefined) delete process.env.JARVIS_SSH_TARGETS_JSON;
+      else process.env.JARVIS_SSH_TARGETS_JSON = sshMap;
       if (sqlHost === undefined) delete process.env.JARVIS_SQL_HOST;
       else process.env.JARVIS_SQL_HOST = sqlHost;
     }
