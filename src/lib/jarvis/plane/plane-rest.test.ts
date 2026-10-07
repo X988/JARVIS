@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import { runAgents } from "./agents.ts";
 import { deliverArtifact } from "./artifacts.ts";
 import { browserIntent } from "./browser.ts";
+import { codingChecks, codingDiff, prepareCodingWorktree, workerMayPublish, type GitRunner } from "./coding-worktree.ts";
 import { activateRunbook, proposeRunbook } from "./drafts.ts";
 import { cancelJob, enqueue, planForBranch, prMayLandOnMain } from "./jobs.ts";
 import { admitMcp, admitMcpRunbook } from "./mcp.ts";
@@ -89,6 +90,30 @@ describe("remaining project ideas", () => {
     };
     assert.equal(admitPlugin(plugin, "mail01").code, "GATEWAY");
     assert.equal(admitPlugin({ ...plugin, risk: 2 }, "mail01").code, "DENY");
+  });
+
+  it("keeps local coding worktrees isolated and never publishes from a worker", () => {
+    const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+    const runner: GitRunner = (command, args, cwd) => {
+      calls.push({ command, args, cwd });
+      if (args[0] === "rev-parse") return { status: 0, stdout: cwd + "\n", stderr: "" };
+      if (args[0] === "worktree") return { status: 0, stdout: "", stderr: "" };
+      if (command === "npm") return { status: 0, stdout: "", stderr: "" };
+      if (args[0] === "diff") return { status: 0, stdout: "diff --git a/a b/a", stderr: "" };
+      return { status: 1, stdout: "", stderr: "unexpected" };
+    };
+    const root = dir();
+    fs.mkdirSync(path.join(root, ".git"));
+    const prepared = prepareCodingWorktree(root, "ci-fix", "HEAD", runner);
+    assert.equal(prepared.ok, true);
+    if (!prepared.ok) return;
+    assert.match(prepared.branch, /^jarvis\/task-/);
+    assert.equal(calls.some((call) => call.args.includes("main") || call.args.includes("master")), false);
+    assert.equal(codingChecks(prepared.worktree, runner).ok, true);
+    assert.equal(codingDiff(prepared.worktree, runner).ok, true);
+    assert.equal(workerMayPublish("push"), false);
+    assert.equal(workerMayPublish("merge"), false);
+    assert.equal(workerMayPublish("deploy"), false);
   });
 
   it("loads only a valid plugin and cancels a coding job off main", () => {
