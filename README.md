@@ -200,6 +200,46 @@ Backup target не берётся из произвольного client input.
 
 Client-supplied security fields считаются недоверенными.
 
+## AI agent runtime
+
+В ветке `jarvis/prod-contour` добавлен отдельный bounded AI-agent контур:
+
+```text
+User
+  → LLM Planner
+  → JSON Schema validation
+  → Tool Registry
+  → Inventory admission
+  → Policy / risk check
+  → read-only Gateway
+  → Executor
+  → Verification + Audit
+  → grounded response
+```
+
+Поддерживаются LLM providers:
+
+- OpenAI Responses API;
+- Anthropic Messages API;
+- Gemini API;
+- локальный Ollama.
+
+AI-agent выключен по умолчанию и включается только через:
+
+```env
+JARVIS_AI_AGENT_ENABLED=1
+```
+
+Endpoint:
+
+```text
+POST /api/agent
+```
+
+Критическая граница текущей реализации: автономный agent loop может исполнять только зарегистрированные `risk=0`, `mutates=false`, `policy=ALLOW` runbooks. Любой mutating runbook останавливается с `MUTATION_REQUIRES_APPROVAL` и не передаётся executor. Изменения инфраструктуры продолжают проходить через обычный Approval Engine и command pipeline.
+
+LLM не является источником полномочий: tool, target, risk, policy и execution authority повторно выводятся и проверяются на сервере. API keys не включаются в prompt; ответы executor перед отправкой в optional sensitive-model synthesis проходят redaction.
+
 ## Технологии
 
 - TypeScript;
