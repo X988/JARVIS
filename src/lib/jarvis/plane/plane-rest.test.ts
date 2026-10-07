@@ -104,8 +104,11 @@ describe("remaining project ideas", () => {
     assert.equal(browserPlan("https://evil.example/manual", "read", env).code, "DENY");
     assert.equal(browserPlan("https://docs.example/login", "read", env).code, "DENY");
     assert.equal(browserPlan("https://user:pass@docs.example/manual", "read", env).code, "DENY");
+    assert.equal(browserPlan("http://127.0.0.1/manual", "read", { JARVIS_BROWSER_ALLOW_HOSTS: "127.0.0.1" }).code, "DENY");
+    assert.equal(browserPlan("http://169.254.169.254/latest/meta-data", "read", { JARVIS_BROWSER_ALLOW_HOSTS: "169.254.169.254" }).code, "DENY");
     const fetched = await readBrowserUrl("https://docs.example/manual", {
       env,
+      resolver: async () => ["203.0.113.10"],
       fetcher: async () =>
         new Response("safe documentation", {
           status: 200,
@@ -114,6 +117,13 @@ describe("remaining project ideas", () => {
     });
     assert.equal(fetched.ok, true);
     if ("text" in fetched) assert.equal(fetched.text, "safe documentation");
+    const rebound = await readBrowserUrl("https://docs.example/manual", {
+      env,
+      resolver: async () => ["10.0.0.5"],
+      fetcher: async () => new Response("must not be reached"),
+    });
+    assert.equal(rebound.ok, false);
+    if ("code" in rebound) assert.equal(rebound.code, "DENY");
   });
 
   it("derives tool authority from runbooks and inventory", () => {
