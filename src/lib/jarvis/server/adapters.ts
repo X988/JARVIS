@@ -31,79 +31,36 @@ function configured(hostEnv: string, secretEnv: string, type: string, intent: st
 export class MockExecutor implements Executor {
   readonly type = "mock" as const;
   execute(call: ExecCall): ExecResult {
-    if (call.mode === "real") {
-      return missing("mock", "ADAPTER_DISABLED", "В режиме real mock не считается выполнением.");
-    }
+    if (call.mode === "real") return missing("mock", "ADAPTER_DISABLED", "В режиме real mock не считается выполнением.");
     return { called: true, code: "MOCK", detail: "mock, это не живой сервер" };
   }
 }
-
-export class PowerShellExecutor implements Executor {
-  readonly type = "powershell" as const;
-  execute(call: ExecCall): ExecResult {
-    return runWindowsProbe(call);
-  }
-}
-
-export class SSHExecutor implements Executor {
-  readonly type = "ssh" as const;
-  execute(call: ExecCall): ExecResult {
-    return runSshProbe(call);
-  }
-}
-
+export class PowerShellExecutor implements Executor { readonly type = "powershell" as const; execute(call: ExecCall): ExecResult { return runWindowsProbe(call); } }
+export class SSHExecutor implements Executor { readonly type = "ssh" as const; execute(call: ExecCall): ExecResult { return runSshProbe(call); } }
 export class SQLExecutor implements Executor {
   readonly type = "sql" as const;
   execute(call: ExecCall): ExecResult {
-    const blocked = configured(
-      "JARVIS_SQL_HOST",
-      "JARVIS_SQL_USER",
-      "sql",
-      "База берётся только из inventory, каталог резервной копии только из JARVIS_SQL_BACKUP_DIR.",
-    );
+    const blocked = configured("JARVIS_SQL_HOST","JARVIS_SQL_USER","sql","База берётся только из inventory, каталог резервной копии только из JARVIS_SQL_BACKUP_DIR.");
     if (blocked) return blocked;
     const database = sqlDatabase(call.target);
-    if (!database) return missing("sql", "NOT_CONFIGURED", "База не из inventory. Запрос не собирался.");
-    if (!process.env.JARVIS_SQL_PASSWORD) {
-      return missing("sql", "CREDENTIAL_UNAVAILABLE", "JARVIS_SQL_PASSWORD не задан. Запрос не отправлялся.");
-    }
-    if (call.runbook === "sql.backup" && !process.env.JARVIS_SQL_BACKUP_DIR) {
-      return missing("sql", "NOT_CONFIGURED", "JARVIS_SQL_BACKUP_DIR не задан. BACKUP не запускался.");
-    }
-    if (call.runbook !== "sql.health" && call.runbook !== "sql.backup") {
-      return missing("sql", "NOT_CONFIGURED", "Для этой цели нет фиксированного SQL-запроса.");
-    }
+    if (!database) return missing("sql","NOT_CONFIGURED","База не из inventory. Запрос не собирался.");
+    if (!process.env.JARVIS_SQL_PASSWORD) return missing("sql","CREDENTIAL_UNAVAILABLE","JARVIS_SQL_PASSWORD не задан. Запрос не отправлялся.");
+    if (call.runbook === "sql.backup" && !process.env.JARVIS_SQL_BACKUP_DIR) return missing("sql","NOT_CONFIGURED","JARVIS_SQL_BACKUP_DIR не задан. BACKUP не запускался.");
+    if (call.runbook !== "sql.health" && call.runbook !== "sql.backup") return missing("sql","NOT_CONFIGURED","Для этой цели нет фиксированного SQL-запроса.");
     return runSql(call.runbook === "sql.backup" ? "backup" : "health", database);
   }
 }
-
-export class RouterOSExecutor implements Executor {
-  readonly type = "routeros" as const;
-  execute(call: ExecCall): ExecResult {
-    return runRouterOs(call);
-  }
-}
-
-export class DockerExecutor implements Executor {
-  readonly type = "docker" as const;
-  execute(call: ExecCall): ExecResult {
-    return runMailcow(call);
-  }
-}
-
+export class RouterOSExecutor implements Executor { readonly type = "routeros" as const; execute(call: ExecCall): ExecResult { return runRouterOs(call); } }
+export class DockerExecutor implements Executor { readonly type = "docker" as const; execute(call: ExecCall): ExecResult { return runMailcow(call); } }
 export class OnecFileAdapter implements Executor {
   readonly type = "onec-file" as const;
   execute(call: ExecCall): ExecResult {
-    if (call.runbook === "onec.exec" || call.runbook === "onec.load") {
-      return missing("onec-file", "ADAPTER_DISABLED", "DENY_ALWAYS. Исполнитель не вызывается.");
-    }
+    if (call.runbook === "onec.exec" || call.runbook === "onec.load") return missing("onec-file","ADAPTER_DISABLED","DENY_ALWAYS. Исполнитель не вызывается.");
     const root = process.env.JARVIS_ONEC_DUMP;
-    if (!root) return missing("onec-file", "NOT_CONFIGURED", "JARVIS_ONEC_DUMP не задан. Выгрузка не читалась.");
-    if (call.runbook !== "onec.read" && call.runbook !== "onec.query") {
-      return missing("onec-file", "ADAPTER_DISABLED", "Правка формы или модуля требует структурный patch и заявку, не свободный текст.");
-    }
+    if (!root) return missing("onec-file","NOT_CONFIGURED","JARVIS_ONEC_DUMP не задан. Выгрузка не читалась.");
+    if (call.runbook !== "onec.read" && call.runbook !== "onec.query") return missing("onec-file","ADAPTER_DISABLED","Правка формы или модуля требует структурный patch и заявку, не свободный текст.");
     const file = new FileOnecExecutor(root);
-    const found = file.find("jrvs", "development");
+    const found = file.find("jrvs","development");
     if (!found.ok) return { called: true, code: "VERIFICATION_FAILED", detail: found.message };
     return { called: true, code: "OK", detail: `Прочитана выгрузка development: ${found.message}` };
   }
@@ -122,16 +79,8 @@ export class ServerProbeExecutor implements Executor {
   readonly type = "server-probe" as const;
   execute(call: ExecCall): ExecResult {
     const route = probeRoute(call.target);
-    if (route === "fleet") {
-      return missing("server-probe", "NOT_CONFIGURED", "Обход всех узлов не подключён. Сводный успех не рисуется.");
-    }
-    if (route === "unrouted") {
-      return missing(
-        "server-probe",
-        "NOT_CONFIGURED",
-        `У ${call.target} нет пары platform/executor в inventory. Глобальный host маршрут не выбирает.`,
-      );
-    }
+    if (route === "fleet") return missing("server-probe","NOT_CONFIGURED","Обход всех узлов не подключён. Сводный успех не рисуется.");
+    if (route === "unrouted") return missing("server-probe","NOT_CONFIGURED",`У ${call.target} нет пары platform/executor в inventory. Глобальный host маршрут не выбирает.`);
     return (route === "powershell" ? new PowerShellExecutor() : new SSHExecutor()).execute(call);
   }
 }
@@ -155,16 +104,25 @@ export function defaultRealExecute(call: ExecCall): ExecResult {
   return executorFor(book.executor, call).execute(call);
 }
 
-export function adapterStatus(): Record<string, string> {
-  const rows: Array<[string, Executor, ExecCall]> = [
-    ["powershell", new PowerShellExecutor(), { runbook: "server.health", target: "dc01", mode: "real" }],
-    ["ssh", new SSHExecutor(), { runbook: "server.health", target: "mail01", mode: "real" }],
-    ["sql", new SQLExecutor(), { runbook: "sql.health", target: "utp", mode: "real" }],
-    ["routeros", new RouterOSExecutor(), { runbook: "mikrotik.status", target: "rb5009", mode: "real" }],
-    ["docker", new DockerExecutor(), { runbook: "mailcow.health", target: "mail01", mode: "real" }],
-    ["onec-file", new OnecFileAdapter(), { runbook: "onec.read", target: "jarvis-dev", mode: "real" }],
-  ];
-  const out: Record<string, string> = { mock: "available" };
-  for (const [name, executor, call] of rows) out[name] = executor.execute(call).code;
-  return out;
+function has(env: NodeJS.ProcessEnv, name: string): boolean { return Boolean(env[name]?.trim()); }
+function targetMapHas(env: NodeJS.ProcessEnv, name: string): boolean {
+  const raw=env[name]?.trim();
+  if(!raw) return false;
+  try { const body=JSON.parse(raw) as unknown; return Boolean(body && typeof body==="object" && !Array.isArray(body) && Object.keys(body).length); }
+  catch { return false; }
+}
+
+/** Passive capability report. It never opens sockets, starts ssh/pwsh, or touches 1C files. */
+export function adapterStatus(env: NodeJS.ProcessEnv = process.env): Record<string,string> {
+  const windowsTarget = targetMapHas(env,"JARVIS_WINDOWS_TARGETS_JSON") || has(env,"JARVIS_WINDOWS_HOST");
+  const sshTarget = targetMapHas(env,"JARVIS_SSH_TARGETS_JSON") || has(env,"JARVIS_SSH_HOST");
+  return {
+    mock: "available",
+    powershell: !windowsTarget ? "NOT_CONFIGURED" : !has(env,"JARVIS_WINDOWS_USER") || !has(env,"JARVIS_WINDOWS_PASSWORD") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
+    ssh: !sshTarget ? "NOT_CONFIGURED" : !has(env,"JARVIS_SSH_USER") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
+    sql: !has(env,"JARVIS_SQL_HOST") ? "NOT_CONFIGURED" : !has(env,"JARVIS_SQL_USER") || !has(env,"JARVIS_SQL_PASSWORD") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
+    routeros: !has(env,"JARVIS_MIKROTIK_HOST") ? "NOT_CONFIGURED" : !has(env,"JARVIS_MIKROTIK_USER") || !has(env,"JARVIS_MIKROTIK_PASSWORD") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
+    docker: !has(env,"JARVIS_DOCKER_HOST") || !has(env,"JARVIS_MAILCOW_COMPOSE") ? "NOT_CONFIGURED" : !has(env,"JARVIS_DOCKER_USER") && !has(env,"JARVIS_SSH_USER") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
+    "onec-file": !has(env,"JARVIS_ONEC_DUMP") ? "NOT_CONFIGURED" : "CONFIGURED_UNPROBED",
+  };
 }
