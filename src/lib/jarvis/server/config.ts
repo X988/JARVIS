@@ -71,6 +71,11 @@ export function configProblems(env: NodeJS.ProcessEnv = process.env): JarvisProb
     }
     if (!env.JARVIS_SSH_USER?.trim()) problems.push("JARVIS_SSH_USER не задан.");
   }
+  if (enabled(env.JARVIS_ROUTEROS_ENABLED)) {
+    if (!env.JARVIS_MIKROTIK_HOST?.trim()) problems.push("JARVIS_MIKROTIK_HOST не задан.");
+    if (!env.JARVIS_MIKROTIK_USER?.trim()) problems.push("JARVIS_MIKROTIK_USER не задан.");
+    if (!env.JARVIS_MIKROTIK_PASSWORD) problems.push("JARVIS_MIKROTIK_PASSWORD не задан.");
+  }
 
   const raw = env.JARVIS_TELEGRAM_ACTORS_JSON?.trim();
   if (raw) {
