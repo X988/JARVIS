@@ -40,3 +40,12 @@ export function normalizeHeard(text: string, confidence: number): { text: string
 export function wakeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.JARVIS_WAKE_WORD === "1" || env.JARVIS_WAKE_WORD_ENABLED === "1";
 }
+
+
+export type TtsMode = "disabled" | "local" | "cloud";
+
+export function ttsMode(env: NodeJS.ProcessEnv = process.env): TtsMode {
+  if (env.JARVIS_TTS === "cloud") return "cloud";
+  if (env.JARVIS_TTS === "local" || env.JARVIS_TTS_PROVIDER === "piper") return "local";
+  return "disabled";
+}
