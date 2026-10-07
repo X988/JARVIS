@@ -17,12 +17,17 @@ function secure(request:Request):boolean{
 }
 
 function readCookies(request:Request):Record<string,string>{
-  const out:Record<string,string>={};
+  const out=Object.create(null) as Record<string,string>;
   const header=request.headers.get("cookie");
-  if(!header) return out;
+  if(!header || header.length>8192) return out;
   for(const part of header.split(";")){
     const [name,...rest]=part.trim().split("=");
-    if(name) out[name]=decodeURIComponent(rest.join("="));
+    if(!name || !/^[A-Za-z0-9_.-]{1,80}$/.test(name)) continue;
+    try{
+      out[name]=decodeURIComponent(rest.join("=")).slice(0,4096);
+    }catch{
+      continue;
+    }
   }
   return out;
 }
@@ -103,10 +108,20 @@ export async function handleCommand(request:Request):Promise<Response>{
   if(!auth.session || auth.code!=="OK") return json({code:auth.code,verdict:"deny"},httpStatus(auth.code));
   if(!csrfOk(request,auth.channel)) return json({code:"AUTH_REQUIRED",verdict:"deny"},401);
   if(!takeToken("cmd:"+auth.session.accountId,30,60_000)) return json({code:"RATE_LIMIT",verdict:"deny"},429);
-  let body:Record<string,unknown>;
-  try{ body=await request.json() as Record<string,unknown>; }
+  const contentLength=Number(request.headers.get("content-length") ?? "0");
+  if(Number.isFinite(contentLength) && contentLength>64*1024){
+    return json({code:"SCHEMA_INVALID",verdict:"deny"},413);
+  }
+  let parsedBody:unknown;
+  try{ parsedBody=await request.json(); }
   catch{ return json({code:"SCHEMA_INVALID",verdict:"deny"},400); }
-  if(typeof body.text!=="string" || !body.text.trim()) return json({code:"SCHEMA_INVALID",verdict:"deny"},400);
+  if(!parsedBody || typeof parsedBody!=="object" || Array.isArray(parsedBody)){
+    return json({code:"SCHEMA_INVALID",verdict:"deny"},400);
+  }
+  const body=parsedBody as Record<string,unknown>;
+  if(typeof body.text!=="string" || !body.text.trim() || body.text.length>4000){
+    return json({code:"SCHEMA_INVALID",verdict:"deny"},400);
+  }
 
   // Security-sensitive values are deliberately ignored. They are accepted only
   // so older/future clients cannot accidentally become an authority.
@@ -119,6 +134,12 @@ export async function handleCommand(request:Request):Promise<Response>{
   if(!validRequestId(requestId)) return json({code:"SCHEMA_INVALID",verdict:"deny"},400);
   const approvalId=typeof body.approval_id==="string" ? body.approval_id.trim() : "";
   const confirmation=typeof body.confirmation==="string" ? body.confirmation.trim() : "";
+  if(
+    (approvalId && !/^APPROVAL-[A-Z0-9-]{8,80}$/.test(approvalId)) ||
+    confirmation.length>160
+  ){
+    return json({code:"SCHEMA_INVALID",verdict:"deny"},400);
+  }
   const approval=approvalId && confirmation ? {id:approvalId,confirmation} : undefined;
   const result=processCommand({
     text:body.text,
