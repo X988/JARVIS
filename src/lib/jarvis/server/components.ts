@@ -5,6 +5,7 @@ import { loadTasks } from "../plane/scheduler.ts";
 import { loadJobs } from "../plane/jobs.ts";
 import { monitoringStatus } from "../monitoring.ts";
 import { externalSinkLabel } from "../audit-log.ts";
+import { onecValidationProbe } from "../onec/validation.ts";
 
 export type ComponentState = "OK" | "CONFIGURED" | "NOT_CONFIGURED" | "DEGRADED";
 
@@ -56,6 +57,14 @@ export function componentStatus(env: NodeJS.ProcessEnv = process.env): Record<st
   const telegramConfigured = Boolean(env.JARVIS_TELEGRAM_TOKEN?.trim() && env.JARVIS_TELEGRAM_WEBHOOK_SECRET?.trim());
   const monitoring = monitoringStatus(env);
   const auditSink = externalSinkLabel(env);
+  const onecValidation = onecValidationProbe(env);
+  const onecLevel = onecValidation.testDatabase
+    ? "TEST_DATABASE_VERIFIED"
+    : onecValidation.designerOrEdt
+      ? "DESIGNER_CHECK"
+      : onecValidation.bslLanguageServer
+        ? "BSL_LANGUAGE_SERVER"
+        : "FALLBACK_ONLY";
 
   return {
     inventory: inventoryStatus(),
@@ -90,5 +99,14 @@ export function componentStatus(env: NodeJS.ProcessEnv = process.env): Record<st
     llm: env.JARVIS_LLM_INTENT || env.JARVIS_LLM_CODING || env.JARVIS_LLM_LOCAL === "1"
       ? { state: "CONFIGURED", detail: "provider routing configured; live probe not performed" }
       : { state: "NOT_CONFIGURED", detail: "LLM provider routing не задан" },
+    onecValidation: {
+      state: onecLevel === "FALLBACK_ONLY" ? "DEGRADED" : "CONFIGURED",
+      detail: [
+        `level=${onecLevel}`,
+        `bsl=${onecValidation.bslLanguageServer}`,
+        `designerOrEdt=${onecValidation.designerOrEdt}`,
+        `testDb=${onecValidation.testDatabase}`,
+      ].join("; "),
+    },
   };
 }
