@@ -45,6 +45,23 @@ function array(value) {
   return Array.isArray(value) ? value : value && typeof value === "object" ? [value] : [];
 }
 
+function handshakeAgeMs(raw, now) {
+  const value = String(raw ?? "").trim();
+  if (!value || value === "never" || value === "0s") return Number.POSITIVE_INFINITY;
+  const stamp = Date.parse(value);
+  if (Number.isFinite(stamp)) return Math.max(0, now - stamp);
+  let total = 0;
+  let matched = false;
+  for (const hit of value.matchAll(/(\d+(?:\.\d+)?)(w|d|h|m|s)/g)) {
+    matched = true;
+    const amount = Number(hit[1]);
+    const unit = hit[2];
+    const factor = unit === "w" ? 604800000 : unit === "d" ? 86400000 : unit === "h" ? 3600000 : unit === "m" ? 60000 : 1000;
+    total += amount * factor;
+  }
+  return matched ? total : Number.POSITIVE_INFINITY;
+}
+
 try {
   if (mode === "wireguard") {
     const peers = array(await get("interface/wireguard/peers"));
@@ -54,8 +71,8 @@ try {
     let up = 0;
     for (const peer of peers) {
       const raw = peer["last-handshake"] ?? peer.lastHandshake ?? "";
-      const stamp = raw ? Date.parse(String(raw)) : NaN;
-      if (Number.isFinite(stamp) && now - stamp <= staleMs) up += 1;
+      const age = handshakeAgeMs(raw, now);
+      if (age <= staleMs) up += 1;
       else stale += 1;
     }
     out("OK", `peers=${peers.length}; recent=${up}; stale_or_never=${stale}`);
