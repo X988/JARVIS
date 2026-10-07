@@ -99,7 +99,8 @@ describe("voice gate", () => {
 
   it("keeps local TTS disabled until Piper and a model are explicitly configured", () => {
     assert.equal(ttsProbe({}).ready, false);
-    assert.equal(synthesizeVoice("Проверка завершена.", {}).code, "NOT_CONFIGURED");
+    const tts = synthesizeVoice("Проверка завершена.", {});
+    assert.equal("code" in tts && tts.code, "NOT_CONFIGURED");
   });
 
   it("rejects a path outside the audio directory", () => {
