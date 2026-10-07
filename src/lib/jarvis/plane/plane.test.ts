@@ -184,6 +184,30 @@ describe("memory, schedule, workers", () => {
     assert.equal(searchMemory(root, "10.0.0.5").length, 0);
   });
 
+  it("rejects malformed memory kinds and oversized records", () => {
+    const root = dir();
+    const badKind = remember(
+      root,
+      {
+        id: "bad-kind",
+        kind: "arbitrary",
+        at: "2026-10-07T00:00:00Z",
+        source: "test",
+        text: "safe text",
+      } as Parameters<typeof remember>[1],
+    );
+    assert.equal(badKind.ok, false);
+
+    const huge = remember(root, {
+      id: "huge",
+      kind: "conversation",
+      at: "2026-10-07T00:00:00Z",
+      source: "chat",
+      text: "x".repeat(20_001),
+    });
+    assert.equal(huge.ok, false);
+  });
+
   it("refuses secrets in every memory category and duplicate ids", () => {
     const root = dir();
     assert.equal(
