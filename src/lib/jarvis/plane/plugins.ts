@@ -116,26 +116,92 @@ export function validatePlugin(raw: unknown): PluginValidation {
   };
 }
 
+
+function scalar(value: string): string {
+  const clean = value.trim();
+  if ((clean.startsWith('"') && clean.endsWith('"')) || (clean.startsWith("'") && clean.endsWith("'"))) {
+    return clean.slice(1, -1);
+  }
+  return clean;
+}
+
+function parseInlineList(value: string): string[] | null {
+  const clean = value.trim();
+  if (!clean.startsWith("[") || !clean.endsWith("]")) return null;
+  const body = clean.slice(1, -1).trim();
+  if (!body) return [];
+  return body.split(",").map((item) => scalar(item)).filter(Boolean);
+}
+
+/**
+ * Strict manifest-only YAML subset: top-level scalars plus string lists.
+ * Anchors, tags, objects, multiline blocks and duplicate keys are rejected.
+ */
+export function parsePluginYaml(raw: string): unknown | null {
+  if (/\t|^[ \t]*[&*!>|]/m.test(raw)) return null;
+  const out: Record<string, unknown> = {};
+  let listKey: string | null = null;
+  for (const original of raw.split(/\r?\n/)) {
+    const line = original.replace(/\s+#.*$/, "");
+    if (!line.trim()) continue;
+    const listItem = /^\s{2,}-\s+(.+)$/.exec(line);
+    if (listItem) {
+      if (!listKey || !Array.isArray(out[listKey])) return null;
+      (out[listKey] as string[]).push(scalar(listItem[1]));
+      continue;
+    }
+    if (/^\s/.test(line)) return null;
+    const hit = /^([A-Za-z_][A-Za-z0-9_-]*):(?:\s*(.*))?$/.exec(line);
+    if (!hit) return null;
+    const key = hit[1];
+    if (key in out) return null;
+    const rawValue = hit[2] ?? "";
+    const inline = parseInlineList(rawValue);
+    if (inline) {
+      out[key] = inline;
+      listKey = null;
+    } else if (!rawValue.trim()) {
+      out[key] = [];
+      listKey = key;
+    } else if (key === "risk" && /^\d+$/.test(rawValue.trim())) {
+      out[key] = Number(rawValue.trim());
+      listKey = null;
+    } else {
+      out[key] = scalar(rawValue);
+      listKey = null;
+    }
+  }
+  return out;
+}
+
+function parseManifestFile(file: string): unknown | null {
+  const ext = path.extname(file).toLowerCase();
+  try {
+    const stat = fs.statSync(file);
+    if (!stat.isFile() || stat.size > 256 * 1024) return null;
+    const raw = fs.readFileSync(file, "utf8");
+    if (ext === ".json") return JSON.parse(raw);
+    if (ext === ".yaml" || ext === ".yml") return parsePluginYaml(raw);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+
 export function loadPluginDir(dir: string): { accepted: PluginManifest[]; rejected: string[] } {
   if (!fs.existsSync(dir)) return { accepted: [], rejected: [] };
   const accepted: PluginManifest[] = [];
   const rejected: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.name.endsWith(".json")) continue;
+    if (!/\.(?:json|ya?ml)$/i.test(entry.name)) continue;
     if (!entry.isFile() || entry.isSymbolicLink()) {
       rejected.push(entry.name);
       continue;
     }
     const file = path.join(dir, entry.name);
-    let parsed: unknown;
-    try {
-      const stat = fs.statSync(file);
-      if (stat.size > 256 * 1024) {
-        rejected.push(entry.name);
-        continue;
-      }
-      parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-    } catch {
+    const parsed = parseManifestFile(file);
+    if (!parsed) {
       rejected.push(entry.name);
       continue;
     }
@@ -162,4 +228,36 @@ export function admitPlugin(
     return { code: "DENY", reason: "risk в plugin manifest не совпадает с Runbook Registry" };
   }
   return { code: "GATEWAY" };
+}
+
+
+export function discoverPluginDirectories(root: string): {
+  accepted: PluginManifest[];
+  rejected: string[];
+  directories: string[];
+} {
+  const base = path.resolve(root);
+  const names = ["plugins", "skills", "runbooks"];
+  const accepted: PluginManifest[] = [];
+  const rejected: string[] = [];
+  const directories: string[] = [];
+  for (const name of names) {
+    const dir = path.join(base, name);
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
+    directories.push(name);
+    const result = loadPluginDir(dir);
+    accepted.push(...result.accepted);
+    rejected.push(...result.rejected.map((file) => `${name}/${file}`));
+  }
+  const ids = new Set<string>();
+  const unique: PluginManifest[] = [];
+  for (const manifest of accepted) {
+    if (ids.has(manifest.id)) {
+      rejected.push(`duplicate:${manifest.id}`);
+      continue;
+    }
+    ids.add(manifest.id);
+    unique.push(manifest);
+  }
+  return { accepted: unique, rejected, directories };
 }
