@@ -4,7 +4,6 @@ import {
   type Mode,
   type RegisteredToolResult,
 } from "../server/pipeline.ts";
-import { toolByName } from "./tool-registry.ts";
 import { callJsonModel, type FetchLike } from "./llm-client.ts";
 import { planAgentTurn, type AgentPlan, type AgentPlanResult } from "./agent-planner.ts";
 
@@ -167,33 +166,9 @@ export async function runAgentTurn(
   const runner = opts.toolRunner ?? processRegisteredReadOnlyTool;
   for (let index = 0; index < planned.plan.steps.length; index += 1) {
     const step = planned.plan.steps[index];
-    const tool = toolByName(step.tool);
-    if (!tool) {
-      observations.push({
-        tool: step.tool,
-        target: step.target,
-        code: "RUNBOOK_NOT_FOUND",
-        detail: "Tool disappeared from registry after planning.",
-        verification: "not executed",
-        executionCalled: false,
-        auditId: null,
-      });
-      break;
-    }
-
-    if (tool.mutates || tool.risk !== 0 || tool.policy !== "ALLOW") {
-      observations.push({
-        tool: step.tool,
-        target: step.target,
-        code: "MUTATION_REQUIRES_APPROVAL",
-        detail: "AI loop stopped before mutation. Use the normal approval pipeline.",
-        verification: tool.verification,
-        executionCalled: false,
-        auditId: null,
-      });
-      break;
-    }
-
+    // Every proposal, including a mutating one, is sent through the server
+    // admission layer so denials are audited. That layer never calls the
+    // executor for mutations.
     const result: RegisteredToolResult = runner({
       runbook: step.tool,
       target: step.target,
