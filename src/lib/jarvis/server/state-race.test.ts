@@ -135,6 +135,89 @@ describe("state lock", () => {
     assert.equal(calls, 1);
   });
 
+  it("does not steal an old pending claim from a live owner process", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-idem-live-"));
+    const key = actorRequestStorageKey("admin@example.com", "REQ-LIVE");
+    fs.writeFileSync(
+      path.join(dir, "idempotency.json"),
+      JSON.stringify({
+        [key]: {
+          state: "pending",
+          at: Date.now() - 60 * 60_000,
+          pid: process.pid,
+          owner: "00000000-0000-4000-8000-000000000000",
+        },
+      }),
+    );
+    const previous = process.env.JARVIS_IDEMPOTENCY_WAIT_MS;
+    process.env.JARVIS_IDEMPOTENCY_WAIT_MS = "50";
+    let calls = 0;
+    try {
+      assert.throws(
+        () =>
+          rememberRequest(dir, "admin@example.com", "REQ-LIVE", () => {
+            calls += 1;
+            return "unsafe";
+          }),
+        /idempotency wait timeout/,
+      );
+      assert.equal(calls, 0);
+    } finally {
+      if (previous === undefined) delete process.env.JARVIS_IDEMPOTENCY_WAIT_MS;
+      else process.env.JARVIS_IDEMPOTENCY_WAIT_MS = previous;
+    }
+  });
+
+  it("recovers a pending claim immediately when its recorded process is dead", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-idem-dead-"));
+    const key = actorRequestStorageKey("admin@example.com", "REQ-DEAD");
+    fs.writeFileSync(
+      path.join(dir, "idempotency.json"),
+      JSON.stringify({
+        [key]: {
+          state: "pending",
+          at: Date.now(),
+          pid: 2_000_000_000,
+          owner: "00000000-0000-4000-8000-000000000000",
+        },
+      }),
+    );
+    let calls = 0;
+    const result = rememberRequest(dir, "admin@example.com", "REQ-DEAD", () => {
+      calls += 1;
+      return "recovered";
+    });
+    assert.equal(result.duplicate, false);
+    assert.equal(result.value, "recovered");
+    assert.equal(calls, 1);
+  });
+
+  it("prunes timestamped completed requests after configured retention", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-idem-retention-"));
+    const oldKey = actorRequestStorageKey("admin@example.com", "REQ-OLD");
+    rememberRequest(dir, "admin@example.com", "REQ-OLD", () => "old");
+
+    const file = path.join(dir, "idempotency.json");
+    const stored = JSON.parse(fs.readFileSync(file, "utf8")) as Record<
+      string,
+      { state: string; at?: number; value?: unknown }
+    >;
+    assert.equal(stored[oldKey]?.state, "done");
+    stored[oldKey]!.at = Date.now() - 120_000;
+    fs.writeFileSync(file, JSON.stringify(stored));
+
+    const previous = process.env.JARVIS_IDEMPOTENCY_RETENTION_MS;
+    process.env.JARVIS_IDEMPOTENCY_RETENTION_MS = "60000";
+    try {
+      rememberRequest(dir, "admin@example.com", "REQ-NEW", () => "new");
+      const next = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+      assert.equal(Object.prototype.hasOwnProperty.call(next, oldKey), false);
+    } finally {
+      if (previous === undefined) delete process.env.JARVIS_IDEMPOTENCY_RETENTION_MS;
+      else process.env.JARVIS_IDEMPOTENCY_RETENTION_MS = previous;
+    }
+  });
+
   it("fails closed on corrupted idempotency JSON", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-idem-corrupt-"));
     const target = path.join(dir, "idempotency.json");
