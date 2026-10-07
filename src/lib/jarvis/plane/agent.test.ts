@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import { callJsonModel, type FetchLike } from "./llm-client.ts";
 import { validateAgentPlan, type AgentPlanResult } from "./agent-planner.ts";
 import { runAgentTurn } from "./agent-runtime.ts";
-import type { RegisteredToolResult } from "../server/pipeline.ts";
+import { processRegisteredReadOnlyTool, type RegisteredToolResult } from "../server/pipeline.ts";
 import type { Session } from "../server/session.ts";
 
 function dir(): string {
@@ -177,7 +177,7 @@ describe("bounded AI runtime", () => {
     assert.match(result.answer, /uptime=10d/);
   });
 
-  it("never invokes the autonomous runner for a mutating plan", async () => {
+  it("routes a mutating plan through audited server admission without execution", async () => {
     let calls = 0;
     const planner = async (): Promise<AgentPlanResult> => ({
       ok: true,
@@ -193,7 +193,18 @@ describe("bounded AI runtime", () => {
     });
     const toolRunner = (): RegisteredToolResult => {
       calls += 1;
-      throw new Error("mutating tool runner must not be called");
+      return {
+        code: "MUTATION_REQUIRES_APPROVAL",
+        verdict: "deny",
+        mode: "real",
+        requestId: "agent-mutation",
+        auditId: "audit-mutation",
+        runbook: "sql.backup",
+        target: "utp",
+        executionCalled: false,
+        detail: "mutation blocked",
+        verification: "BACKUP CHECKSUM",
+      };
     };
 
     const result = await runAgentTurn("Сделай backup utp", {
@@ -204,8 +215,30 @@ describe("bounded AI runtime", () => {
       toolRunner,
     });
 
-    assert.equal(calls, 0);
+    assert.equal(calls, 1);
     assert.equal(result.code, "MUTATION_REQUIRES_APPROVAL");
     assert.equal(result.observations[0].executionCalled, false);
   });
+
+  it("server admission never invokes executor for a mutating registered runbook", () => {
+    const root = dir();
+    let executorCalls = 0;
+    const result = processRegisteredReadOnlyTool({
+      runbook: "sql.backup",
+      target: "utp",
+      requestId: "agent-direct-mutation",
+      session,
+      stateDir: root,
+      mode: "real",
+      execute: () => {
+        executorCalls += 1;
+        return { called: true, code: "OK", detail: "must never happen" };
+      },
+    });
+    assert.equal(executorCalls, 0);
+    assert.equal(result.code, "MUTATION_REQUIRES_APPROVAL");
+    assert.equal(result.executionCalled, false);
+    assert.equal(result.auditId.length > 0, true);
+  });
+
 });
