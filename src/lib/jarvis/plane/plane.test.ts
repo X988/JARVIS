@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { correlate, openIncident } from "./incidents.ts";
+import { closeIncident, correlate, createIncident, loadIncidents, openIncident, updateIncident } from "./incidents.ts";
 import { agentMayEscalate, routeModel } from "./llm.ts";
 import { proposeCriticalInfrastructureFact, remember, searchMemory } from "./memory.ts";
 import { loadPluginDir, validatePlugin } from "./plugins.ts";
@@ -310,6 +310,49 @@ describe("plugins, incidents, models", () => {
     assert.equal(loaded.accepted.length, 1);
     assert.equal(loaded.accepted[0].id, "mailcow-check");
     assert.deepEqual(loaded.rejected, ["bad.json"]);
+  });
+
+  it("persists an incident lifecycle and refuses secret-bearing findings", () => {
+    const root = dir();
+    const created = createIncident(root, {
+      id: "inc-mailcow-1",
+      startedAt: "2026-10-07T06:00:00Z",
+      source: "monitoring",
+      target: "mail01",
+      severity: "warn",
+    });
+    assert.equal(created.ok, true);
+    assert.equal(createIncident(root, {
+      id: "inc-mailcow-1",
+      startedAt: "2026-10-07T06:01:00Z",
+      source: "monitoring",
+      target: "mail01",
+      severity: "warn",
+    }).ok, false);
+
+    const secret = updateIncident(root, "inc-mailcow-1", { finding: "password=do-not-store" });
+    assert.equal(secret.ok, false);
+    if (!secret.ok) assert.equal(secret.code, "SECRET");
+
+    const updated = updateIncident(
+      root,
+      "inc-mailcow-1",
+      {
+        finding: "Очередь Postfix растёт.",
+        suggested: "Проверить состояние postfix-mailcow без изменений.",
+        timeline: "finding recorded",
+      },
+      new Date("2026-10-07T06:05:00Z"),
+    );
+    assert.equal(updated.ok, true);
+    assert.equal(loadIncidents(root)[0].findings.length, 1);
+
+    const closed = closeIncident(root, "inc-mailcow-1", "Очередь нормализовалась.", new Date("2026-10-07T06:10:00Z"));
+    assert.equal(closed.ok, true);
+    assert.equal(loadIncidents(root)[0].status, "closed");
+    const resurrect = updateIncident(root, "inc-mailcow-1", { finding: "must not reopen" });
+    assert.equal(resurrect.ok, false);
+    if (!resurrect.ok) assert.equal(resurrect.code, "CLOSED");
   });
 
   it("links backup pressure without starting a repair", () => {
