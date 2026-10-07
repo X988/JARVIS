@@ -13,6 +13,7 @@ export type Target = {
   allowedRunbooks: string[];
   platform?: "windows" | "linux" | "routeros";
   executor?: "winrm" | "ssh" | "routeros";
+  voiceCanonical?: string;
 };
 
 type InventoryFile = { version: number; targets: Target[] };
@@ -37,15 +38,80 @@ const WORDS_THAT_ARE_NOT_HOSTS = new Set([
   "status",
 ]);
 
-function loadInventory(file = path.join(process.cwd(), "config", "jarvis", "inventory.json")): Target[] {
-  const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as InventoryFile;
-  if (!parsed.version || !Array.isArray(parsed.targets)) throw new Error("Invalid JARVIS inventory");
-  const seen = new Set<string>();
-  for (const target of parsed.targets) {
-    if (!target.id || seen.has(target.id)) throw new Error("Duplicate/invalid inventory target: " + target.id);
-    seen.add(target.id);
+const TARGET_TYPES = new Set<Target["type"]>(["host", "database", "router", "mail", "vpn", "repo", "fleet"]);
+const ENVIRONMENTS = new Set<Target["environment"]>(["production", "test", "development"]);
+const PLATFORMS = new Set<NonNullable<Target["platform"]>>(["windows", "linux", "routeros"]);
+const EXECUTORS = new Set<NonNullable<Target["executor"]>>(["winrm", "ssh", "routeros"]);
+
+function boundedStrings(value: unknown, maxItems: number, maxLength: number): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= maxItems &&
+    value.every((item) => typeof item === "string" && item.trim().length > 0 && item.length <= maxLength)
+  );
+}
+
+function validTarget(value: unknown): value is Target {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const target = value as Partial<Target>;
+  if (
+    typeof target.id !== "string" ||
+    !/^[a-z0-9][a-z0-9._-]{0,95}$/.test(target.id) ||
+    typeof target.displayName !== "string" ||
+    !target.displayName.trim() ||
+    target.displayName.length > 200 ||
+    typeof target.type !== "string" ||
+    !TARGET_TYPES.has(target.type as Target["type"]) ||
+    typeof target.environment !== "string" ||
+    !ENVIRONMENTS.has(target.environment as Target["environment"]) ||
+    !boundedStrings(target.roles, 64, 128) ||
+    typeof target.reference !== "string" ||
+    !target.reference.trim() ||
+    target.reference.length > 300 ||
+    !boundedStrings(target.aliases, 128, 200) ||
+    typeof target.enabled !== "boolean" ||
+    !boundedStrings(target.allowedRunbooks, 128, 128)
+  ) return false;
+
+  if (target.voiceCanonical !== undefined && (typeof target.voiceCanonical !== "string" || target.voiceCanonical.length > 100)) {
+    return false;
   }
-  return parsed.targets.filter((target) => target.enabled);
+  if (target.platform !== undefined && !PLATFORMS.has(target.platform)) return false;
+  if (target.executor !== undefined && !EXECUTORS.has(target.executor)) return false;
+  if ((target.platform === undefined) !== (target.executor === undefined)) return false;
+  if (target.platform === "windows" && target.executor !== "winrm") return false;
+  if (target.platform === "linux" && target.executor !== "ssh") return false;
+  if (target.platform === "routeros" && target.executor !== "routeros") return false;
+  return true;
+}
+
+function loadInventory(file = path.join(process.cwd(), "config", "jarvis", "inventory.json")): Target[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, "utf8")) as unknown;
+  } catch {
+    throw new Error("Invalid JARVIS inventory JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid JARVIS inventory");
+  const doc = parsed as Partial<InventoryFile>;
+  if (!Number.isInteger(doc.version) || (doc.version ?? 0) < 1 || !Array.isArray(doc.targets)) {
+    throw new Error("Invalid JARVIS inventory");
+  }
+
+  const seen = new Set<string>();
+  const targets: Target[] = [];
+  for (const raw of doc.targets) {
+    if (!validTarget(raw)) throw new Error("Invalid JARVIS inventory target");
+    if (seen.has(raw.id)) throw new Error("Duplicate JARVIS inventory target: " + raw.id);
+    seen.add(raw.id);
+    targets.push({
+      ...raw,
+      roles: [...raw.roles],
+      aliases: [...raw.aliases],
+      allowedRunbooks: [...raw.allowedRunbooks],
+    });
+  }
+  return targets.filter((target) => target.enabled);
 }
 
 export const INVENTORY: Target[] = loadInventory();
