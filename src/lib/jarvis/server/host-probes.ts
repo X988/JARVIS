@@ -70,7 +70,7 @@ export function sshArgs(call: ExecCall, env: NodeJS.ProcessEnv = process.env): s
 }
 
 function shellQuote(value: string): string {
-  return "'" + value.replace(/'/g, "'\\\"'\\\"'") + "'";
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
 function sshCommand(runbook: string): string {
