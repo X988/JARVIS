@@ -46,7 +46,7 @@ function httpStatus(code:string):number{
   if(code==="AUTH_REQUIRED") return 401;
   if(code==="ACTOR_DENIED" || code==="POLICY_DENIED") return 403;
   if(code==="APPROVAL_REQUIRED") return 202;
-  if(code==="APPROVAL_EXPIRED" || code==="APPROVAL_MISMATCH") return 409;
+  if(code==="APPROVAL_EXPIRED" || code==="APPROVAL_MISMATCH" || code==="PRECONDITION_FAILED") return 409;
   if(code==="TARGET_NOT_FOUND" || code==="RUNBOOK_NOT_FOUND") return 404;
   if(code==="SCHEMA_INVALID") return 400;
   if(code==="EXECUTION_DISABLED" || code==="NOT_CONFIGURED" || code==="CREDENTIAL_UNAVAILABLE" || code==="ADAPTER_DISABLED") return 503;
