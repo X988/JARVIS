@@ -9,6 +9,7 @@ import { BslLanguageServerValidator, FallbackBslValidator, OneCDesignerValidator
 import { FileOnecExecutor } from "./onec/executor.ts";
 import { planGitFlow } from "./onec/git-flow.ts";
 import { analyzeQuery } from "./onec/query.ts";
+import { onecValidationProbe, validateOnecExport, type ValidationRunner } from "./onec/validation.ts";
 import { SQLExecutor, ServerProbeExecutor, probeRoute } from "./server/adapters.ts";
 import { takeToken } from "./rate-limit.ts";
 import { OPERATORS, evaluate } from "./model.ts";
@@ -49,6 +50,104 @@ describe("bsl and query", () => {
   it("flags a dynamic query", () => {
     const report = analyzeQuery('ВЫБРАТЬ * ИЗ Регистр ВЫПОЛНИТЬ("ВЫБРАТЬ " + Поле)');
     assert.equal(report.ok, false);
+  });
+});
+
+describe("1C layered validation", () => {
+  it("stays FALLBACK_ONLY when no external validators are configured", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-1c-val-"));
+    const module = path.join(root, "Module.bsl");
+    const source = "Процедура Проверка()\nКонецПроцедуры";
+    fs.writeFileSync(module, source);
+    const result = validateOnecExport(root, module, source, {});
+    assert.equal(result.ok, true);
+    assert.equal(result.level, "FALLBACK_ONLY");
+    assert.equal(result.evidence.length, 1);
+    assert.equal(onecValidationProbe({}).fallback, true);
+  });
+
+  it("raises validation level only after real wrapper success", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-1c-val-"));
+    const module = path.join(root, "Module.bsl");
+    const source = "Процедура Проверка()\nКонецПроцедуры";
+    fs.writeFileSync(module, source);
+    const calls: Array<{ executable: string; args: string[] }> = [];
+    const runner: ValidationRunner = (executable, args) => {
+      calls.push({ executable, args });
+      return { status: 0 };
+    };
+    const result = validateOnecExport(
+      root,
+      module,
+      source,
+      {
+        JARVIS_BSL_LS_CHECK_BIN: "/opt/jarvis/check-bsl",
+        JARVIS_1CV8_DESIGNER_CHECK_BIN: "/opt/jarvis/check-designer",
+        JARVIS_ONEC_TEST_DB_CHECK_BIN: "/opt/jarvis/check-test-db",
+      },
+      runner,
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.level, "TEST_DATABASE_VERIFIED");
+    assert.deepEqual(result.evidence.map((item) => item.level), [
+      "FALLBACK_ONLY",
+      "BSL_LANGUAGE_SERVER",
+      "DESIGNER_CHECK",
+      "TEST_DATABASE_VERIFIED",
+    ]);
+    assert.equal(calls[0]?.args[0], module);
+    assert.equal(calls[1]?.args[0], root);
+    assert.equal(calls[2]?.args[0], root);
+  });
+
+  it("fails closed when a configured validator fails", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-1c-val-"));
+    const module = path.join(root, "Module.bsl");
+    const source = "Процедура Проверка()\nКонецПроцедуры";
+    fs.writeFileSync(module, source);
+    const result = validateOnecExport(
+      root,
+      module,
+      source,
+      { JARVIS_BSL_LS_CHECK_BIN: "/opt/jarvis/check-bsl" },
+      () => ({ status: 2 }),
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.level, "BSL_LANGUAGE_SERVER");
+  });
+
+  it("rolls a changed module back when external validation fails", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-1c-exec-"));
+    fs.writeFileSync(path.join(root, "Configuration.xml"), "<MetaDataObject><ChildObjects></ChildObjects></MetaDataObject>");
+    const relative = path.join("CommonModules", "jrvs_Test", "Ext", "Module.bsl");
+    const module = path.join(root, relative);
+    fs.mkdirSync(path.dirname(module), { recursive: true });
+    const before = "Процедура До()\nКонецПроцедуры\n";
+    const after = "Процедура После()\nКонецПроцедуры\n";
+    fs.writeFileSync(module, before);
+    const executor = new FileOnecExecutor(root, {
+      env: { JARVIS_BSL_LS_CHECK_BIN: "/opt/jarvis/check-bsl" },
+      validationRunner: () => ({ status: 1 }),
+    });
+    const result = executor.writeModule(relative, after, "test");
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "FAIL");
+    assert.match(result.message, /откатан/);
+    assert.equal(fs.readFileSync(module, "utf8"), before);
+  });
+
+  it("does not call external validators for production writes", () => {
+    let calls = 0;
+    const executor = new FileOnecExecutor(path.join(process.cwd(), "extensions", "JarvisDev"), {
+      env: { JARVIS_BSL_LS_CHECK_BIN: "/opt/jarvis/check-bsl" },
+      validationRunner: () => {
+        calls += 1;
+        return { status: 0 };
+      },
+    });
+    const result = executor.writeModule("CommonModules/x/Ext/Module.bsl", "Процедура А()\nКонецПроцедуры", "production");
+    assert.equal(result.code, "DENY");
+    assert.equal(calls, 0);
   });
 });
 
