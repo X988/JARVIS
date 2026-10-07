@@ -33,6 +33,58 @@ function jail(root: string, target: string): string | null {
   return full;
 }
 
+function inside(base: string, candidate: string): boolean {
+  return candidate === base || candidate.startsWith(base + path.sep);
+}
+
+function realRoot(root: string): string | null {
+  try {
+    const resolved = fs.realpathSync(root);
+    return fs.statSync(resolved).isDirectory() ? resolved : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeExistingFile(root: string, target: string): string | null {
+  const lexical = jail(root, target);
+  const base = realRoot(root);
+  if (!lexical || !base || !fs.existsSync(lexical)) return null;
+  try {
+    if (fs.lstatSync(lexical).isSymbolicLink()) return null;
+    const real = fs.realpathSync(lexical);
+    return inside(base, real) && fs.statSync(real).isFile() ? real : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeWriteFile(root: string, target: string): string | null {
+  const lexical = jail(root, target);
+  const base = realRoot(root);
+  if (!lexical || !base) return null;
+  if (fs.existsSync(lexical)) return safeExistingFile(root, target);
+
+  let ancestor = path.dirname(lexical);
+  while (!fs.existsSync(ancestor)) {
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) return null;
+    ancestor = parent;
+  }
+  try {
+    const realAncestor = fs.realpathSync(ancestor);
+    if (!inside(base, realAncestor) || !fs.statSync(realAncestor).isDirectory()) return null;
+    return lexical;
+  } catch {
+    return null;
+  }
+}
+
+function boundedInt(raw: string | undefined, fallback: number, min: number, max: number): number {
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.min(max, Math.max(min, Math.trunc(value))) : fallback;
+}
+
 function diffText(before: string, after: string): string {
   const a = before.split(/\r?\n/);
   const b = after.split(/\r?\n/);
@@ -69,8 +121,8 @@ export class FileOnecExecutor {
     if (!fs.existsSync(this.root)) {
       return { ok: false, code: "FAIL", environment, adapter: this.adapter, message: "Каталог выгрузки не найден." };
     }
-    if (write && !fs.statSync(this.root).isDirectory()) {
-      return { ok: false, code: "FAIL", environment, adapter: this.adapter, message: "Корень выгрузки не каталог." };
+    if (!realRoot(this.root)) {
+      return { ok: false, code: "FAIL", environment, adapter: this.adapter, message: "Корень выгрузки не является безопасным каталогом." };
     }
     return null;
   }
@@ -78,31 +130,58 @@ export class FileOnecExecutor {
   find(name: string, environment: OnecEnv): OnecResult {
     const blocked = this.gate(environment, false);
     if (blocked) return blocked;
-    const needle = name.toLowerCase();
+    const needle = name.toLowerCase().trim();
+    if (!needle || needle.length > 160) {
+      return deny(environment, this.adapter, "Некорректная строка поиска.");
+    }
     const hits: string[] = [];
-    const walk = (dir: string) => {
+    const maxFiles = boundedInt(this.env.JARVIS_ONEC_SEARCH_MAX_FILES, 10_000, 100, 50_000);
+    const maxDepth = boundedInt(this.env.JARVIS_ONEC_SEARCH_MAX_DEPTH, 32, 1, 64);
+    const maxFileBytes = boundedInt(this.env.JARVIS_ONEC_SEARCH_MAX_FILE_BYTES, 2 * 1024 * 1024, 4_096, 10 * 1024 * 1024);
+    let inspected = 0;
+    let truncated = false;
+    const walk = (dir: string, depth: number): void => {
+      if (truncated) return;
+      if (depth > maxDepth) {
+        truncated = true;
+        return;
+      }
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (truncated) break;
+        if (entry.isSymbolicLink()) continue;
         const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) walk(full);
-        else if (entry.name.endsWith(".xml") || entry.name.endsWith(".bsl")) {
-          const fileName = entry.name.toLowerCase();
-          const body = fs.readFileSync(full, "utf8").toLowerCase();
-          const namedInMetadata = body.includes(`<name>${needle}</name>`);
-          if (fileName.includes(needle) || namedInMetadata) hits.push(path.relative(this.root, full));
+        if (entry.isDirectory()) {
+          walk(full, depth + 1);
+          continue;
         }
+        if (!entry.isFile() || (!entry.name.endsWith(".xml") && !entry.name.endsWith(".bsl"))) continue;
+        inspected += 1;
+        if (inspected > maxFiles) {
+          truncated = true;
+          break;
+        }
+        const stat = fs.statSync(full);
+        if (stat.size > maxFileBytes) continue;
+        const fileName = entry.name.toLowerCase();
+        const body = fs.readFileSync(full, "utf8").toLowerCase();
+        const namedInMetadata = body.includes(`<name>${needle}</name>`);
+        if (fileName.includes(needle) || namedInMetadata) hits.push(path.relative(this.root, full));
       }
     };
-    walk(this.root);
+    walk(this.root, 0);
+    if (truncated) {
+      return { ok: false, code: "FAIL", environment, adapter: this.adapter, message: "Поиск остановлен безопасным лимитом; частичный результат не считается полным.", detail: { inspected, hits: hits.slice(0, 20) } };
+    }
     if (hits.length === 0) return { ok: false, code: "NOT_FOUND", environment, adapter: this.adapter, message: "Объект в выгрузке не найден." };
-    return { ok: true, code: "OK", environment, adapter: this.adapter, message: hits.slice(0, 20).join(", "), detail: hits };
+    return { ok: true, code: "OK", environment, adapter: this.adapter, message: hits.slice(0, 20).join(", "), detail: hits.slice(0, 100) };
   }
 
   readModule(relativeFile: string, environment: OnecEnv): OnecResult {
     const blocked = this.gate(environment, false);
     if (blocked) return blocked;
-    const full = jail(this.root, relativeFile);
-    if (!full || !full.endsWith(".bsl") || !fs.existsSync(full)) {
-      return { ok: false, code: "NOT_FOUND", environment, adapter: this.adapter, message: "Модуль не найден или путь выходит из выгрузки." };
+    const full = relativeFile.endsWith(".bsl") ? safeExistingFile(this.root, relativeFile) : null;
+    if (!full) {
+      return { ok: false, code: "NOT_FOUND", environment, adapter: this.adapter, message: "Модуль не найден, является symlink или путь выходит из выгрузки." };
     }
     return { ok: true, code: "OK", environment, adapter: this.adapter, message: "Прочитано.", path: full, detail: fs.readFileSync(full, "utf8") };
   }
@@ -114,9 +193,9 @@ export class FileOnecExecutor {
     if (!report.ok) {
       return { ok: false, code: "DENY", environment, adapter: this.adapter, message: report.hits.map((hit) => hit.message).join(" "), detail: report };
     }
-    const full = jail(this.root, relativeFile);
-    if (!full || !full.endsWith(".bsl")) {
-      return deny(environment, this.adapter, "Писать можно только .bsl внутри выгрузки.");
+    const full = relativeFile.endsWith(".bsl") ? safeWriteFile(this.root, relativeFile) : null;
+    if (!full) {
+      return deny(environment, this.adapter, "Писать можно только в безопасный .bsl внутри выгрузки; symlink и выход наружу запрещены.");
     }
     const existed = fs.existsSync(full);
     const before = existed ? fs.readFileSync(full, "utf8") : "";
