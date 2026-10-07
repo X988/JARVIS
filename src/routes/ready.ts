@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import fs from "node:fs";
 import path from "node:path";
 import { readiness } from "@/lib/jarvis/server/config.ts";
+import { componentStatus } from "@/lib/jarvis/server/components.ts";
 import { sttProbe } from "@/lib/jarvis/voice/whisper.ts";
 import { ttsProbe } from "@/lib/jarvis/voice/tts.ts";
 
@@ -13,6 +14,7 @@ export const Route = createFileRoute("/ready")({
         const report = readiness(process.env, { dumpPresent: fs.existsSync(extension) });
         const stt = sttProbe();
         const tts = ttsProbe();
+        const components = componentStatus(process.env);
         const sttRequired = process.env.JARVIS_STT_PROVIDER === "faster-whisper";
         const ttsRequired = process.env.JARVIS_TTS_PROVIDER === "piper";
         const ok = report.ok && (!sttRequired || stt.ready) && (!ttsRequired || tts.ready);
@@ -21,6 +23,7 @@ export const Route = createFileRoute("/ready")({
             ok,
             profile: report.profile,
             problems: report.problems,
+            components,
             adapters: report.adapters,
             stt,
             tts,
