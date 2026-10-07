@@ -61,8 +61,9 @@ describe("remaining project ideas", () => {
   it("keeps agents, MCP and the browser behind the same deny", () => {
     assert.equal(runAgents("critic", ["опасно"]).mayExecute, false);
     assert.equal(admitMcp("unknown", ["docs.read"]).code, "DENY");
-    assert.equal(admitMcp("docs.read", ["docs.read"]).code, "GATEWAY");
+    assert.equal(admitMcp("docs.read", ["docs.read"]).code, "DISCOVERED");
     assert.equal(admitMcpRunbook("mailcow.health", "mail01", ["mailcow.health"]).code, "GATEWAY");
+    assert.equal(admitMcpRunbook("unknown.tool", "mail01", ["unknown.tool"]).code, "DENY");
     assert.equal(admitMcpRunbook("database.drop", "utp", ["database.drop"]).code, "DENY");
     assert.equal(admitMcpRunbook("mailcow.health", "sql01", ["mailcow.health"]).code, "DENY");
     assert.equal(browserIntent("login").code, "DENY");
