@@ -54,15 +54,65 @@ export class RouterOSExecutor implements Executor { readonly type = "routeros" a
 export class DockerExecutor implements Executor { readonly type = "docker" as const; execute(call: ExecCall): ExecResult { return runMailcow(call); } }
 export class OnecFileAdapter implements Executor {
   readonly type = "onec-file" as const;
+
+  constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
+
   execute(call: ExecCall): ExecResult {
-    if (call.runbook === "onec.exec" || call.runbook === "onec.load") return missing("onec-file","ADAPTER_DISABLED","DENY_ALWAYS. Исполнитель не вызывается.");
-    const root = process.env.JARVIS_ONEC_DUMP;
-    if (!root) return missing("onec-file","NOT_CONFIGURED","JARVIS_ONEC_DUMP не задан. Выгрузка не читалась.");
-    if (call.runbook !== "onec.read" && call.runbook !== "onec.query") return missing("onec-file","ADAPTER_DISABLED","Правка формы или модуля требует структурный patch и заявку, не свободный текст.");
-    const file = new FileOnecExecutor(root);
-    const found = file.find("jrvs","development");
-    if (!found.ok) return { called: true, code: "VERIFICATION_FAILED", detail: found.message };
-    return { called: true, code: "OK", detail: `Прочитана выгрузка development: ${found.message}` };
+    if (call.runbook === "onec.exec" || call.runbook === "onec.load") {
+      return missing("onec-file", "ADAPTER_DISABLED", "DENY_ALWAYS. Исполнитель не вызывается.");
+    }
+    const root = this.env.JARVIS_ONEC_DUMP;
+    if (!root) {
+      return missing("onec-file", "NOT_CONFIGURED", "JARVIS_ONEC_DUMP не задан. Выгрузка не читалась.");
+    }
+    if (call.runbook !== "onec.read" && call.runbook !== "onec.query") {
+      return missing("onec-file", "ADAPTER_DISABLED", "Правка формы или модуля требует структурный patch и заявку, не свободный текст.");
+    }
+
+    const file = new FileOnecExecutor(root, { env: this.env });
+    if (call.runbook === "onec.query") {
+      const queryText = call.parameters?.queryText?.trim() || call.parameters?.query?.trim();
+      if (!queryText) {
+        return missing(
+          "onec-file",
+          "NOT_CONFIGURED",
+          "onec.query требует server-derived queryText. Общий успех без текста запроса не подменяется.",
+        );
+      }
+      const reviewed = file.query(queryText, "development");
+      return reviewed.ok
+        ? { called: true, code: "OK", detail: `onec query: ${reviewed.message || "static analysis passed"}` }
+        : { called: true, code: "VERIFICATION_FAILED", detail: `onec query: ${reviewed.message || "static analysis failed"}` };
+    }
+
+    const terms = [
+      call.parameters?.procedure,
+      call.parameters?.symbol,
+      call.parameters?.module,
+      call.parameters?.source,
+      call.parameters?.object,
+    ]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .map((value) => value.trim());
+
+    if (!terms.length) {
+      return missing(
+        "onec-file",
+        "NOT_CONFIGURED",
+        "onec.read требует server-derived module/procedure/source. Поиск фиксированного jrvs не считается чтением запроса пользователя.",
+      );
+    }
+
+    for (const term of terms) {
+      const found = file.searchSource(term, "development");
+      if (found.ok) {
+        return { called: true, code: "OK", detail: `onec read: term=${term}; files=${found.message}` };
+      }
+      if (found.code === "FAIL" || found.code === "DENY") {
+        return { called: true, code: "VERIFICATION_FAILED", detail: `onec read: ${found.message}` };
+      }
+    }
+    return { called: true, code: "VERIFICATION_FAILED", detail: "onec read: запрошенный символ не найден в BSL выгрузке." };
   }
 }
 
