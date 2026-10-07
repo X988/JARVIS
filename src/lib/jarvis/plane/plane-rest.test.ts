@@ -37,7 +37,7 @@ describe("remaining project ideas", () => {
     assert.equal(
       deliverArtifact({
         root,
-        relative: "late-secret.log",
+        relative: "report.log",
         bytes: 70_100,
         text: "a".repeat(70_000) + "\ntoken=live-token-value-12345",
       }).ok,
