@@ -5,7 +5,7 @@ import {
   type RegisteredToolResult,
 } from "../server/pipeline.ts";
 import { callJsonModel, type FetchLike } from "./llm-client.ts";
-import { planAgentTurn, type AgentPlan, type AgentPlanResult } from "./agent-planner.ts";
+import { planAgentTurn, type AgentPlan } from "./agent-planner.ts";
 
 export type AgentObservation = {
   tool: string;
