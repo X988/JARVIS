@@ -20,7 +20,7 @@ import {
 } from "./scheduler.ts";
 import { normalizeHeard, ttsMode, wakeEnabled } from "./speech.ts";
 import { acceptTelegram, type TelegramActor } from "./telegram.ts";
-import { workerAction, worktreePath } from "./workers.ts";
+import { claimNext, codingWorkspace, openJob, updateJob, workerAction, worktreePath } from "./workers.ts";
 
 function dir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-plane-"));
@@ -210,8 +210,29 @@ describe("memory, schedule, workers", () => {
     assert.equal(workerAction("push-main").code, "DENY");
     assert.equal(workerAction("production-secret").code, "DENY");
     assert.equal(workerAction("self-heal").code, "DENY");
+    assert.equal(workerAction("shell-production").code, "DENY");
     assert.equal(worktreePath("/repo", "../x"), null);
     assert.equal(worktreePath("/repo", "task-1")?.endsWith(`${path.sep}task-1`), true);
+  });
+
+  it("keeps coding workers isolated and bounded by concurrency", () => {
+    const workspace = codingWorkspace("/repo", "fix-ci-1");
+    assert.ok(workspace);
+    assert.match(workspace!.branch, /^jarvis\/task-/);
+    assert.equal(workspace!.productionCredentials, false);
+    assert.equal(workspace!.steps.at(-1), "pr");
+
+    const first = openJob("job-1", "coding", new Date("2026-10-07T00:00:00Z"));
+    const second = openJob("job-2", "research", new Date("2026-10-07T00:00:01Z"));
+    const claimed = claimNext([first, second], 1, new Date("2026-10-07T00:00:02Z"));
+    assert.equal(claimed.claimed?.id, "job-1");
+    assert.equal(claimed.claimed?.status, "running");
+    assert.equal(claimNext(claimed.jobs, 1).claimed, null);
+
+    const advanced = updateJob(claimed.claimed!, { progress: 50, phase: "test", log: "tests running" });
+    const regressed = updateJob(advanced, { progress: 10 });
+    assert.equal(regressed.progress, 50);
+    assert.match(regressed.logs.join("\n"), /tests running/);
   });
 });
 
