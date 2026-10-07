@@ -112,8 +112,12 @@ describe("remaining project ideas", () => {
     const now = new Date("2026-10-07T01:39:20Z");
     saveTasks(root, [task]);
     let calls = 0;
-    assert.equal(runDue(root, now, () => ({ code: (calls += 1) ? "OK" : "ERR" })).length, 1);
-    assert.equal(runDue(root, new Date("2026-10-07T01:39:50Z"), () => ({ code: (calls += 1) ? "OK" : "ERR" })).length, 0);
+    const run = () => {
+      calls += 1;
+      return { code: "OK" };
+    };
+    assert.equal(runDue(root, now, run).length, 1);
+    assert.equal(runDue(root, new Date("2026-10-07T01:39:50Z"), run).length, 0);
     assert.equal(calls, 1);
   });
 });
