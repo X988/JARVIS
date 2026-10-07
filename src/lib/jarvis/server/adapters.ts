@@ -6,6 +6,8 @@ import { sqlDatabase, runSql } from "./sql.ts";
 import { runSshProbe, runWindowsProbe } from "./host-probes.ts";
 import { runRouterOs } from "./routeros.ts";
 import { runMailcow } from "./mailcow.ts";
+import path from "node:path";
+import { recordAdapterProbe } from "./probe-status.ts";
 
 export type ExecutorKind = Runbook["executor"];
 
@@ -154,7 +156,22 @@ export function defaultRealExecute(call: ExecCall): ExecResult {
   const book = runbookById(call.runbook);
   if (!book) return { called: false, code: "RUNBOOK_NOT_FOUND", detail: "нет такого runbook" };
   if (book.policy === "DENY_ALWAYS") return { called: false, code: "POLICY_DENIED", detail: "запрет не исполняется" };
-  return executorFor(book.executor, call).execute(call);
+  const executor = executorFor(book.executor, call);
+  const result = executor.execute(call);
+  const adapter =
+    call.runbook === "server.health" || call.runbook === "disk.check"
+      ? probeRoute(call.target)
+      : book.executor;
+  if (adapter !== "fleet" && adapter !== "unrouted" && adapter !== "mock") {
+    const dir = path.resolve(process.env.JARVIS_STATE_DIR || path.join(process.cwd(), "data"));
+    try {
+      recordAdapterProbe(dir, adapter, result);
+    } catch {
+      // Probe-state persistence must never convert an executor failure into success.
+      // /ready fails closed when this state is missing or corrupted.
+    }
+  }
+  return result;
 }
 
 function has(env: NodeJS.ProcessEnv, name: string): boolean { return Boolean(env[name]?.trim()); }

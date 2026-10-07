@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { configProblems, readiness } from "./config.ts";
+import { recordAdapterProbe } from "./probe-status.ts";
 import { componentStatus } from "./components.ts";
 
 describe("config", () => {
@@ -36,25 +40,58 @@ describe("config", () => {
     );
   });
 
-  it("reports production adapter configuration without probing live hosts", () => {
+  it("keeps production readiness red until required adapters have fresh live probes", () => {
     const env = {
       JARVIS_PROFILE: "production-infra",
       JARVIS_WINDOWS_TARGETS_JSON: '{"dc01":"127.0.0.1"}',
       JARVIS_WINDOWS_USER: "DOMAIN\\jarvis-read",
       JARVIS_WINDOWS_PASSWORD: "test-only",
-      JARVIS_PWSH_BIN: "/definitely/missing/pwsh",
       JARVIS_SSH_TARGETS_JSON: '{"mail01":"127.0.0.1"}',
       JARVIS_SSH_USER: "jarvis-read",
-      JARVIS_SSH_BIN: "/definitely/missing/ssh",
       JARVIS_SQL_HOST: "127.0.0.1",
       JARVIS_SQL_USER: "read",
       JARVIS_SQL_PASSWORD: "test-only",
+      JARVIS_ADAPTER_PROBE_TTL_MS: "60000",
     };
-    const infra = readiness(env, { dumpPresent: true });
-    assert.equal(infra.ok, true);
-    assert.equal(infra.adapters.powershell, "CONFIGURED_UNPROBED");
-    assert.equal(infra.adapters.ssh, "CONFIGURED_UNPROBED");
-    assert.equal(infra.adapters.sql, "CONFIGURED_UNPROBED");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-ready-probe-"));
+    const at = 1_000_000;
+    const unprobed = readiness(env, { dumpPresent: true, stateDir: dir, now: at });
+    assert.equal(unprobed.ok, false);
+    assert.equal(unprobed.probes.powershell.status, "UNPROBED");
+    assert.equal(unprobed.probes.ssh.status, "UNPROBED");
+    assert.equal(unprobed.probes.sql.status, "UNPROBED");
+
+    for (const adapter of ["powershell", "ssh", "sql"]) {
+      recordAdapterProbe(dir, adapter, { called: true, code: "OK", detail: "verified" }, at);
+    }
+    const healthy = readiness(env, { dumpPresent: true, stateDir: dir, now: at + 1_000 });
+    assert.equal(healthy.ok, true);
+    assert.equal(healthy.probes.sql.status, "HEALTHY");
+
+    const stale = readiness(env, { dumpPresent: true, stateDir: dir, now: at + 61_001 });
+    assert.equal(stale.ok, false);
+    assert.equal(stale.probes.sql.status, "UNPROBED");
+    assert.equal(stale.probes.sql.reason, "PROBE_STALE");
+  });
+
+  it("fails production readiness closed when probe state is corrupted", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-ready-corrupt-"));
+    fs.writeFileSync(path.join(dir, "adapter-probes.json"), "{broken");
+    const env = {
+      JARVIS_PROFILE: "production-infra",
+      JARVIS_WINDOWS_HOST: "dc01.example",
+      JARVIS_WINDOWS_USER: "DOMAIN\\jarvis-read",
+      JARVIS_WINDOWS_PASSWORD: "test",
+      JARVIS_SSH_HOST: "mail01.example",
+      JARVIS_SSH_USER: "jarvis-read",
+      JARVIS_SQL_HOST: "sql01.example",
+      JARVIS_SQL_USER: "read",
+      JARVIS_SQL_PASSWORD: "test",
+    };
+    const report = readiness(env, { stateDir: dir, now: 1_000_000 });
+    assert.equal(report.ok, false);
+    assert.equal(report.probes.sql.status, "UNAVAILABLE");
+    assert.equal(report.probes.sql.reason, "STATE_CORRUPT");
   });
 
   it("keeps production readiness red when a required credential is absent", () => {

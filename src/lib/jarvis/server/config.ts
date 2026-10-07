@@ -1,5 +1,7 @@
 import { z } from "zod";
+import path from "node:path";
 import { adapterStatus } from "./adapters.ts";
+import { probeViews } from "./probe-status.ts";
 
 const DEPRECATED: Record<string, string> = {
   JARVIS_MAILCOW_COMPOSE_FILE: "JARVIS_MAILCOW_COMPOSE",
@@ -47,12 +49,25 @@ export function configProblems(env:NodeJS.ProcessEnv=process.env):JarvisProblems
  return problems;
 }
 
-export function readiness(env:NodeJS.ProcessEnv=process.env,opts:{dumpPresent?:boolean}={}):{ok:boolean;profile:"demo"|"production-infra";problems:string[];adapters:Record<string,string>}{
+export function readiness(
+ env:NodeJS.ProcessEnv=process.env,
+ opts:{dumpPresent?:boolean;stateDir?:string;now?:number}={},
+):{
+ ok:boolean;
+ profile:"demo"|"production-infra";
+ problems:string[];
+ adapters:Record<string,string>;
+ probes:ReturnType<typeof probeViews>;
+}{
  const problems=configProblems(env);
  const profile=env.JARVIS_PROFILE==="production-infra"?"production-infra":"demo";
  const adapters=adapterStatus(env);
- if(profile==="demo") return {ok:problems.length===0&&opts.dumpPresent!==false,profile,problems,adapters};
+ const stateDir=path.resolve(opts.stateDir||env.JARVIS_STATE_DIR||path.join(process.cwd(),"data"));
+ const rawTtl=Number(env.JARVIS_ADAPTER_PROBE_TTL_MS??120_000);
+ const ttlMs=Number.isFinite(rawTtl)?Math.max(5_000,Math.min(30*60_000,Math.trunc(rawTtl))):120_000;
+ const probes=probeViews(adapters,stateDir,opts.now??Date.now(),ttlMs);
+ if(profile==="demo") return {ok:problems.length===0&&opts.dumpPresent!==false,profile,problems,adapters,probes};
  const required=["powershell","ssh","sql"] as const;
- const configured=required.every(name=>adapters[name]==="CONFIGURED_UNPROBED");
- return {ok:problems.length===0&&configured,profile,problems,adapters};
+ const liveReady=required.every(name=>probes[name]?.status==="HEALTHY");
+ return {ok:problems.length===0&&liveReady,profile,problems,adapters,probes};
 }

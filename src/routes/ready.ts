@@ -11,7 +11,10 @@ export const Route = createFileRoute("/ready")({
     handlers: {
       GET: async () => {
         const extension = path.join(process.cwd(), "extensions", "JarvisDev", "Configuration.xml");
-        const report = readiness(process.env, { dumpPresent: fs.existsSync(extension) });
+        const report = readiness(process.env, {
+          dumpPresent: fs.existsSync(extension),
+          stateDir: process.env.JARVIS_STATE_DIR || path.join(process.cwd(), "data"),
+        });
         const stt = sttProbe();
         const tts = ttsProbe();
         const components = componentStatus(process.env);
@@ -25,6 +28,7 @@ export const Route = createFileRoute("/ready")({
             problems: report.problems,
             components,
             adapters: report.adapters,
+            probes: report.probes,
             stt,
             tts,
           },
