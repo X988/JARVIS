@@ -342,6 +342,57 @@ describe("command http", () => {
 });
 
 
+describe("HTTP input hardening", () => {
+  it("rejects malformed bodies and unsafe request ids without throwing", async () => {
+    process.env.JARVIS_STATE_DIR = freshDir();
+    process.env.JARVIS_TEST_AUTH = "1";
+    const testHeader = { "x-jarvis-test-actor": "admin1" };
+
+    const session = await handleSession(new Request("http://127.0.0.1/api/session", {
+      headers: { ...testHeader, cookie: "jarvis_csrf=%E0%A4%A; __proto__=polluted" },
+    }));
+    assert.equal(session.status, 200);
+    const csrf = session.headers.getSetCookie().find((line) => line.startsWith("jarvis_csrf="))?.split(";")[0] ?? "";
+    const token = decodeURIComponent(csrf.split("=")[1] ?? "");
+
+    const nullBody = await handleCommand(new Request("http://127.0.0.1/api/commands", {
+      method: "POST",
+      headers: {
+        ...testHeader,
+        cookie: csrf,
+        "x-jarvis-csrf": token,
+        "content-type": "application/json",
+      },
+      body: "null",
+    }));
+    assert.equal(nullBody.status, 400);
+
+    const polluted = await handleCommand(new Request("http://127.0.0.1/api/commands", {
+      method: "POST",
+      headers: {
+        ...testHeader,
+        cookie: csrf,
+        "x-jarvis-csrf": token,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ text: "Проверь сервер", request_id: "__proto__" }),
+    }));
+    assert.equal(polluted.status, 400);
+
+    const oversizedText = await handleCommand(new Request("http://127.0.0.1/api/commands", {
+      method: "POST",
+      headers: {
+        ...testHeader,
+        cookie: csrf,
+        "x-jarvis-csrf": token,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ text: "x".repeat(4001) }),
+    }));
+    assert.equal(oversizedText.status, 400);
+  });
+});
+
 describe("extended policy gates", () => {
   it("keeps dry-run-only actions out of mock and real", () => {
     assert.equal(evaluateRuntimePolicy("DRY_RUN_ONLY", { mode: "dry-run" }).code, "ALLOW");
