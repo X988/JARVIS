@@ -209,7 +209,11 @@
       "enabled": true,
       "allowedRunbooks": [
         "sql.health",
-        "sql.backup"
+        "sql.backup",
+        "sql.database.size",
+        "sql.sessions",
+        "sql.blocking",
+        "sql.backup.status"
       ]
     },
     {

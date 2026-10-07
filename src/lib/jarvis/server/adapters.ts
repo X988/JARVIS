@@ -49,8 +49,16 @@ export class SQLExecutor implements Executor {
     if (!database) return missing("sql","NOT_CONFIGURED","База не из inventory. Запрос не собирался.");
     if (!process.env.JARVIS_SQL_PASSWORD) return missing("sql","CREDENTIAL_UNAVAILABLE","JARVIS_SQL_PASSWORD не задан. Запрос не отправлялся.");
     if (call.runbook === "sql.backup" && !process.env.JARVIS_SQL_BACKUP_DIR) return missing("sql","NOT_CONFIGURED","JARVIS_SQL_BACKUP_DIR не задан. BACKUP не запускался.");
-    if (call.runbook !== "sql.health" && call.runbook !== "sql.backup") return missing("sql","NOT_CONFIGURED","Для этой цели нет фиксированного SQL-запроса.");
-    return runSql(call.runbook === "sql.backup" ? "backup" : "health", database);
+    const mode = {
+      "sql.health": "health",
+      "sql.backup": "backup",
+      "sql.database.size": "database-size",
+      "sql.sessions": "sessions",
+      "sql.blocking": "blocking",
+      "sql.backup.status": "backup-status",
+    }[call.runbook] as import("./sql.ts").SqlMode | undefined;
+    if (!mode) return missing("sql","NOT_CONFIGURED","Для этой цели нет фиксированного SQL-запроса.");
+    return runSql(mode, database);
   }
 }
 export class RouterOSExecutor implements Executor { readonly type = "routeros" as const; execute(call: ExecCall): ExecResult { return runRouterOs(call); } }

@@ -19,7 +19,9 @@ export function sqlDatabase(targetId: string): string | null {
   return leaf;
 }
 
-export function runSql(mode: "health" | "backup", database: string, env: NodeJS.ProcessEnv = process.env): ExecResult {
+export type SqlMode = "health" | "backup" | "database-size" | "sessions" | "blocking" | "backup-status";
+
+export function runSql(mode: SqlMode, database: string, env: NodeJS.ProcessEnv = process.env): ExecResult {
   const requestTimeout =
     mode === "backup"
       ? timeoutMs(env.JARVIS_SQL_BACKUP_TIMEOUT_MS, 3_600_000, 10_000, 7_200_000)

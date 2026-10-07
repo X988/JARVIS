@@ -63,7 +63,7 @@ if (mode === "backup") {
     process.exit(0);
   }
   backupFile = backupPath(backupDir, name);
-} else if (mode !== "health") {
+} else if (!["health", "database-size", "sessions", "blocking", "backup-status"].includes(mode)) {
   out("NOT_CONFIGURED", "Неизвестный SQL-режим.");
   process.exit(0);
 }
@@ -140,6 +140,52 @@ async function backupAndVerify() {
   return finish("OK", `Копия ${backupFile} создана с CHECKSUM; HEADERONLY и VERIFYONLY прошли.`);
 }
 
+
+async function databaseSize() {
+  const rows = await query(
+    "SELECT COALESCE(SUM(CAST(size AS bigint)) * 8192, 0) AS total_bytes FROM sys.master_files WHERE database_id = DB_ID(@name)",
+    [["name", name]],
+  );
+  const bytes = Number(rows[0]?.total_bytes ?? 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return finish("VERIFICATION_FAILED", "Размер базы не подтверждён.");
+  return finish("OK", `database=${name}; total_bytes=${Math.trunc(bytes)}`);
+}
+
+async function sessionStatus() {
+  const rows = await query(
+    "SELECT COUNT_BIG(*) AS session_count FROM sys.dm_exec_sessions WHERE is_user_process = 1 AND database_id = DB_ID(@name)",
+    [["name", name]],
+  );
+  const count = Number(rows[0]?.session_count ?? -1);
+  if (!Number.isFinite(count) || count < 0) return finish("VERIFICATION_FAILED", "Сессии не подтверждены.");
+  return finish("OK", `database=${name}; user_sessions=${Math.trunc(count)}`);
+}
+
+async function blockingStatus() {
+  const rows = await query(
+    "SELECT COUNT_BIG(*) AS blocking_count FROM sys.dm_exec_requests WHERE database_id = DB_ID(@name) AND blocking_session_id <> 0",
+    [["name", name]],
+  );
+  const count = Number(rows[0]?.blocking_count ?? -1);
+  if (!Number.isFinite(count) || count < 0) return finish("VERIFICATION_FAILED", "Блокировки не подтверждены.");
+  return finish("OK", `database=${name}; blocked_requests=${Math.trunc(count)}`);
+}
+
+async function backupStatus() {
+  const rows = await query(
+    "SELECT TOP (1) backup_finish_date, backup_size, has_backup_checksums FROM msdb.dbo.backupset WHERE database_name = @name AND type = 'D' ORDER BY backup_finish_date DESC",
+    [["name", name]],
+  );
+  const row = rows[0];
+  if (!row?.backup_finish_date) return finish("VERIFICATION_FAILED", "Полный backup в msdb не найден.");
+  const stamp = row.backup_finish_date instanceof Date
+    ? row.backup_finish_date.toISOString()
+    : String(row.backup_finish_date);
+  const bytes = Number(row.backup_size ?? 0);
+  const checksum = Boolean(row.has_backup_checksums);
+  return finish("OK", `database=${name}; last_full_backup=${stamp}; bytes=${Number.isFinite(bytes) ? Math.trunc(bytes) : 0}; checksum=${checksum}`);
+}
+
 connection.on("connect", (error) => {
   if (error) {
     finish("CONNECT_FAILED", "SQL Server не принял соединение. Запрос не выполнен.");
@@ -151,8 +197,16 @@ connection.on("connect", (error) => {
           if (state === "ONLINE") finish("OK", "state_desc=ONLINE");
           else finish("VERIFICATION_FAILED", state ? `state_desc=${state}` : "База не найдена.");
         })
-      : backupAndVerify();
-  job.catch(() => finish("VERIFICATION_FAILED", "SQL preflight/backup/verification завершились ошибкой. Успех не подменяется."));
+      : mode === "backup"
+        ? backupAndVerify()
+        : mode === "database-size"
+          ? databaseSize()
+          : mode === "sessions"
+            ? sessionStatus()
+            : mode === "blocking"
+              ? blockingStatus()
+              : backupStatus();
+  job.catch(() => finish("VERIFICATION_FAILED", "SQL read/backup/verification завершились ошибкой. Успех не подменяется."));
 });
 
 connection.connect();
