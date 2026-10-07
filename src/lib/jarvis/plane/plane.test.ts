@@ -6,7 +6,14 @@ import { describe, it } from "node:test";
 import { closeIncident, correlate, createIncident, loadIncidents, openIncident, updateIncident } from "./incidents.ts";
 import { agentMayEscalate, llmMayReceiveSecretValues, providersFromEnv as llmProvidersFromEnv, routeModel } from "./llm.ts";
 import { proposeCriticalInfrastructureFact, remember, searchMemory } from "./memory.ts";
-import { admitMonitoringAction, monitoringStatus, providersFromEnv as monitoringProvidersFromEnv } from "../monitoring.ts";
+import {
+  AlertmanagerProvider,
+  PrometheusProvider,
+  admitMonitoringAction,
+  monitoringStatus,
+  providersFromEnv as monitoringProvidersFromEnv,
+  type MonitorRunner,
+} from "../monitoring.ts";
 import { admitPlugin, loadPluginDir, validatePlugin } from "./plugins.ts";
 import {
   cancelTask,
@@ -407,11 +414,37 @@ describe("plugins, incidents, models", () => {
       JARVIS_SSH_TARGETS_JSON: '{"mail01":"mail01.example"}',
       JARVIS_DOCKER_HOST: "mail01.example",
     };
-    assert.match(monitoringStatus(env), /alertmanager:ADAPTER_DISABLED/);
+    assert.match(monitoringStatus(env), /alertmanager:CONFIGURED_UNPROBED/);
     const ids = monitoringProvidersFromEnv(env).map((provider) => provider.id);
     assert.equal(ids.includes("alertmanager"), true);
     assert.equal(ids.includes("linux"), true);
     assert.equal(ids.includes("mailcow"), true);
+  });
+
+  it("collects live monitoring only through fixed provider adapters", () => {
+    const runner: MonitorRunner = (provider) => ({
+      code: "OK",
+      detail: "events=1",
+      events: [
+        {
+          source: provider,
+          target: "mail01",
+          at: "2026-10-07T00:00:00Z",
+          severity: "bad",
+          evidence: "fixed probe",
+          runbook: null,
+          mode: "live",
+          title: "Target down",
+        },
+      ],
+    });
+    const prometheus = new PrometheusProvider({ JARVIS_PROMETHEUS_URL: "https://prom.example" }, runner);
+    assert.equal(prometheus.status(), "CONFIGURED_UNPROBED");
+    assert.equal(prometheus.probe().status, "OK");
+    assert.equal(prometheus.collect()[0]?.target, "mail01");
+    const alertmanager = new AlertmanagerProvider({ JARVIS_ALERTMANAGER_URL: "ftp://bad.example" }, runner);
+    assert.equal(alertmanager.status(), "NOT_CONFIGURED");
+    assert.equal(alertmanager.collect().length, 0);
   });
 
   it("does not let model choice raise permission or expose secret values", () => {
