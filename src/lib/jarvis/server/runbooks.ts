@@ -1,4 +1,10 @@
-export type PolicyName = "ALLOW" | "APPROVAL_REQUIRED" | "DENY_ALWAYS";
+export type PolicyName =
+  | "ALLOW"
+  | "APPROVAL_REQUIRED"
+  | "DENY_ALWAYS"
+  | "DRY_RUN_ONLY"
+  | "ELEVATION_REQUIRED"
+  | "MAINTENANCE_WINDOW_REQUIRED";
 
 export type Runbook = {
   id: string;
