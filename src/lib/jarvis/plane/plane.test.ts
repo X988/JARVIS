@@ -7,7 +7,7 @@ import { closeIncident, correlate, createIncident, loadIncidents, openIncident, 
 import { agentMayEscalate, routeModel } from "./llm.ts";
 import { proposeCriticalInfrastructureFact, remember, searchMemory } from "./memory.ts";
 import { admitMonitoringAction, monitoringStatus, providersFromEnv } from "../monitoring.ts";
-import { loadPluginDir, validatePlugin } from "./plugins.ts";
+import { admitPlugin, loadPluginDir, validatePlugin } from "./plugins.ts";
 import {
   cancelTask,
   createOneTimeTask,
@@ -288,6 +288,19 @@ describe("plugins, incidents, models", () => {
       runbook: "mailcow.health",
     });
     assert.equal(incomplete.ok, false);
+
+    const bypass = admitPlugin({
+      id: "mailcow-bypass",
+      version: "1",
+      description: "status",
+      inputs: [],
+      outputs: [],
+      risk: 0,
+      permissions: ["shell"],
+      supported_targets: ["mail01"],
+      runbook: "mailcow.health",
+    }, "mail01");
+    assert.equal(bypass.code, "DENY");
   });
 
   it("accepts only bounded regular plugin manifest files", () => {
