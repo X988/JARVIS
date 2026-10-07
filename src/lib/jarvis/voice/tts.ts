@@ -17,6 +17,37 @@ export type TtsFailure = {
   code: "NOT_CONFIGURED" | "TTS_FAILED" | "AUDIO_ENCODE_FAILED";
 };
 
+export interface TextToSpeechProvider {
+  id: "disabled" | "piper" | "cloud";
+  synthesize(text: string): TtsHit | TtsFailure;
+}
+
+export class DisabledTtsProvider implements TextToSpeechProvider {
+  readonly id = "disabled" as const;
+  synthesize(_text: string): TtsFailure {
+    return { code: "NOT_CONFIGURED" };
+  }
+}
+
+export class PiperTtsProvider implements TextToSpeechProvider {
+  readonly id = "piper" as const;
+  constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
+  synthesize(text: string): TtsHit | TtsFailure {
+    return synthesizeVoice(text, this.env);
+  }
+}
+
+/**
+ * Cloud TTS is an explicit extension point only. A provider-specific vetted
+ * adapter must be implemented before this class can send text off-host.
+ */
+export class CloudTtsProvider implements TextToSpeechProvider {
+  readonly id = "cloud" as const;
+  synthesize(_text: string): TtsFailure {
+    return { code: "NOT_CONFIGURED" };
+  }
+}
+
 function bounded(raw: string | undefined, fallback: number, min: number, max: number): number {
   const value = Number(raw);
   return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
@@ -115,4 +146,12 @@ export function synthesizeVoice(sourceText: string, env: NodeJS.ProcessEnv = pro
     return { code: "AUDIO_ENCODE_FAILED" };
   }
   return { provider: "piper", wav, ogg, text, cleanup: [wav, ogg] };
+}
+
+
+export function ttsProviderFromEnv(env: NodeJS.ProcessEnv = process.env): TextToSpeechProvider {
+  const provider = env.JARVIS_TTS_PROVIDER?.trim().toLowerCase();
+  if (provider === "piper") return new PiperTtsProvider(env);
+  if (provider === "cloud") return new CloudTtsProvider();
+  return new DisabledTtsProvider();
 }
