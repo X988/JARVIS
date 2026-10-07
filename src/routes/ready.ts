@@ -13,7 +13,7 @@ export const Route = createFileRoute("/ready")({
         const report = readiness(process.env, { dumpPresent: fs.existsSync(extension) });
         const stt = sttProbe();
         const tts = ttsProbe();
-        const sttRequired = (process.env.JARVIS_STT_PROVIDER || "faster-whisper") === "faster-whisper";
+        const sttRequired = process.env.JARVIS_STT_PROVIDER === "faster-whisper";
         const ttsRequired = process.env.JARVIS_TTS_PROVIDER === "piper";
         const ok = report.ok && (!sttRequired || stt.ready) && (!ttsRequired || tts.ready);
         return Response.json(
