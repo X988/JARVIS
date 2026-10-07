@@ -5,17 +5,17 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { takeToken } from "../rate-limit.ts";
+import { actorRequestStorageKey, rememberRequest } from "./idempotency.ts";
 
 const worker = path.join(path.dirname(fileURLToPath(import.meta.url)), "state-race-worker.ts");
 
-function run(
-  dir: string,
-  key: string,
-  side: string,
+function runWorker(
+  args: string[],
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["--experimental-strip-types", worker, dir, key, side], {
+    const child = spawn(process.execPath, ["--experimental-strip-types", worker, ...args], {
       stdio: ["ignore", "pipe", "pipe"],
       env,
     });
@@ -25,6 +25,20 @@ function run(
     });
     child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(err || `exit ${code}`))));
   });
+}
+
+function runIdempotency(
+  dir: string,
+  actor: string,
+  requestId: string,
+  side: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  return runWorker(["idempotency", dir, actor, requestId, side], env);
+}
+
+function runRate(dir: string, key: string, side: string): Promise<void> {
+  return runWorker(["rate-limit", dir, key, side]);
 }
 
 describe("state lock", () => {
@@ -37,8 +51,9 @@ describe("state lock", () => {
     fs.utimesSync(lock, old, old);
 
     await assert.rejects(
-      run(
+      runIdempotency(
         dir,
+        "admin",
         "blocked",
         side,
         {
@@ -61,8 +76,9 @@ describe("state lock", () => {
     const old = new Date(Date.now() - 5 * 60_000);
     fs.utimesSync(lock, old, old);
 
-    await run(
+    await runIdempotency(
       dir,
+      "admin",
       "recovered",
       side,
       {
@@ -75,19 +91,85 @@ describe("state lock", () => {
     assert.equal(fs.existsSync(lock), false);
   });
 
-  it("keeps both keys and runs one shared request only once", async () => {
+  it("scopes duplicate requests by hashed actor and executes a concurrent duplicate once", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-race-"));
     const side = path.join(dir, "side.txt");
     await Promise.all([
-      run(dir, "same", side),
-      run(dir, "same", side),
-      run(dir, "other", side),
+      runIdempotency(dir, "admin@example.com", "same", side),
+      runIdempotency(dir, "admin@example.com", "same", side),
+      runIdempotency(dir, "другой-админ", "same", side),
     ]);
+
     const lines = fs.readFileSync(side, "utf8").trim().split("\n");
     assert.equal(lines.length, 2);
-    const stored = JSON.parse(fs.readFileSync(path.join(dir, "idempotency.json"), "utf8")) as Record<string, { state: string }>;
-    assert.equal(stored.same.state, "done");
-    assert.equal(stored.other.state, "done");
-    assert.equal(fs.existsSync(path.join(dir, "state.lock")), false);
+
+    const stored = JSON.parse(
+      fs.readFileSync(path.join(dir, "idempotency.json"), "utf8"),
+    ) as Record<string, { state: string }>;
+    assert.equal(Object.keys(stored).length, 2);
+    assert.equal(Object.values(stored).every((slot) => slot.state === "done"), true);
+    assert.equal(Object.keys(stored).some((key) => key.includes("@") || key.includes("другой")), false);
+  });
+
+  it("accepts email, Unicode and long actor IDs without exposing them in storage keys", () => {
+    const actors = ["admin@example.com", "Администратор-№1", "x".repeat(4_096)];
+    const keys = actors.map((actor) => actorRequestStorageKey(actor, "REQ-1"));
+    assert.equal(new Set(keys).size, actors.length);
+    assert.equal(keys.every((key) => /^[a-f0-9]{64}:REQ-1$/.test(key)), true);
+  });
+
+  it("recovers a stale pending idempotency claim after a crash", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-idem-recovery-"));
+    const key = actorRequestStorageKey("admin@example.com", "REQ-RECOVER");
+    fs.writeFileSync(
+      path.join(dir, "idempotency.json"),
+      JSON.stringify({ [key]: { state: "pending", at: Date.now() - 31_000 } }),
+    );
+    let calls = 0;
+    const result = rememberRequest(dir, "admin@example.com", "REQ-RECOVER", () => {
+      calls += 1;
+      return "recovered";
+    });
+    assert.equal(result.duplicate, false);
+    assert.equal(result.value, "recovered");
+    assert.equal(calls, 1);
+  });
+
+  it("fails closed on corrupted idempotency JSON", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-idem-corrupt-"));
+    const target = path.join(dir, "idempotency.json");
+    fs.writeFileSync(target, "{broken");
+    assert.throws(
+      () => rememberRequest(dir, "admin@example.com", "REQ-1", () => "unsafe"),
+      /invalid JSON/,
+    );
+    assert.equal(fs.readFileSync(target, "utf8"), "{broken");
+  });
+
+  it("serializes concurrent rate-limit updates across processes without lost updates", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-rate-race-"));
+    const side = path.join(dir, "side.txt");
+    await Promise.all(Array.from({ length: 24 }, () => runRate(dir, "shared", side)));
+
+    const stored = JSON.parse(
+      fs.readFileSync(path.join(dir, "rate.json"), "utf8"),
+    ) as Record<string, number[]>;
+    assert.equal(stored.shared.length, 24);
+    assert.equal(fs.readFileSync(side, "utf8").trim().split("\n").length, 24);
+  });
+
+  it("fails closed on corrupted rate-limit state instead of resetting it", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-rate-corrupt-"));
+    const target = path.join(dir, "rate.json");
+    const previous = process.env.JARVIS_STATE_DIR;
+    process.env.JARVIS_STATE_DIR = dir;
+    fs.writeFileSync(target, "{broken");
+    try {
+      assert.throws(() => takeToken("login", 2, 1_000, 1_000), /invalid JSON/);
+      assert.equal(fs.readFileSync(target, "utf8"), "{broken");
+    } finally {
+      if (previous === undefined) delete process.env.JARVIS_STATE_DIR;
+      else process.env.JARVIS_STATE_DIR = previous;
+    }
   });
 });

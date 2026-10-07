@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { withStateLock } from "./state-lock.ts";
@@ -6,6 +7,8 @@ type Pending = { state: "pending"; at: number };
 type Done<T> = { state: "done"; value: T };
 
 const REQUEST_ID = /^[A-Za-z0-9._:-]{1,160}$/;
+const STORAGE_KEY = /^[a-f0-9]{64}:[A-Za-z0-9._:-]{1,160}$/;
+const LEGACY_KEY = /^[A-Za-z0-9._:-]{1,225}$/;
 
 function file(dir: string): string {
   return path.join(dir, "idempotency.json");
@@ -13,6 +16,23 @@ function file(dir: string): string {
 
 export function validRequestId(value: string): boolean {
   return REQUEST_ID.test(value) && value !== "__proto__" && value !== "prototype" && value !== "constructor";
+}
+
+function validActorId(value: string): boolean {
+  return value.length > 0 && value.length <= 8_192 && !/[\u0000]/u.test(value);
+}
+
+export function actorRequestStorageKey(actorId: string, requestId: string): string {
+  if (!validActorId(actorId)) throw new Error("invalid actor id");
+  if (!validRequestId(requestId)) throw new Error("invalid request id");
+  const actorHash = createHash("sha256").update(actorId, "utf8").digest("hex");
+  return `${actorHash}:${requestId}`;
+}
+
+function validStoredKey(value: string): boolean {
+  // Legacy keys are accepted for read-only migration compatibility. New writes
+  // always use actorRequestStorageKey and therefore never persist raw actor IDs.
+  return STORAGE_KEY.test(value) || LEGACY_KEY.test(value);
 }
 
 function isPending(slot: unknown): slot is Pending {
@@ -43,7 +63,7 @@ function readMap(dir: string): Record<string, unknown> {
 
   const out = Object.create(null) as Record<string, unknown>;
   for (const [key, slot] of Object.entries(parsed as Record<string, unknown>)) {
-    if (!validRequestId(key) || (!isPending(slot) && !isDone(slot))) {
+    if (!validStoredKey(key) || (!isPending(slot) && !isDone(slot))) {
       throw new Error("idempotency state contains an invalid entry");
     }
     out[key] = slot;
@@ -54,25 +74,34 @@ function readMap(dir: string): Record<string, unknown> {
 function writeMap(dir: string, all: Record<string, unknown>): void {
   fs.mkdirSync(dir, { recursive: true });
   const target = file(dir);
-  const next = `${target}.tmp`;
-  fs.writeFileSync(next, JSON.stringify(all));
-  fs.renameSync(next, target);
+  const next = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(next, JSON.stringify(all), { encoding: "utf8", flag: "wx" });
+    fs.renameSync(next, target);
+  } finally {
+    fs.rmSync(next, { force: true });
+  }
 }
 
 function doneValue<T>(slot: unknown): T | undefined {
   return isDone(slot) ? (slot.value as T) : undefined;
 }
 
-export function rememberRequest<T>(dir: string, requestId: string, produce: () => T): { duplicate: boolean; value: T } {
-  if (!validRequestId(requestId)) throw new Error("invalid request id");
+export function rememberRequest<T>(
+  dir: string,
+  actorId: string,
+  requestId: string,
+  produce: () => T,
+): { duplicate: boolean; value: T } {
+  const storageKey = actorRequestStorageKey(actorId, requestId);
 
   const claimed = withStateLock(dir, () => {
     const all = readMap(dir);
-    const current = all[requestId];
+    const current = all[storageKey];
     const ready = doneValue<T>(current);
     if (ready !== undefined) return { kind: "done" as const, value: ready };
     if (isPending(current) && Date.now() - current.at < 30_000) return { kind: "wait" as const };
-    all[requestId] = { state: "pending", at: Date.now() } satisfies Pending;
+    all[storageKey] = { state: "pending", at: Date.now() } satisfies Pending;
     writeMap(dir, all);
     return { kind: "mine" as const };
   });
@@ -81,7 +110,7 @@ export function rememberRequest<T>(dir: string, requestId: string, produce: () =
   if (claimed.kind === "wait") {
     const started = Date.now();
     while (Date.now() - started < 10_000) {
-      const found = withStateLock(dir, () => doneValue<T>(readMap(dir)[requestId]));
+      const found = withStateLock(dir, () => doneValue<T>(readMap(dir)[storageKey]));
       if (found !== undefined) return { duplicate: true, value: found };
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 15);
     }
@@ -92,14 +121,14 @@ export function rememberRequest<T>(dir: string, requestId: string, produce: () =
     const value = produce();
     withStateLock(dir, () => {
       const all = readMap(dir);
-      all[requestId] = { state: "done", value } satisfies Done<T>;
+      all[storageKey] = { state: "done", value } satisfies Done<T>;
       writeMap(dir, all);
     });
     return { duplicate: false, value };
   } catch (error) {
     withStateLock(dir, () => {
       const all = readMap(dir);
-      if (isPending(all[requestId])) delete all[requestId];
+      if (isPending(all[storageKey])) delete all[storageKey];
       writeMap(dir, all);
     });
     throw error;
