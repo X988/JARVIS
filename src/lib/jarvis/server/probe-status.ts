@@ -20,7 +20,7 @@ export type ProbeRecord = {
   reason: string;
 };
 
-export type ProbeView = ProbeRecord & {
+export type ProbeView = Omit<ProbeRecord, "status"> & {
   status: ProbeState;
   stale: boolean;
 };
