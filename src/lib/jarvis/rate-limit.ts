@@ -103,7 +103,8 @@ function cleanup(
   }
 }
 
-export function takeToken(
+export function takeTokenInDir(
+  dir: string,
   key: string,
   limit: number,
   windowMs: number,
@@ -123,8 +124,8 @@ export function takeToken(
     throw new Error("invalid rate-limit clock");
   }
 
-  const dir = stateDir();
-  const target = stateFile(dir);
+  const root = path.resolve(dir);
+  const target = stateFile(root);
   const retentionMs = Math.max(
     windowMs,
     boundedInteger(
@@ -141,7 +142,7 @@ export function takeToken(
     100_000,
   );
 
-  return withStateLock(dir, () => {
+  return withStateLock(root, () => {
     // When no deterministic clock is injected, sample time only after acquiring
     // the inter-process lock. A process may start earlier but enter the critical
     // section later; sampling before the lock can otherwise make a newer write
@@ -173,4 +174,13 @@ export function takeToken(
     atomicWrite(target, bucket);
     return true;
   });
+}
+
+export function takeToken(
+  key: string,
+  limit: number,
+  windowMs: number,
+  now?: number,
+): boolean {
+  return takeTokenInDir(stateDir(), key, limit, windowMs, now);
 }
