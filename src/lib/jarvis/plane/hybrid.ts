@@ -69,7 +69,7 @@ export async function runHybridTurn(
     // may derive a runbook, target, parameters and approval hash.
     const fallback = command({
       text,
-      requestId: opts.requestId + "-approval",
+      requestId: opts.requestId.slice(0, 150) + "-approval",
       session: opts.session,
       stateDir: opts.stateDir,
       now: opts.now,
