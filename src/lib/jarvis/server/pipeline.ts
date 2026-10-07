@@ -188,6 +188,141 @@ function gateway(
   }
 }
 
+
+export type RegisteredToolResult = {
+  code: string;
+  verdict: "allow" | "deny";
+  mode: Mode;
+  requestId: string;
+  auditId: string;
+  runbook: string;
+  target: string;
+  executionCalled: boolean;
+  detail: string;
+  verification: string;
+};
+
+export function processRegisteredReadOnlyTool(input: {
+  runbook: string;
+  target: string;
+  requestId: string;
+  session: Session | null;
+  stateDir: string;
+  now?: Date;
+  mode?: Mode;
+  execute?: (call: ExecCall) => ExecResult;
+  capabilities?: ServerCapabilities;
+}): RegisteredToolResult {
+  const now = input.now ?? new Date();
+  const mode = modeOf(input.mode);
+  const requestId = input.requestId || randomUUID();
+
+  function finishRegistered(
+    code: string,
+    verdict: "allow" | "deny",
+    detail: string,
+    book: Runbook | null,
+    targetId: string,
+    executionCalled = false,
+  ): RegisteredToolResult {
+    const auditId = randomUUID();
+    const row = appendAudit(
+      {
+        at: now.toISOString(),
+        executionId: auditId,
+        actor: input.session?.accountId ?? "anonymous",
+        action: book ? `agent-tool:${book.id}` : "agent-tool:rejected",
+        verdict,
+        sessionId: input.session?.id ?? "",
+        commandId: requestId,
+        normalized: book?.id ?? input.runbook,
+        target: targetId,
+        runbook: book?.id ?? input.runbook,
+        risk: book?.risk ?? 3,
+        policy: book?.policy ?? "DENY",
+        approvalId: "",
+        executor: executionCalled ? book?.executor ?? "" : "",
+        result: code,
+        verification: book?.verification ?? "not executed",
+        externalSink: externalSinkLabel(),
+      },
+      input.stateDir,
+    );
+    return {
+      code,
+      verdict,
+      mode,
+      requestId,
+      auditId: row.hash ?? auditId,
+      runbook: book?.id ?? input.runbook,
+      target: targetId,
+      executionCalled,
+      detail,
+      verification: book?.verification ?? "not executed",
+    };
+  }
+
+  if (!input.session) {
+    return finishRegistered("AUTH_REQUIRED", "deny", "Нет серверной сессии.", null, input.target);
+  }
+  if (input.session.role !== "operator") {
+    return finishRegistered("ACTOR_DENIED", "deny", "Эта учётка не оператор.", null, input.target);
+  }
+
+  const book = runbookById(input.runbook);
+  if (!book) {
+    return finishRegistered("RUNBOOK_NOT_FOUND", "deny", "Runbook отсутствует в registry.", null, input.target);
+  }
+  const target = targetById(input.target);
+  if (!target) {
+    return finishRegistered("TARGET_NOT_FOUND", "deny", "Target отсутствует в inventory.", book, input.target);
+  }
+  if (book.targets.length > 0 && !book.targets.includes(target.id)) {
+    return finishRegistered("POLICY_DENIED", "deny", "Runbook не разрешён для этого target.", book, target.id);
+  }
+  if (!target.allowedRunbooks.includes(book.id)) {
+    return finishRegistered("POLICY_DENIED", "deny", "Inventory не разрешает этот runbook.", book, target.id);
+  }
+
+  // Autonomous AI execution is intentionally read-only. Mutations continue
+  // through processCommand/Approval Engine and can never be enabled by model output.
+  if (book.mutates || book.risk !== 0 || book.approval !== "none") {
+    return finishRegistered(
+      "MUTATION_REQUIRES_APPROVAL",
+      "deny",
+      "AI loop не исполняет изменения автономно; требуется обычный approval-контур.",
+      book,
+      target.id,
+    );
+  }
+
+  const policy = evaluateRuntimePolicy(book.policy, {
+    mode,
+    elevated: input.capabilities?.elevated,
+    maintenanceWindow: input.capabilities?.maintenanceWindow ?? maintenanceWindowOpen(now),
+  });
+  if (policy.code !== "ALLOW") {
+    return finishRegistered(
+      policy.code === "APPROVAL_REQUIRED" ? "MUTATION_REQUIRES_APPROVAL" : "POLICY_DENIED",
+      "deny",
+      policy.code === "DENY" ? policy.reason : "Policy требует approval.",
+      book,
+      target.id,
+    );
+  }
+
+  const result = gateway(book, target.id, mode, input.stateDir, input.execute);
+  const allowed = result.code === "OK" || result.code === "MOCK" || result.code === "DRY_RUN";
+  return finishRegistered(
+    result.code,
+    allowed ? "allow" : "deny",
+    result.detail,
+    book,
+    target.id,
+    result.called,
+  );
+}
+
 export function processCommand(input: {
   text: string;
   requestId: string;
