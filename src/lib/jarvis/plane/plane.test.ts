@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import { correlate, openIncident } from "./incidents.ts";
 import { agentMayEscalate, routeModel } from "./llm.ts";
 import { proposeCriticalInfrastructureFact, remember, searchMemory } from "./memory.ts";
-import { validatePlugin } from "./plugins.ts";
+import { loadPluginDir, validatePlugin } from "./plugins.ts";
 import {
   cancelTask,
   createOneTimeTask,
@@ -247,7 +247,7 @@ describe("memory, schedule, workers", () => {
 });
 
 describe("plugins, incidents, models", () => {
-  it("rejects an unknown plugin and a shell permission", () => {
+  it("rejects malformed, shell, and capability-escalating plugins", () => {
     assert.equal(validatePlugin({ id: "ups" }).ok, false);
     const shell = validatePlugin({
       id: "ups",
@@ -261,6 +261,55 @@ describe("plugins, incidents, models", () => {
       runbook: "ups.status",
     });
     assert.equal(shell.ok, false);
+
+    const secret = validatePlugin({
+      id: "ups",
+      version: "1",
+      description: "status",
+      inputs: [],
+      outputs: [],
+      risk: 0,
+      permissions: ["production-secret"],
+      supported_targets: ["mail01"],
+      runbook: "mailcow.health",
+    });
+    assert.equal(secret.ok, false);
+    if (!secret.ok) assert.equal(secret.code, "PERMISSION_DENIED");
+
+    const incomplete = validatePlugin({
+      id: "ups",
+      version: "1",
+      description: "status",
+      inputs: [],
+      risk: 0,
+      permissions: [],
+      supported_targets: ["mail01"],
+      runbook: "mailcow.health",
+    });
+    assert.equal(incomplete.ok, false);
+  });
+
+  it("accepts only bounded regular plugin manifest files", () => {
+    const root = dir();
+    fs.writeFileSync(
+      path.join(root, "mailcow.json"),
+      JSON.stringify({
+        id: "mailcow-check",
+        version: "1.0.0",
+        description: "Read-only Mailcow status",
+        inputs: ["target"],
+        outputs: ["status"],
+        risk: 0,
+        permissions: ["network:read"],
+        supported_targets: ["mail01"],
+        runbook: "mailcow.health",
+      }),
+    );
+    fs.writeFileSync(path.join(root, "bad.json"), JSON.stringify({ id: "bad" }));
+    const loaded = loadPluginDir(root);
+    assert.equal(loaded.accepted.length, 1);
+    assert.equal(loaded.accepted[0].id, "mailcow-check");
+    assert.deepEqual(loaded.rejected, ["bad.json"]);
   });
 
   it("links backup pressure without starting a repair", () => {
