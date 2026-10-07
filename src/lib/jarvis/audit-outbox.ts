@@ -80,14 +80,15 @@ export function enqueueAuditDelivery(
   now = new Date(),
 ): boolean {
   const pending = configuredSinks(env);
-  if (!pending.length || !row.hash) return false;
+  const hash = row.hash;
+  if (!pending.length || !hash) return false;
   return withStateLock(dir, () => {
     const rows = loadAuditOutbox(dir);
-    if (rows.some((item) => item.id === row.hash)) return false;
+    if (rows.some((item) => item.id === hash)) return false;
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(
       auditOutboxFile(dir),
-      JSON.stringify({ id: row.hash, queuedAt: now.toISOString(), row, pending } satisfies AuditEnvelope) + "\n",
+      JSON.stringify({ id: hash, queuedAt: now.toISOString(), row, pending } satisfies AuditEnvelope) + "\n",
     );
     return true;
   });
