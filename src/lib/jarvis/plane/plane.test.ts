@@ -26,7 +26,13 @@ import {
   runDue,
   saveTasks,
 } from "./scheduler.ts";
-import { normalizeHeard, ttsMode, wakeEnabled } from "./speech.ts";
+import {
+  BrowserSpeechProvider,
+  WhisperProvider,
+  normalizeHeard,
+  ttsMode,
+  wakeEnabled,
+} from "./speech.ts";
 import { acceptTelegram, type TelegramActor } from "./telegram.ts";
 import { claimNext, codingWorkspace, openJob, updateJob, workerAction, worktreePath } from "./workers.ts";
 
