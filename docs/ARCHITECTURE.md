@@ -22,9 +22,9 @@
 
 Поля `risk`, `policy`, `role`, `allowed`, `runbook`, `approved` из JSON игнорируются.
 
-Живые адаптеры Windows (WinRM), SSH, SQL, RouterOS, Docker и выгрузка 1С без переменных окружения отвечают `NOT_CONFIGURED`. Если задан адрес, но нет учётной записи, ответ `CREDENTIAL_UNAVAILABLE`. Если заданы оба, а клиент в этом репозитории не подключён, ответ `ADAPTER_DISABLED`. Успех не подменяется. `MockExecutor` в режиме `real` тоже не считается выполнением.
+Узкие adapters Windows/WinRM, Linux/SSH, SQL Server, RouterOS REST, Mailcow/Docker, GitHub CI и выгрузка 1С реализованы как server-owned executors с фиксированными операциями. Без обязательной конфигурации они отвечают `NOT_CONFIGURED`, без credentials — `CREDENTIAL_UNAVAILABLE`, а отсутствующий локальный runtime/client — `ADAPTER_DISABLED`. `CONFIGURED_UNPROBED` не является доказательством работоспособности: production readiness требует свежего `HEALTHY` live-probe для обязательных adapters. `MockExecutor` в режиме `real` не считается выполнением.
 
-Заявки лежат в `data/approvals.json` на сервере, не в памяти вкладки. Журнал — `data/audit.jsonl` со схемой 1 и цепочкой hash. Внешний sink (syslog, HTTP, Loki) без URL равен `NOT_CONFIGURED`. Если URL задан, а клиент доставки не подключён, статус `ADAPTER_DISABLED`. Подмена файла целиком локальной цепочкой не ловится, пока нет внешней копии.
+Заявки лежат в `data/approvals.json` на сервере, не в памяти вкладки. Журнал — `data/audit.jsonl` со схемой 1 и цепочкой hash. HTTP/Loki используют durable outbox с retry; syslog намеренно остаётся `ADAPTER_DISABLED`, пока нет отдельного настоящего транспорта. Локальная hash-chain не является trust anchor против владельца диска: для production нужен внешний append-only sink.
 
 Блокировка по умолчанию `FileLockProvider`, на одном хосте. `RedisLockProvider` выбирается `JARVIS_LOCK_BACKEND=redis`. Без `JARVIS_REDIS_URL` он отвечает `NOT_CONFIGURED` и не выдаёт lock. С URL, но без живого клиента, lock тоже не выдаётся (`ADAPTER_DISABLED`), чтобы отсутствие Redis не выглядело как свободный ресурс. Для нескольких хостов нужен настоящий Redis или advisory lock Postgres.
 
