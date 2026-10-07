@@ -7,7 +7,13 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { sqlDatabase } from "../server/sql.ts";
 import { SQLExecutor } from "../server/adapters.ts";
-import { createTelegramApi, dispatchTelegram, handleTelegramWebhook } from "./telegram-bot.ts";
+import {
+  createTelegramApi,
+  dispatchTelegram,
+  handleTelegramWebhook,
+  sendTelegramArtifact,
+  telegramUpdate,
+} from "./telegram-bot.ts";
 import { decodeTelegramAudio } from "../voice/turn.ts";
 
 const actors = { "100842": { actorId: "admin1" as const, role: "operator" as const } };
@@ -24,7 +30,86 @@ function silenceOgg(): Buffer {
   return fs.readFileSync(file);
 }
 
-describe("telegram voice transport", () => {
+describe("telegram transport", () => {
+  it("keeps attachment and reply/forward context separate from command text", () => {
+    const parsed = telegramUpdate({
+      update_id: 5,
+      message: {
+        from: { id: 100842 },
+        chat: { id: 100842 },
+        caption: "Проверь документ",
+        document: { file_id: "doc-1", file_name: "../report.txt", file_size: 120 },
+        reply_to_message: { message_id: 4, text: "старый ответ" },
+        forward_origin: { sender_user: { id: 777 } },
+      },
+    });
+    assert.ok(parsed);
+    assert.equal(parsed?.update.text, "Проверь документ");
+    assert.equal(parsed?.update.documentFileId, "doc-1");
+    assert.match(parsed?.update.replyTo ?? "", /^4:/);
+    assert.equal(parsed?.update.forwardedFromId, 777);
+  });
+
+  it("stores an authorized document as untrusted reference without executing it", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-tg-"));
+    let actions = 0;
+    let messages = 0;
+    const result = await dispatchTelegram(
+      {
+        update_id: 6,
+        message: {
+          from: { id: 100842 },
+          chat: { id: 100842 },
+          document: { file_id: "doc", file_name: "../../passwd.txt", file_size: 12 },
+        },
+      },
+      {
+        stateDir: root,
+        actors,
+        api: {
+          getFile: async () => "documents/doc.txt",
+          download: async () => Buffer.from("untrusted text"),
+          sendMessage: async () => {
+            messages += 1;
+            return true;
+          },
+          sendChatAction: async () => {
+            actions += 1;
+            return true;
+          },
+        },
+      },
+    );
+    assert.equal(result.code, "ATTACHMENT_STORED");
+    assert.equal(result.attachmentStored, true);
+    assert.equal(actions, 1);
+    assert.equal(messages, 1);
+    const inbound = path.join(root, "inbound");
+    const names = fs.readdirSync(inbound);
+    assert.equal(names.length, 1);
+    assert.equal(names[0].includes(".."), false);
+    assert.equal(fs.readFileSync(path.join(inbound, names[0]), "utf8"), "untrusted text");
+  });
+
+  it("delivers only bounded non-secret outbound artifacts", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-out-"));
+    fs.writeFileSync(path.join(root, "report.txt"), "safe report");
+    fs.writeFileSync(path.join(root, "secret.txt"), "password=hidden");
+    let sent = 0;
+    const api = {
+      getFile: async () => null,
+      download: async () => null,
+      sendMessage: async () => true,
+      sendDocument: async () => {
+        sent += 1;
+        return true;
+      },
+    };
+    assert.equal((await sendTelegramArtifact(api, 1, { root, relative: "report.txt" })).ok, true);
+    assert.equal((await sendTelegramArtifact(api, 1, { root, relative: "secret.txt" })).ok, false);
+    assert.equal((await sendTelegramArtifact(api, 1, { root, relative: "../outside.txt" })).ok, false);
+    assert.equal(sent, 1);
+  });
   it("turns an ogg voice note into a 16 kHz wav before recognition", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-audio-"));
     const decoded = decodeTelegramAudio(silenceOgg(), { JARVIS_AUDIO_DIR: root });
