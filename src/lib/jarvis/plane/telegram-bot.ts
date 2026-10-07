@@ -108,11 +108,13 @@ export async function dispatchTelegram(
     env: opts.env,
     download,
   });
-  const text = "voiceSummary" in result ? result.voiceSummary : voiceLine(result.code, null);
+  const spoken = "voiceSummary" in result ? result.voiceSummary : voiceLine(result.code, null);
+  const approvalPhrase = "technical" in result ? result.technical?.approval?.phrase : undefined;
+  const text = approvalPhrase ? spoken + "\n" + approvalPhrase : spoken;
   const sent = await opts.api.sendMessage(parsed.chatId, text);
   let voiceSent = false;
   if (parsed.update.voiceFileId && opts.api.sendVoice) {
-    const speech = synthesizeVoice(text, opts.env);
+    const speech = synthesizeVoice(spoken, opts.env);
     if (!("code" in speech)) {
       try {
         voiceSent = await opts.api.sendVoice(parsed.chatId, fs.readFileSync(speech.ogg));
