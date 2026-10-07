@@ -12,6 +12,7 @@ import { admitMcp } from "./mcp.ts";
 import { loadPluginDir } from "./plugins.ts";
 import { indexFolder, searchChunks } from "./rag.ts";
 import { researchReport } from "./research.ts";
+import { isTaskDue, runDue, saveTasks, type ScheduledTask } from "./scheduler.ts";
 import { telegramContext } from "./telegram.ts";
 import { recordUndo } from "./undo.ts";
 
@@ -81,5 +82,38 @@ describe("remaining project ideas", () => {
     assert.equal(planForBranch("main").code, "DENY");
     assert.equal(planForBranch("fix-ci").steps.at(-1), "pr");
     assert.equal(prMayLandOnMain(), false);
+  });
+
+  it("uses IANA timezones for cron and follows Kyiv DST", () => {
+    const task: ScheduledTask = {
+      id: "morning",
+      text: "Проверь backup",
+      timezone: "Europe/Kyiv",
+      cron: "0 8 * * *",
+      status: "active",
+      history: [],
+    };
+    assert.equal(isTaskDue(task, new Date("2026-10-07T05:00:00Z")), true);
+    assert.equal(isTaskDue(task, new Date("2026-12-07T06:00:00Z")), true);
+    assert.equal(isTaskDue(task, new Date("2026-12-07T05:00:00Z")), false);
+    assert.equal(isTaskDue({ ...task, timezone: "Mars/Olympus" }, new Date("2026-10-07T05:00:00Z")), false);
+  });
+
+  it("fires a scheduled task only once in the same minute", () => {
+    const root = dir();
+    const task: ScheduledTask = {
+      id: "mailcow",
+      text: "Проверь Mailcow",
+      timezone: "Europe/Kyiv",
+      cron: "39 4 * * *",
+      status: "active",
+      history: [],
+    };
+    const now = new Date("2026-10-07T01:39:20Z");
+    saveTasks(root, [task]);
+    let calls = 0;
+    assert.equal(runDue(root, now, () => ({ code: (calls += 1) ? "OK" : "ERR" })).length, 1);
+    assert.equal(runDue(root, new Date("2026-10-07T01:39:50Z"), () => ({ code: (calls += 1) ? "OK" : "ERR" })).length, 0);
+    assert.equal(calls, 1);
   });
 });
