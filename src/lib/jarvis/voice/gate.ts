@@ -10,7 +10,7 @@ export type VoiceKind = "silence" | "noise" | "speech";
 
 export type SpokenAlias = { from: string; to: string };
 
-const HALLUCINATIONS = /^(thanks for watching|thank you\.?|you|субтитры|субтитры создавал.*|продолжение следует|спасибо за просмотр)\.?$/i;
+const HALLUCINATIONS = /^(thanks for watching|thank you\.?|you|субтитры|субтитры создавал.*|продолжение следует|спасибо за просмотр|подписывайтесь.*|приятного просмотра)\.?$/i;
 
 export const SPOKEN: SpokenAlias[] = [
   { from: "ютп", to: "utp" },
@@ -105,7 +105,7 @@ export function normalizeTranscript(
 
 export function stripWake(text: string, enabled: boolean): string {
   if (!enabled) return text;
-  return text.replace(/^(джарвис|жарвис)(?:[,.:;!?\\s]+|$)/i, "").trim();
+  return text.replace(/^(джарвис|жарвис)(?:[,.:;!?\s]+|$)/i, "").trim();
 }
 
 export function sanitizeForSpeech(text: string): string {
@@ -137,12 +137,12 @@ export type VoiceContext = {
 };
 
 function metric(detail: string, key: string): number | null {
-  const hit = detail.match(new RegExp("(?:^|[;\\\\s])" + key + "=(\\\\d+(?:\\\\.\\\\d+)?)", "i"));
+  const hit = detail.match(new RegExp("(?:^|[;\\s])" + key + "=(\\d+(?:\\.\\d+)?)", "i"));
   return hit ? Number(hit[1]) : null;
 }
 
 function textMetric(detail: string, key: string): string | null {
-  const hit = detail.match(new RegExp("(?:^|[;\\\\s])" + key + "=([^;]+)", "i"));
+  const hit = detail.match(new RegExp("(?:^|[;\\s])" + key + "=([^;]+)", "i"));
   return hit?.[1]?.trim() || null;
 }
 
