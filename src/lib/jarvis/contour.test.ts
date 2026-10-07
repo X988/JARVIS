@@ -391,8 +391,10 @@ describe("locks, audit, git", () => {
         target: "fleet",
         mode: "real",
       });
-      assert.notEqual(result.code, "OK");
+      assert.equal(result.code, "NOT_CONFIGURED");
+      assert.equal(result.called, false);
       assert.match(result.detail, /healthy=0\//);
+      assert.match(result.detail, /no connection attempted/);
     } finally {
       for (const name of names) {
         const value = previous[name];
