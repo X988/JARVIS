@@ -3,6 +3,7 @@ import { runbookById, type Runbook } from "./runbooks.ts";
 import { targetById } from "./inventory.ts";
 import { FileOnecExecutor } from "../onec/executor.ts";
 import { sqlDatabase, runSql } from "./sql.ts";
+import { runSshProbe, runWindowsProbe } from "./host-probes.ts";
 
 export type ExecutorKind = Runbook["executor"];
 
@@ -38,28 +39,14 @@ export class MockExecutor implements Executor {
 export class PowerShellExecutor implements Executor {
   readonly type = "powershell" as const;
   execute(call: ExecCall): ExecResult {
-    const blocked = configured(
-      "JARVIS_WINDOWS_HOST",
-      "JARVIS_WINDOWS_USER",
-      "powershell",
-      "Read-only WinRM: uptime, CPU, память, диск, состояние служб.",
-    );
-    if (blocked) return blocked;
-    return missing("powershell", "ADAPTER_DISABLED", `WinRM-клиент не подключён. ${call.runbook} на ${call.target} не опрашивался.`);
+    return runWindowsProbe(call);
   }
 }
 
 export class SSHExecutor implements Executor {
   readonly type = "ssh" as const;
   execute(call: ExecCall): ExecResult {
-    const blocked = configured(
-      "JARVIS_SSH_HOST",
-      "JARVIS_SSH_USER",
-      "ssh",
-      "Read-only SSH: uptime, CPU, память, диск, состояние служб. Команда не собирается из текста оператора.",
-    );
-    if (blocked) return blocked;
-    return missing("ssh", "ADAPTER_DISABLED", `SSH-клиент не подключён. ${call.runbook} на ${call.target} не опрашивался.`);
+    return runSshProbe(call);
   }
 }
 
@@ -154,7 +141,7 @@ export class ServerProbeExecutor implements Executor {
       return missing(
         "server-probe",
         "NOT_CONFIGURED",
-        `У ${call.target} нет пары platform/executor в inventory. Глобальный JARVIS_WINDOWS_HOST маршрут не выбирает.`,
+        `У ${call.target} нет пары platform/executor в inventory. Глобальный host маршрут не выбирает.`,
       );
     }
     return (route === "powershell" ? new PowerShellExecutor() : new SSHExecutor()).execute(call);
