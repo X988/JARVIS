@@ -16,7 +16,7 @@ import { researchReport } from "./research.ts";
 import { createOneTimeTask, createRecurringTask, isTaskDue, loadTasks, runDue, saveTasks, type ScheduledTask } from "./scheduler.ts";
 import { telegramContext } from "./telegram.ts";
 import { recordUndo } from "./undo.ts";
-import { applyPrObservation, createPrWatch, prWatchMayMutateRepository } from "./pr-watch.ts";
+import { applyPrObservation, createPrWatch, loadPrWatches, prWatchMayMutateRepository } from "./pr-watch.ts";
 import { admitRegisteredTool, listTools } from "./tool-registry.ts";
 
 function dir(): string {
@@ -162,6 +162,27 @@ describe("remaining project ideas", () => {
     assert.equal(workerMayPublish("push"), false);
     assert.equal(workerMayPublish("merge"), false);
     assert.equal(workerMayPublish("deploy"), false);
+  });
+
+  it("filters corrupted persisted PR watch state", () => {
+    const root = dir();
+    fs.writeFileSync(
+      path.join(root, "pr-watch.json"),
+      JSON.stringify([
+        {
+          id: "broken",
+          repository: "X988/honey-granite-fair-hazel",
+          pr: 1,
+          head: "abcdef1",
+          status: "passed",
+          polls: "many",
+          lastChecks: [],
+          createdAt: "bad",
+          updatedAt: "bad",
+        },
+      ]),
+    );
+    assert.deepEqual(loadPrWatches(root), []);
   });
 
   it("watches PR CI read-only and resets to pending when head changes", () => {
