@@ -213,6 +213,38 @@ describe("server pipeline", () => {
     assert.equal(mismatch.executionCalled, false);
   });
 
+  it("fails closed on corrupted idempotency state", () => {
+    const stateDir = freshDir();
+    fs.writeFileSync(path.join(stateDir, "idempotency.json"), '{"bad":{"state":"pending","at":"not-a-number"}}');
+    assert.throws(
+      () => run("Проверь сервер", { stateDir, requestId: "safe-id" }),
+      /idempotency state contains an invalid entry/,
+    );
+  });
+
+  it("rejects an approval record tampered on disk", () => {
+    const stateDir = freshDir();
+    const command = "Сделай резервную копию базы utp";
+    const opened = run(command, { stateDir, requestId: "approval-open" });
+    assert.equal(opened.code, "APPROVAL_REQUIRED");
+    assert.ok(opened.approval);
+
+    const file = path.join(stateDir, "approvals.json");
+    const rows = JSON.parse(fs.readFileSync(file, "utf8")) as Array<Record<string, unknown>>;
+    rows[0].target = "master";
+    fs.writeFileSync(file, JSON.stringify(rows));
+
+    assert.throws(
+      () =>
+        run(command, {
+          stateDir,
+          requestId: "approval-confirm",
+          approval: { id: opened.approval!.id, confirmation: opened.approval!.phrase },
+        }),
+      /approval state has invalid records/,
+    );
+  });
+
   it("drops a modifying runbook under NO_CHANGE", () => {
     const result = run("Сделай резервную копию базы utp, ничего не меняй");
     assert.equal(result.code, "POLICY_DENIED");
