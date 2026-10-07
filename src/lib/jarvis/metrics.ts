@@ -8,6 +8,8 @@ export type MetricName =
   | "stt_ms"
   | "voice_turns"
   | "stt_failures"
+  | "tts_ms"
+  | "tts_failures"
   | "telegram_updates";
 
 const counters: Record<MetricName, number> = {
@@ -20,6 +22,8 @@ const counters: Record<MetricName, number> = {
   stt_ms: 0,
   voice_turns: 0,
   stt_failures: 0,
+  tts_ms: 0,
+  tts_failures: 0,
   telegram_updates: 0,
 };
 
