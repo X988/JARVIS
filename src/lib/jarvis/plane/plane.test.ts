@@ -122,7 +122,8 @@ describe("telegram and voice", () => {
     const hit = whisper.transcribe({ wavPath: path.join(root, "voice.wav") });
     assert.equal("provider" in hit ? hit.provider : "", "whisper-cpp");
     assert.equal("text" in hit ? hit.text : "", "Проверь SQL");
-    assert.equal(whisper.transcribe({ wavPath: path.join(root, "..", "escape.wav") }).code, "STT_FAILED");
+    const escaped = whisper.transcribe({ wavPath: path.join(root, "..", "escape.wav") });
+    assert.equal("code" in escaped ? escaped.code : "", "STT_FAILED");
   });
 
   it("keeps a low-confidence alias unchanged", () => {
@@ -194,7 +195,7 @@ describe("memory, schedule, workers", () => {
         at: "2026-10-07T00:00:00Z",
         source: "test",
         text: "safe text",
-      } as Parameters<typeof remember>[1],
+      } as unknown as Parameters<typeof remember>[1],
     );
     assert.equal(badKind.ok, false);
 
