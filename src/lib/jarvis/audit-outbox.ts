@@ -20,9 +20,10 @@ export function auditOutboxFile(
 
 function configuredSinks(env: NodeJS.ProcessEnv): AuditSinkId[] {
   const out: AuditSinkId[] = [];
-  if (env.JARVIS_AUDIT_HTTP_URL?.trim()) out.push("http");
-  if (env.JARVIS_AUDIT_LOKI_URL?.trim()) out.push("loki");
-  if (env.JARVIS_AUDIT_SYSLOG?.trim()) out.push("syslog");
+  if (validHttpUrl(env.JARVIS_AUDIT_HTTP_URL)) out.push("http");
+  if (validHttpUrl(env.JARVIS_AUDIT_LOKI_URL)) out.push("loki");
+  // Syslog remains ADAPTER_DISABLED and is deliberately not queued. Otherwise
+  // an unsupported transport would create an unbounded permanent backlog.
   return out;
 }
 
