@@ -8,6 +8,7 @@ import { createApproval, findApproval, parameterHash, saveApproval } from "./app
 import { rememberRequest } from "./idempotency.ts";
 import { matchTarget, targetById, unknownLatinToken, type Target } from "./inventory.ts";
 import { runbookById, runbookForIntent, type Runbook } from "./runbooks.ts";
+import { evaluateRuntimePolicy, maintenanceWindowOpen } from "./policy.ts";
 import type { Session } from "./session.ts";
 
 export type Mode = "dry-run" | "mock" | "real";
@@ -15,6 +16,11 @@ export type Mode = "dry-run" | "mock" | "real";
 export type ExecCall = { runbook: string; target: string; mode: Mode };
 
 export type ExecResult = { called: boolean; code: string; detail: string };
+
+export type ServerCapabilities = {
+  elevated?: boolean;
+  maintenanceWindow?: boolean;
+};
 
 export type Trace = {
   original: string;
@@ -159,6 +165,7 @@ export function processCommand(input: {
   execute?: (call: ExecCall) => ExecResult;
   forged?: Record<string, unknown>;
   approval?: { id: string; confirmation: string };
+  capabilities?: ServerCapabilities;
 }): PipelineResult {
   const now = input.now ?? new Date();
   const mode = modeOf(input.mode);
@@ -241,6 +248,7 @@ function confirmApproval(
     session: Session | null;
     execute?: (call: ExecCall) => ExecResult;
     approval?: { id: string; confirmation: string };
+    capabilities?: ServerCapabilities;
   },
   approvalId: string,
   confirmation: string,
@@ -308,6 +316,23 @@ function confirmApproval(
     });
   }
 
+  const confirmedPolicy = evaluateRuntimePolicy(book.policy, {
+    mode: current.mode,
+    elevated: current.capabilities?.elevated ?? false,
+    maintenanceWindow: current.capabilities?.maintenanceWindow ?? maintenanceWindowOpen(current.now),
+  });
+  if (confirmedPolicy.code === "DENY") {
+    return finish(base, {
+      code: "POLICY_DENIED",
+      verdict: "deny",
+      mode: current.mode,
+      executionCalled: false,
+      decision: denyShell(base.text, confirmedPolicy.reason, book.risk),
+      approval: null,
+      trace: { ...emptyTrace(base.text, current.mode, parsed.normalized), runbook: book.id, target: hinted.id, risk: book.risk, policy: book.policy },
+    });
+  }
+
   if (row.required === 2 && row.stage === 1) {
     const next = { ...row, stage: 2 as const };
     saveApproval(current.stateDir, next);
@@ -343,7 +368,15 @@ function inferRunbook(text: string): Runbook | null {
 
 function fresh(
   base: { text: string; requestId: string; session: Session | null; stateDir: string; now: Date },
-  current: { text: string; mode: Mode; stateDir: string; now: Date; session: Session | null; execute?: (call: ExecCall) => ExecResult },
+  current: {
+    text: string;
+    mode: Mode;
+    stateDir: string;
+    now: Date;
+    session: Session | null;
+    execute?: (call: ExecCall) => ExecResult;
+    capabilities?: ServerCapabilities;
+  },
 ): PipelineResult {
   const text = current.text.trim();
   if (DYNAMIC.test(text)) return denied(base, current.mode, "onec.exec", "DENY_ALWAYS", 3, "POLICY_DENIED", "Выполнить() запрещён.");
@@ -371,7 +404,28 @@ function fresh(
   if (constraint === "NO_CHANGE" && book.mutates) {
     return denied(base, current.mode, book.id, "DENY", book.risk, "POLICY_DENIED", "Стоит ограничение «ничего не менять». Изменение выкинуто.", parsed.normalized, constraint);
   }
-  if (book.policy === "APPROVAL_REQUIRED") {
+
+  const runtimePolicy = evaluateRuntimePolicy(book.policy, {
+    mode: current.mode,
+    elevated: current.capabilities?.elevated ?? false,
+    maintenanceWindow: current.capabilities?.maintenanceWindow ?? maintenanceWindowOpen(current.now),
+  });
+  if (runtimePolicy.code === "DENY") {
+    return denied(
+      base,
+      current.mode,
+      book.id,
+      book.policy,
+      book.risk,
+      "POLICY_DENIED",
+      runtimePolicy.reason,
+      parsed.normalized,
+      constraint,
+      book.risk,
+    );
+  }
+
+  if (runtimePolicy.code === "APPROVAL_REQUIRED") {
     const stamp = current.now.toISOString().slice(0, 10).replace(/-/g, "");
     const id = `APPROVAL-${stamp}-${randomUUID().slice(0, 4).toUpperCase()}`;
     const record = createApproval(current.stateDir, {
