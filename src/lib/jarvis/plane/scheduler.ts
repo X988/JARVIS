@@ -2,12 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { withStateLock } from "../server/state-lock.ts";
 
+export type TaskStatus = "active" | "paused" | "cancelled" | "completed";
+
 export type ScheduledTask = {
   id: string;
   text: string;
   timezone: string;
-  cron: string;
-  status: "active" | "paused" | "cancelled";
+  cron?: string;
+  runAt?: string;
+  status: TaskStatus;
   history: { at: string; code: string }[];
 };
 
@@ -33,17 +36,27 @@ function scheduleFile(dir: string): string {
   return path.join(dir, "schedule.json");
 }
 
+function atomicSave(dir: string, tasks: ScheduledTask[]): void {
+  fs.mkdirSync(dir, { recursive: true });
+  const target = scheduleFile(dir);
+  const temp = target + ".tmp";
+  fs.writeFileSync(temp, JSON.stringify(tasks, null, 2));
+  fs.renameSync(temp, target);
+}
+
 export function loadTasks(dir: string): ScheduledTask[] {
   const target = scheduleFile(dir);
   if (!fs.existsSync(target)) return [];
-  return JSON.parse(fs.readFileSync(target, "utf8")) as ScheduledTask[];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(target, "utf8")) as unknown;
+    return Array.isArray(parsed) ? (parsed as ScheduledTask[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 export function saveTasks(dir: string, tasks: ScheduledTask[]): void {
-  withStateLock(dir, () => {
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(scheduleFile(dir), JSON.stringify(tasks, null, 2));
-  });
+  withStateLock(dir, () => atomicSave(dir, tasks));
 }
 
 function localClock(now: Date, timezone: string): LocalClock | null {
@@ -74,9 +87,7 @@ function localClock(now: Date, timezone: string): LocalClock | null {
       !Number.isInteger(hour) ||
       !Number.isInteger(dayOfMonth) ||
       !Number.isInteger(month)
-    ) {
-      return null;
-    }
+    ) return null;
     return { minute, hour, dayOfMonth, month, dayOfWeek };
   } catch {
     return null;
@@ -90,8 +101,8 @@ function cronMatch(field: string, value: number, min: number, max: number): bool
   return expected >= min && expected <= max && expected === value;
 }
 
-export function isTaskDue(task: ScheduledTask, now: Date): boolean {
-  if (task.status !== "active") return false;
+function recurringDue(task: ScheduledTask, now: Date): boolean {
+  if (!task.cron) return false;
   const parts = task.cron.trim().split(/\s+/);
   if (parts.length !== 5) return false;
   const clock = localClock(now, task.timezone || "UTC");
@@ -106,9 +117,90 @@ export function isTaskDue(task: ScheduledTask, now: Date): boolean {
   );
 }
 
+function oneTimeDue(task: ScheduledTask, now: Date): boolean {
+  if (!task.runAt || task.history.length > 0) return false;
+  const at = Date.parse(task.runAt);
+  return Number.isFinite(at) && at <= now.getTime();
+}
+
+export function isTaskDue(task: ScheduledTask, now: Date): boolean {
+  if (task.status !== "active") return false;
+  return task.runAt ? oneTimeDue(task, now) : recurringDue(task, now);
+}
+
 function firedThisMinute(task: ScheduledTask, now: Date): boolean {
   const bucket = now.toISOString().slice(0, 16);
   return task.history.some((row) => row.at.slice(0, 16) === bucket);
+}
+
+export function createOneTimeTask(input: {
+  id: string;
+  text: string;
+  runAt: string;
+  timezone?: string;
+}): ScheduledTask | null {
+  if (!/^[a-zA-Z0-9._:-]{1,80}$/.test(input.id) || !input.text.trim() || !Number.isFinite(Date.parse(input.runAt))) {
+    return null;
+  }
+  return {
+    id: input.id,
+    text: input.text.trim(),
+    timezone: input.timezone || "UTC",
+    runAt: new Date(input.runAt).toISOString(),
+    status: "active",
+    history: [],
+  };
+}
+
+export function createRecurringTask(input: {
+  id: string;
+  text: string;
+  cron: string;
+  timezone: string;
+}): ScheduledTask | null {
+  const candidate: ScheduledTask = {
+    id: input.id,
+    text: input.text.trim(),
+    timezone: input.timezone,
+    cron: input.cron.trim(),
+    status: "active",
+    history: [],
+  };
+  if (!/^[a-zA-Z0-9._:-]{1,80}$/.test(input.id) || !candidate.text || !localClock(new Date(), input.timezone)) return null;
+  const parts = candidate.cron?.split(/\s+/) ?? [];
+  if (parts.length !== 5) return null;
+  const probes = [
+    cronMatch(parts[0], 0, 0, 59) || parts[0] === "*",
+    cronMatch(parts[1], 0, 0, 23) || parts[1] === "*",
+    cronMatch(parts[2], 1, 1, 31) || parts[2] === "*",
+    cronMatch(parts[3], 1, 1, 12) || parts[3] === "*",
+    cronMatch(parts[4], 0, 0, 6) || parts[4] === "*",
+  ];
+  return probes.every(Boolean) ? candidate : null;
+}
+
+function changeStatus(dir: string, id: string, next: "paused" | "cancelled" | "active"): ScheduledTask | null {
+  return withStateLock(dir, () => {
+    const tasks = loadTasks(dir);
+    const task = tasks.find((item) => item.id === id);
+    if (!task || task.status === "completed" || task.status === "cancelled") return null;
+    if (next === "active" && task.status !== "paused") return null;
+    task.status = next;
+    atomicSave(dir, tasks);
+    return { ...task, history: [...task.history] };
+  });
+}
+
+export function pauseTask(dir: string, id: string): ScheduledTask | null {
+  return changeStatus(dir, id, "paused");
+}
+
+export function resumeTask(dir: string, id: string): ScheduledTask | null {
+  return changeStatus(dir, id, "active");
+}
+
+export function cancelTask(dir: string, id: string): ScheduledTask | null {
+  return changeStatus(dir, id, "cancelled");
 }
 
 export function runDue(
@@ -123,10 +215,10 @@ export function runDue(
       if (!isTaskDue(task, now) || firedThisMinute(task, now)) continue;
       const result = run(task.text);
       task.history.push({ at: now.toISOString(), code: result.code });
+      if (task.runAt) task.status = "completed";
       fired.push({ id: task.id, code: result.code });
     }
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(scheduleFile(dir), JSON.stringify(tasks, null, 2));
+    atomicSave(dir, tasks);
     return fired;
   });
 }
