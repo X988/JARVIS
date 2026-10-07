@@ -6,7 +6,7 @@ import { monitoringStatus } from "../monitoring.ts";
 import { authenticateRequest } from "./auth.ts";
 import { processCommand } from "./pipeline.ts";
 import { validRequestId } from "./idempotency.ts";
-import { runAgentTurn } from "../plane/agent-runtime.ts";
+import { runHybridTurn } from "../plane/hybrid.ts";
 
 function stateDir(): string {
   return process.env.JARVIS_STATE_DIR || process.cwd()+"/data";
@@ -211,9 +211,19 @@ export async function handleAgentCommand(request: Request): Promise<Response> {
     return json({ code: "SCHEMA_INVALID" }, 400);
   }
 
-  const result = await runAgentTurn(body.text, {
+  const requestIdRaw =
+    typeof body.request_id === "string"
+      ? body.request_id
+      : typeof body.requestId === "string"
+        ? body.requestId
+        : "";
+  const requestId = requestIdRaw ? requestIdRaw.trim() : randomUUID();
+  if (!validRequestId(requestId)) return json({ code: "SCHEMA_INVALID" }, 400);
+
+  const result = await runHybridTurn(body.text, {
     session: auth.session,
     stateDir: stateDir(),
+    requestId,
     mode: executionMode(),
   });
   return json(result, httpStatus(result.code));
