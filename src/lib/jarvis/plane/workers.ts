@@ -71,6 +71,8 @@ export function updateJob(
   },
   now = new Date(),
 ): Job {
+  const terminal = job.status === "done" || job.status === "failed" || job.status === "cancelled" || job.status === "denied";
+  if (terminal) return { ...job, logs: [...job.logs] };
   const progress = patch.progress === undefined
     ? job.progress
     : Math.max(job.progress, Math.min(100, Math.max(0, Math.trunc(patch.progress))));
@@ -78,7 +80,7 @@ export function updateJob(
   return {
     ...job,
     status: patch.status ?? job.status,
-    progress,
+    progress: patch.status === "done" ? 100 : progress,
     phase: patch.phase ?? job.phase,
     logs,
     result: patch.result === undefined ? job.result : patch.result,
