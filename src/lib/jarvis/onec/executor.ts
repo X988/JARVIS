@@ -77,9 +77,10 @@ export class FileOnecExecutor {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) walk(full);
         else if (entry.name.endsWith(".xml") || entry.name.endsWith(".bsl")) {
-          if (entry.name.toLowerCase().includes(needle) || fs.readFileSync(full, "utf8").toLowerCase().includes(`<name>${needle}</name>`)) {
-            hits.push(path.relative(this.root, full));
-          }
+          const fileName = entry.name.toLowerCase();
+          const body = fs.readFileSync(full, "utf8").toLowerCase();
+          const namedInMetadata = body.includes(`<name>${needle}</name>`);
+          if (fileName.includes(needle) || namedInMetadata) hits.push(path.relative(this.root, full));
         }
       }
     };

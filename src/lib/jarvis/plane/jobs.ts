@@ -2,19 +2,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { openJob, type Job } from "./workers.ts";
 
-function file(dir: string): string {
+function jobsFile(dir: string): string {
   return path.join(dir, "jobs.json");
 }
 
 export function loadJobs(dir: string): Job[] {
-  const target = file(dir);
+  const target = jobsFile(dir);
   if (!fs.existsSync(target)) return [];
   return JSON.parse(fs.readFileSync(target, "utf8")) as Job[];
 }
 
 export function saveJobs(dir: string, jobs: Job[]): void {
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(file(dir), JSON.stringify(jobs, null, 2));
+  fs.writeFileSync(jobsFile(dir), JSON.stringify(jobs, null, 2));
 }
 
 export function enqueue(dir: string, id: string): Job {
@@ -37,7 +37,7 @@ export function cancelJob(dir: string, id: string): Job | null {
 
 export const CODING_STEPS = ["worktree", "branch", "analyze", "modify", "test", "lint", "typecheck", "diff", "report", "pr"] as const;
 
-export function codingTarget(branch: string): { code: "DENY" | "ALLOW"; steps: readonly string[] } {
+export function planForBranch(branch: string): { code: "DENY" | "ALLOW"; steps: readonly string[] } {
   if (branch === "main" || branch === "master") return { code: "DENY", steps: [] };
   return { code: "ALLOW", steps: CODING_STEPS };
 }

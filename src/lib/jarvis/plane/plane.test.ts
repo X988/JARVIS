@@ -7,7 +7,7 @@ import { correlate, openIncident } from "./incidents.ts";
 import { agentMayEscalate, routeModel } from "./llm.ts";
 import { remember, searchMemory } from "./memory.ts";
 import { validatePlugin } from "./plugins.ts";
-import { due, loadTasks, runDue, saveTasks } from "./scheduler.ts";
+import { isTaskDue, loadTasks, runDue, saveTasks } from "./scheduler.ts";
 import { normalizeHeard, ttsMode, wakeEnabled } from "./speech.ts";
 import { acceptTelegram } from "./telegram.ts";
 import { workerAction, worktreePath } from "./workers.ts";
@@ -85,7 +85,7 @@ describe("memory, schedule, workers", () => {
     saveTasks(root, [
       { id: "morning", text: "Проверь сервер", timezone: "UTC", cron: "0 6 * * *", status: "active", history: [] },
     ]);
-    assert.equal(due(loadTasks(root)[0], now), true);
+    assert.equal(isTaskDue(loadTasks(root)[0], now), true);
     const fired = runDue(root, now, () => ({ code: "DRY" }));
     assert.deepEqual(fired, [{ id: "morning", code: "DRY" }]);
   });

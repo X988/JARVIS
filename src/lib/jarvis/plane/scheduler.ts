@@ -10,22 +10,23 @@ export type ScheduledTask = {
   history: { at: string; code: string }[];
 };
 
-function file(dir: string): string {
+function scheduleFile(dir: string): string {
   return path.join(dir, "schedule.json");
 }
 
 export function loadTasks(dir: string): ScheduledTask[] {
-  const target = file(dir);
+  const target = scheduleFile(dir);
   if (!fs.existsSync(target)) return [];
   return JSON.parse(fs.readFileSync(target, "utf8")) as ScheduledTask[];
 }
 
 export function saveTasks(dir: string, tasks: ScheduledTask[]): void {
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(file(dir), JSON.stringify(tasks, null, 2));
+  fs.writeFileSync(scheduleFile(dir), JSON.stringify(tasks, null, 2));
 }
 
-export function due(task: ScheduledTask, now: Date): boolean {
+/** Five cron fields, compared in UTC. A non-UTC timezone is stored but not converted. */
+export function isTaskDue(task: ScheduledTask, now: Date): boolean {
   if (task.status !== "active") return false;
   const parts = task.cron.split(" ");
   if (parts.length !== 5) return false;
@@ -48,7 +49,7 @@ export function runDue(
   const tasks = loadTasks(dir);
   const fired: { id: string; code: string }[] = [];
   for (const task of tasks) {
-    if (!due(task, now)) continue;
+    if (!isTaskDue(task, now)) continue;
     const result = run(task.text);
     task.history.push({ at: now.toISOString(), code: result.code });
     fired.push({ id: task.id, code: result.code });
