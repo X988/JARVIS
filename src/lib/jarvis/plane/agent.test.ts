@@ -6,7 +6,8 @@ import { describe, it } from "node:test";
 import { callJsonModel, type FetchLike } from "./llm-client.ts";
 import { containsLlmSecret, sanitizeLlmText } from "./llm-safety.ts";
 import { validateAgentPlan, type AgentPlanResult } from "./agent-planner.ts";
-import { runAgentTurn } from "./agent-runtime.ts";
+import { runAgentTurn, type AgentTurnResult } from "./agent-runtime.ts";
+import { deterministicFirst, runHybridTurn } from "./hybrid.ts";
 import { processRegisteredReadOnlyTool, type RegisteredToolResult } from "../server/pipeline.ts";
 import type { Session } from "../server/session.ts";
 
@@ -143,6 +144,72 @@ describe("AI planner admission", () => {
     });
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.code, "PLAN_REJECTED");
+  });
+});
+
+describe("hybrid assistant routing", () => {
+  it("keeps known dangerous commands in the deterministic pipeline", async () => {
+    let agentCalls = 0;
+    const agent = async (): Promise<AgentTurnResult> => {
+      agentCalls += 1;
+      return {
+        code: "OK",
+        answer: "must not be called",
+        plan: null,
+        observations: [],
+        provider: null,
+        model: null,
+      };
+    };
+    const result = await runHybridTurn("Удали базу utp", {
+      session,
+      stateDir: dir(),
+      requestId: "hybrid-drop",
+      mode: "dry-run",
+      env: { JARVIS_AI_AGENT_ENABLED: "1" },
+      agent,
+    });
+    assert.equal(agentCalls, 0);
+    assert.equal(result.kind, "command");
+    assert.equal(result.code, "POLICY_DENIED");
+  });
+
+  it("routes unknown natural-language diagnostics to the AI runtime", async () => {
+    let agentCalls = 0;
+    const agent = async (): Promise<AgentTurnResult> => {
+      agentCalls += 1;
+      return {
+        code: "OK",
+        answer: "diagnostic answer",
+        plan: {
+          objective: "Diagnose",
+          responseMode: "answer",
+          message: "diagnostic answer",
+          steps: [],
+        },
+        observations: [],
+        provider: "openai",
+        model: "gpt-test",
+      };
+    };
+    const text = "Разберись, почему всё стало медленнее после обеда";
+    assert.equal(deterministicFirst(text), false);
+    const result = await runHybridTurn(text, {
+      session,
+      stateDir: dir(),
+      requestId: "hybrid-natural",
+      mode: "dry-run",
+      env: { JARVIS_AI_AGENT_ENABLED: "1" },
+      agent,
+    });
+    assert.equal(agentCalls, 1);
+    assert.equal(result.kind, "agent");
+    assert.equal(result.code, "OK");
+  });
+
+  it("keeps short confirmations in the deterministic pipeline", () => {
+    assert.equal(deterministicFirst("да"), true);
+    assert.equal(deterministicFirst("Выполнить(\"опасно\")"), true);
   });
 });
 
