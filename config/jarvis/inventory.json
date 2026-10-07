@@ -26,6 +26,8 @@
       "id": "dc01",
       "displayName": "Domain Controller",
       "type": "host",
+      "platform": "windows",
+      "executor": "winrm",
       "environment": "production",
       "roles": [
         "domain-controller",
@@ -50,6 +52,8 @@
       "id": "srv1c01",
       "displayName": "1C Server",
       "type": "host",
+      "platform": "windows",
+      "executor": "winrm",
       "environment": "production",
       "roles": [
         "1c"
@@ -72,6 +76,8 @@
       "id": "sql01",
       "displayName": "SQL Server",
       "type": "host",
+      "platform": "windows",
+      "executor": "winrm",
       "environment": "production",
       "roles": [
         "sql-server"
@@ -93,6 +99,8 @@
       "id": "fs01",
       "displayName": "File Server",
       "type": "host",
+      "platform": "windows",
+      "executor": "winrm",
       "environment": "production",
       "roles": [
         "file-server",
@@ -113,6 +121,8 @@
       "id": "mail01",
       "displayName": "Mailcow",
       "type": "mail",
+      "platform": "linux",
+      "executor": "ssh",
       "environment": "production",
       "roles": [
         "mailcow",

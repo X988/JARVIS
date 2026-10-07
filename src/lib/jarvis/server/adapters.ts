@@ -1,5 +1,6 @@
 import type { ExecCall, ExecResult } from "./pipeline.ts";
 import { runbookById, type Runbook } from "./runbooks.ts";
+import { targetById } from "./inventory.ts";
 import { FileOnecExecutor } from "../onec/executor.ts";
 
 export type ExecutorKind = Runbook["executor"];
@@ -124,22 +125,30 @@ export class OnecFileAdapter implements Executor {
   }
 }
 
+export function probeRoute(targetId: string): "powershell" | "ssh" | "fleet" | "unrouted" {
+  const target = targetById(targetId);
+  if (!target) return "unrouted";
+  if (target.type === "fleet") return "fleet";
+  if (target.platform === "windows" && target.executor === "winrm") return "powershell";
+  if (target.platform === "linux" && target.executor === "ssh") return "ssh";
+  return "unrouted";
+}
+
 export class ServerProbeExecutor implements Executor {
   readonly type = "server-probe" as const;
   execute(call: ExecCall): ExecResult {
-    if (call.target === "fleet") {
+    const route = probeRoute(call.target);
+    if (route === "fleet") {
       return missing("server-probe", "NOT_CONFIGURED", "Обход всех узлов не подключён. Сводный успех не рисуется.");
     }
-    const windows = Boolean(process.env.JARVIS_WINDOWS_HOST);
-    const linux = Boolean(process.env.JARVIS_SSH_HOST);
-    if (!windows && !linux) {
+    if (route === "unrouted") {
       return missing(
         "server-probe",
         "NOT_CONFIGURED",
-        "Нет JARVIS_WINDOWS_HOST (WinRM) и нет JARVIS_SSH_HOST. uptime, CPU, память, диск и службы не запрашивались.",
+        `У ${call.target} нет пары platform/executor в inventory. Глобальный JARVIS_WINDOWS_HOST маршрут не выбирает.`,
       );
     }
-    return (windows ? new PowerShellExecutor() : new SSHExecutor()).execute(call);
+    return (route === "powershell" ? new PowerShellExecutor() : new SSHExecutor()).execute(call);
   }
 }
 

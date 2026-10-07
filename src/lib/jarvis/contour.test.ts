@@ -9,7 +9,7 @@ import { BslLanguageServerValidator, FallbackBslValidator, OneCDesignerValidator
 import { FileOnecExecutor } from "./onec/executor.ts";
 import { planGitFlow } from "./onec/git-flow.ts";
 import { analyzeQuery } from "./onec/query.ts";
-import { SQLExecutor, ServerProbeExecutor } from "./server/adapters.ts";
+import { SQLExecutor, ServerProbeExecutor, probeRoute } from "./server/adapters.ts";
 import { takeToken } from "./rate-limit.ts";
 import { OPERATORS, evaluate } from "./model.ts";
 
@@ -84,9 +84,11 @@ describe("locks, audit, git", () => {
     assert.equal(externalSinkLabel({}), "NOT_CONFIGURED");
     assert.equal(externalSinkLabel({ JARVIS_AUDIT_HTTP_URL: "http://127.0.0.1/audit" }), "http:ADAPTER_DISABLED");
     const windows = process.env.JARVIS_WINDOWS_HOST;
+    const windowsUser = process.env.JARVIS_WINDOWS_USER;
     const ssh = process.env.JARVIS_SSH_HOST;
     const sqlHost = process.env.JARVIS_SQL_HOST;
     delete process.env.JARVIS_WINDOWS_HOST;
+    delete process.env.JARVIS_WINDOWS_USER;
     delete process.env.JARVIS_SSH_HOST;
     delete process.env.JARVIS_SQL_HOST;
     try {
@@ -96,9 +98,23 @@ describe("locks, audit, git", () => {
       assert.equal(health.called, false);
       assert.equal(backup.code, "NOT_CONFIGURED");
       assert.doesNotMatch(backup.detail, /BACKUP DATABASE|SELECT /);
+      process.env.JARVIS_WINDOWS_HOST = "dc01.example";
+      process.env.JARVIS_WINDOWS_USER = "jarvis-read";
+      const mail = new ServerProbeExecutor().execute({ runbook: "server.health", target: "mail01", mode: "real" });
+      const controller = new ServerProbeExecutor().execute({ runbook: "server.health", target: "dc01", mode: "real" });
+      assert.equal(probeRoute("mail01"), "ssh");
+      assert.equal(probeRoute("dc01"), "powershell");
+      assert.equal(mail.code, "NOT_CONFIGURED");
+      assert.match(mail.detail, /JARVIS_SSH_HOST/);
+      assert.doesNotMatch(mail.detail, /WinRM/);
+      assert.equal(controller.code, "ADAPTER_DISABLED");
+      assert.match(controller.detail, /WinRM/);
+      assert.doesNotMatch(controller.detail, /SSH/);
     } finally {
       if (windows === undefined) delete process.env.JARVIS_WINDOWS_HOST;
       else process.env.JARVIS_WINDOWS_HOST = windows;
+      if (windowsUser === undefined) delete process.env.JARVIS_WINDOWS_USER;
+      else process.env.JARVIS_WINDOWS_USER = windowsUser;
       if (ssh === undefined) delete process.env.JARVIS_SSH_HOST;
       else process.env.JARVIS_SSH_HOST = ssh;
       if (sqlHost === undefined) delete process.env.JARVIS_SQL_HOST;

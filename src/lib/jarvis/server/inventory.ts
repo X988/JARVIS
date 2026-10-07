@@ -11,6 +11,8 @@ export type Target = {
   aliases: string[];
   enabled: boolean;
   allowedRunbooks: string[];
+  platform?: "windows" | "linux" | "routeros";
+  executor?: "winrm" | "ssh" | "routeros";
 };
 
 type InventoryFile = { version: number; targets: Target[] };
