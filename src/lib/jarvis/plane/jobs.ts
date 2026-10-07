@@ -174,9 +174,10 @@ export function claimJob(
   now = new Date(),
 ): Job | null {
   return withStateLock(dir, () => {
-    const jobs = retainedJobs(loadJobs(dir), now);
+    const existing = loadJobs(dir);
+    const jobs = retainedJobs(existing, now);
     const state = claimNext(jobs, maxRunning, now);
-    if (state.claimed || jobs.length !== loadJobs(dir).length) {
+    if (state.claimed || jobs.length !== existing.length) {
       writeJobs(dir, state.jobs);
     }
     return state.claimed;
