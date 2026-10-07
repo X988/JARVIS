@@ -126,6 +126,48 @@ describe("server pipeline", () => {
     assert.equal(calls, 1);
   });
 
+  it("passes only server-derived parameters to an approved executor", () => {
+    const stateDir = freshDir();
+    let captured: ExecCall | null = null;
+    const command = "Сделай резервную копию базы utp";
+    const opened = run(command, {
+      stateDir,
+      requestId: "open-server-params",
+      mode: "real",
+      forged: { parameters: { database: "master", destination: "C:\\evil" }, runbook: "database.drop" },
+      execute: (call) => {
+        captured = call;
+        return { called: true, code: "OK", detail: "verified" };
+      },
+    });
+    assert.equal(opened.code, "APPROVAL_REQUIRED");
+    assert.ok(opened.approval);
+
+    const confirmed = run(command, {
+      stateDir,
+      requestId: "confirm-server-params",
+      mode: "real",
+      forged: { parameters: { database: "master", destination: "C:\\evil" }, approved: true },
+      execute: (call) => {
+        captured = call;
+        return { called: true, code: "OK", detail: "verified" };
+      },
+      approval: {
+        id: opened.approval!.id,
+        confirmation: opened.approval!.phrase,
+      },
+    });
+
+    assert.equal(confirmed.code, "OK");
+    assert.ok(captured);
+    assert.equal(captured!.runbook, "sql.backup");
+    assert.equal(captured!.target, "utp");
+    assert.equal(captured!.parameters?.database, "utp");
+    assert.equal(captured!.parameters?.server, "sql01");
+    assert.equal(captured!.parameters?.destination, "nas-backup/sql");
+    assert.notEqual(captured!.parameters?.database, "master");
+  });
+
   it("does not replay one actor's command for another actor with the same request id", () => {
     const stateDir = freshDir();
     const first = run("Проверь сервер", { stateDir, requestId: "shared-id" });
