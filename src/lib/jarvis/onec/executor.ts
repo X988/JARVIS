@@ -114,7 +114,7 @@ export class FileOnecExecutor {
     this.validationRunner = options.validationRunner;
   }
 
-  private gate(environment: OnecEnv, write: boolean): OnecResult | null {
+  private gate(environment: OnecEnv, _write: boolean): OnecResult | null {
     if (environment === "production") {
       return deny(environment, this.adapter, "Production закрыт. Исполнитель работает только с development и test.");
     }
@@ -247,9 +247,9 @@ export class FileOnecExecutor {
     if (!/^[A-Za-zА-Яа-я0-9_]+$/.test(name) || name.includes("..")) {
       return deny(environment, this.adapter, "Имя объекта не годится.");
     }
-    const config = jail(this.root, "Configuration.xml");
-    if (!config || !fs.existsSync(config)) {
-      return { ok: false, code: "FAIL", environment, adapter: this.adapter, message: "В выгрузке нет Configuration.xml." };
+    const config = safeExistingFile(this.root, "Configuration.xml");
+    if (!config) {
+      return { ok: false, code: "FAIL", environment, adapter: this.adapter, message: "В выгрузке нет безопасного Configuration.xml; symlink запрещён." };
     }
     const xml = fs.readFileSync(config, "utf8");
     if (!xml.includes("<ChildObjects>")) {
@@ -261,6 +261,9 @@ export class FileOnecExecutor {
       return { ok: true, code: "OK", environment, adapter: this.adapter, message: "Объект уже есть в составе расширения." };
     }
     const file = writeSkeleton(this.root, kind, objectName);
+    if (!file) {
+      return deny(environment, this.adapter, "Путь нового объекта небезопасен; symlink и выход из export root запрещены.");
+    }
     const next = xml.replace("</ChildObjects>", `\t\t<${tag}>${objectName}</${tag}>\n\t</ChildObjects>`);
     fs.writeFileSync(config, next);
     return {
@@ -283,20 +286,29 @@ function childTag(kind: OnecKind): string {
   return "DataProcessor";
 }
 
-function writeSkeleton(root: string, kind: OnecKind, name: string): string {
+function writeSkeleton(root: string, kind: OnecKind, name: string): string | null {
   const id = createHash("sha1").update(name).digest("hex").slice(0, 8);
   if (kind === "module") {
-    const xmlPath = path.join(root, "CommonModules", `${name}.xml`);
-    const bslPath = path.join(root, "CommonModules", name, "Ext", "Module.bsl");
+    const xmlRelative = path.join("CommonModules", `${name}.xml`);
+    const bslRelative = path.join("CommonModules", name, "Ext", "Module.bsl");
+    const xmlPath = safeWriteFile(root, xmlRelative);
+    const bslPath = safeWriteFile(root, bslRelative);
+    if (!xmlPath || !bslPath) return null;
+    fs.mkdirSync(path.dirname(xmlPath), { recursive: true });
     fs.mkdirSync(path.dirname(bslPath), { recursive: true });
     if (!fs.existsSync(xmlPath)) {
       fs.writeFileSync(xmlPath, `<?xml version="1.0" encoding="UTF-8"?>\n<MetaDataObject><CommonModule uuid="${id}-0000-4000-8000-000000000000"><Properties><Name>${name}</Name><Server>true</Server><ExternalConnection>false</ExternalConnection><Privileged>false</Privileged><ServerCall>false</ServerCall></Properties></CommonModule></MetaDataObject>\n`);
     }
-    if (!fs.existsSync(bslPath)) fs.writeFileSync(bslPath, `Функция ${name}Сводка() Экспорт\n\tВозврат "test";\nКонецФункции\n`);
+    if (!fs.existsSync(bslPath)) {
+      fs.writeFileSync(bslPath, `Функция ${name}Сводка() Экспорт\n\tВозврат "test";\nКонецФункции\n`);
+    }
     return bslPath;
   }
+
   const folder = kind === "report" ? "Reports" : kind === "template" ? "CommonTemplates" : "DataProcessors";
-  const xmlPath = path.join(root, folder, `${name}.xml`);
+  const relative = path.join(folder, `${name}.xml`);
+  const xmlPath = safeWriteFile(root, relative);
+  if (!xmlPath) return null;
   fs.mkdirSync(path.dirname(xmlPath), { recursive: true });
   if (!fs.existsSync(xmlPath)) {
     fs.writeFileSync(xmlPath, `<?xml version="1.0" encoding="UTF-8"?>\n<MetaDataObject><Properties><Name>${name}</Name><Comment>${kind}. Не загружать в production.</Comment></Properties></MetaDataObject>\n`);
