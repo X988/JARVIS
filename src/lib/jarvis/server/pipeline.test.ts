@@ -462,3 +462,83 @@ describe("extended policy gates", () => {
     );
   });
 });
+
+describe("reverse proxy csrf", () => {
+  async function csrfToken() {
+    process.env.JARVIS_STATE_DIR = freshDir();
+    process.env.JARVIS_TEST_AUTH = "1";
+    const opened = await handleSession(
+      new Request("http://127.0.0.1:8095/api/session", {
+        headers: { "x-jarvis-test-actor": "admin1" },
+      }),
+    );
+    const csrf = opened.headers.getSetCookie().find((line) => line.startsWith("jarvis_csrf="))?.split(";")[0] ?? "";
+    const token = decodeURIComponent(csrf.split("=")[1] ?? "");
+    return { csrf, token };
+  }
+
+  async function post(origin: string, extra: Record<string, string> = {}) {
+    const { csrf, token } = await csrfToken();
+    return handleCommand(
+      new Request("http://127.0.0.1:8095/api/commands", {
+        method: "POST",
+        headers: {
+          "x-jarvis-test-actor": "admin1",
+          cookie: csrf,
+          "x-jarvis-csrf": token,
+          origin,
+          "content-type": "application/json",
+          ...extra,
+        },
+        body: JSON.stringify({ text: "Проверь сервер", request_id: "proxy-csrf-1" }),
+      }),
+    );
+  }
+
+  it("accepts the public HTTPS origin configured for the proxy", async () => {
+    const previous = process.env.BETTER_AUTH_URL;
+    process.env.BETTER_AUTH_URL = "https://192.168.0.184:9443/";
+    try {
+      const response = await post("https://192.168.0.184:9443");
+      assert.equal((await response.json()).code, "OK");
+    } finally {
+      if (previous === undefined) delete process.env.BETTER_AUTH_URL;
+      else process.env.BETTER_AUTH_URL = previous;
+    }
+  });
+
+  it("accepts X-Forwarded-Host when it matches the browser origin", async () => {
+    const previousUrl = process.env.BETTER_AUTH_URL;
+    const previousTrusted = process.env.BETTER_AUTH_TRUSTED_ORIGINS;
+    delete process.env.BETTER_AUTH_URL;
+    delete process.env.BETTER_AUTH_TRUSTED_ORIGINS;
+    try {
+      const response = await post("https://192.168.0.184:9443", {
+        "x-forwarded-host": "192.168.0.184:9443",
+        "x-forwarded-proto": "https",
+      });
+      assert.equal((await response.json()).code, "OK");
+    } finally {
+      if (previousUrl === undefined) delete process.env.BETTER_AUTH_URL;
+      else process.env.BETTER_AUTH_URL = previousUrl;
+      if (previousTrusted === undefined) delete process.env.BETTER_AUTH_TRUSTED_ORIGINS;
+      else process.env.BETTER_AUTH_TRUSTED_ORIGINS = previousTrusted;
+    }
+  });
+
+  it("rejects a foreign origin", async () => {
+    const previousUrl = process.env.BETTER_AUTH_URL;
+    const previousTrusted = process.env.BETTER_AUTH_TRUSTED_ORIGINS;
+    delete process.env.BETTER_AUTH_URL;
+    delete process.env.BETTER_AUTH_TRUSTED_ORIGINS;
+    try {
+      const response = await post("https://evil.example");
+      assert.equal((await response.json()).code, "AUTH_REQUIRED");
+    } finally {
+      if (previousUrl === undefined) delete process.env.BETTER_AUTH_URL;
+      else process.env.BETTER_AUTH_URL = previousUrl;
+      if (previousTrusted === undefined) delete process.env.BETTER_AUTH_TRUSTED_ORIGINS;
+      else process.env.BETTER_AUTH_TRUSTED_ORIGINS = previousTrusted;
+    }
+  });
+});

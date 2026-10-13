@@ -293,6 +293,57 @@ EXECUTION_MODE=dry-run
 
 Не включайте `real`, пока adapters, inventory, credentials и policy не настроены и не протестированы.
 
+## Локальный вход на LAN
+
+Страница `/login` принимает почту и пароль через Better Auth. Кнопки Google и X остаются для брокера Grok и на сервере без него не нужны.
+
+Регистрация **не** делает человека оператором. Пока Better Auth user id нет в `JARVIS_WEB_ACTORS_JSON`, консоль отвечает `ACTOR_DENIED`. Права по-прежнему задаёт только эта карта (и Telegram-карта для бота).
+
+Сессия — cookie с префиксом `__Host-` и флагом `Secure`. Открывайте JARVIS по HTTPS (как Caddy на `https://192.168.0.184:9443`). По голому HTTP на LAN-IP браузер cookie не сохранит.
+
+Пример для systemd / окружения процесса. Порт dev-сервера может быть своим (`127.0.0.1:8095`); публичный адрес — тот, что в браузере.
+
+```env
+VITE_AUTH_ENABLED=true
+BETTER_AUTH_URL=https://192.168.0.184:9443
+BETTER_AUTH_SECRET=<openssl rand -hex 32>
+JARVIS_PGLITE_DIR=./data/pglite
+JARVIS_EMAIL_SIGNUP=1
+EXECUTION_MODE=dry-run
+```
+
+`VITE_AUTH_ENABLED=false` в `.grok/app-env.json` выключает сессии: процессное окружение перекрывает файл, если запускаете через `npm run dev`. Без `DATABASE_URL` учётки лежат в PGLite. Без `JARVIS_PGLITE_DIR` база в памяти и пропадает при перезапуске. `BETTER_AUTH_SECRET` тоже должен быть постоянным, иначе cookie после рестарта недействительны (учётки при этом остаются).
+
+Caddy по умолчанию передаёт `X-Forwarded-Proto` и `X-Forwarded-Host`. `BETTER_AUTH_URL` должен совпадать с origin в адресной строке, включая `https` и порт, без пути. Дополнительные origin (имя и IP) перечисляют через запятую в `BETTER_AUTH_TRUSTED_ORIGINS`. IP Vite пропускает сам. Для DNS-имени задайте `JARVIS_ALLOWED_HOSTS=jarvis.lan` (или `*`).
+
+Порядок для первого администратора:
+
+1. Запустите процесс с переменными выше и откройте `/login`.
+2. Зарегистрируйтесь. После входа консоль покажет `ACTOR_DENIED` и Better Auth user id.
+3. Вставьте карту и перезапустите:
+
+```env
+JARVIS_WEB_ACTORS_JSON={"<user-id>":{"actorId":"admin1","role":"operator"}}
+```
+
+`actorId` — имя в журнале JARVIS, не id из Better Auth. `role` для консоли должен быть `operator`.
+
+Тот же id можно снять скриптом `npm run users:web`. Postgres (`DATABASE_URL`) читается, пока сервер работает. Каталог PGLite тоже, если файл не занят; если скрипт не открывает его, остановите JARVIS и повторите. In-memory базу скрипт не видит.
+
+```bash
+npm run users:web
+```
+
+4. Закройте регистрацию, чтобы произвольный клиент LAN не создавал учётки, и снова перезапустите:
+
+```env
+JARVIS_EMAIL_SIGNUP=0
+```
+
+Уже созданные учётки входят как раньше. Новая учётка без строки в `JARVIS_WEB_ACTORS_JSON` по-прежнему получает `ACTOR_DENIED`.
+
+Схема Better Auth применяется из `migrations/0001_auth.sql` (копия `migrations/auth/0001_auth.sql`) и на PGLite, и на Postgres.
+
 ## Переменные окружения
 
 Полный список находится в:
@@ -304,6 +355,7 @@ config/jarvis/env.schema.json
 
 Основные группы:
 
+- `VITE_AUTH_ENABLED`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `JARVIS_EMAIL_SIGNUP`, `JARVIS_PGLITE_DIR`;
 - `JARVIS_WEB_ACTORS_JSON`;
 - `JARVIS_TELEGRAM_*`;
 - `JARVIS_WINDOWS_*`;

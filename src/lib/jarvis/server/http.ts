@@ -3,6 +3,7 @@ import { increment } from "../metrics.ts";
 import { takeToken } from "../rate-limit.ts";
 import { adapterStatus } from "./adapters.ts";
 import { monitoringStatus } from "../monitoring.ts";
+import { requestOriginAllowed } from "../../public-origin.ts";
 import { authenticateRequest } from "./auth.ts";
 import { processCommand } from "./pipeline.ts";
 import { validRequestId } from "./idempotency.ts";
@@ -73,12 +74,7 @@ function csrfOk(request:Request,channel:string|null):boolean{
   if(!cookie || !header || cookie!==header) return false;
   const fetchSite=request.headers.get("sec-fetch-site");
   if(fetchSite==="cross-site") return false;
-  const origin=request.headers.get("origin");
-  if(origin){
-    try{
-      if(new URL(origin).host!==new URL(request.url).host) return false;
-    }catch{return false;}
-  }
+  if(!requestOriginAllowed(request)) return false;
   return true;
 }
 
@@ -92,7 +88,8 @@ export async function handleSession(request:Request):Promise<Response>{
   const csrf=cookies.jarvis_csrf || newCsrf();
   const auth=await authenticateRequest(request);
   const heads=[csrfCookie(csrf,secure(request))];
-  if(!auth.session) return json({code:auth.code,executionMode:executionMode(),monitoring:"MONITORING_NOT_CONFIGURED"},httpStatus(auth.code),heads);
+  const identity=auth.userId ? {userId:auth.userId} : {};
+  if(!auth.session) return json({code:auth.code,executionMode:executionMode(),monitoring:"MONITORING_NOT_CONFIGURED",...identity},httpStatus(auth.code),heads);
   return json({
     code:auth.code,
     actorId:auth.session.accountId,
@@ -101,6 +98,7 @@ export async function handleSession(request:Request):Promise<Response>{
     executionMode:executionMode(),
     adapters:adapterStatus(),
     monitoring: monitoringStatus(),
+    ...identity,
   },auth.code==="OK"?200:403,heads);
 }
 

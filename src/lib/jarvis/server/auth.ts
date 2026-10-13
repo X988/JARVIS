@@ -1,11 +1,12 @@
 import { timingSafeEqual } from "node:crypto";
+import { bindWebUser } from "../web-actor.ts";
 import type { Session } from "./session.ts";
 
 type Role="operator"|"none";
 type WebBinding={actorId:string;role:Role};
 type TelegramBinding={actorId:string;role:Role};
 
-export type AuthResult={session:Session|null;code:"OK"|"AUTH_REQUIRED"|"ACTOR_DENIED";channel:"web"|"telegram"|"test"|null};
+export type AuthResult={session:Session|null;code:"OK"|"AUTH_REQUIRED"|"ACTOR_DENIED";channel:"web"|"telegram"|"test"|null;userId?:string};
 
 function jsonMap<T>(name:string):Record<string,T>{
   const raw=process.env[name]?.trim();
@@ -49,11 +50,7 @@ export async function authenticateRequest(request:Request):Promise<AuthResult>{
   const { getSessionUser } = await import("../../auth/verify.server.ts");
   const user=await getSessionUser();
   if(!user) return {session:null,code:"AUTH_REQUIRED",channel:"web"};
-  const bindings=jsonMap<WebBinding>("JARVIS_WEB_ACTORS_JSON");
-  let binding=bindings[user.id];
-  if(!binding && process.env.NODE_ENV!=="production" && process.env.JARVIS_ALLOW_ANY_AUTHENTICATED_DEV==="1"){
-    binding={actorId:user.id,role:"operator"};
-  }
-  if(!binding) return {session:null,code:"ACTOR_DENIED",channel:"web"};
-  return {session:makeSession("web-"+user.id,binding,"web"),code:binding.role==="operator"?"OK":"ACTOR_DENIED",channel:"web"};
+  const resolved=bindWebUser(user.id);
+  if(!resolved.binding) return {session:null,code:"ACTOR_DENIED",channel:"web",userId:user.id};
+  return {session:makeSession("web-"+user.id,resolved.binding,"web"),code:resolved.code,channel:"web",userId:user.id};
 }

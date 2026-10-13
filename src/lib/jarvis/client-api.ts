@@ -62,11 +62,31 @@ export function unavailableDecision(reason: string): Decision {
   };
 }
 
-export async function ensureServerSession(): Promise<{ executionMode: string; role?: string; actorId?: string }> {
+export async function ensureServerSession(): Promise<{
+  ok: boolean;
+  code: string;
+  executionMode: string;
+  role?: string;
+  actorId?: string;
+  userId?: string;
+}> {
   const response = await fetch("/api/session", { credentials: "include" });
-  const body = (await response.json()) as { executionMode?: string; role?: string; actorId?: string; code?: string };
-  if (!response.ok) throw new Error(body.code || "AUTH_REQUIRED");
-  return { executionMode: body.executionMode || "dry-run", role: body.role, actorId: body.actorId };
+  const body = (await response.json()) as {
+    executionMode?: string;
+    role?: string;
+    actorId?: string;
+    code?: string;
+    userId?: string;
+  };
+  const code = body.code || (response.ok ? "OK" : "AUTH_REQUIRED");
+  return {
+    ok: response.ok && code === "OK",
+    code,
+    executionMode: body.executionMode || "dry-run",
+    role: body.role,
+    actorId: body.actorId,
+    userId: body.userId,
+  };
 }
 
 export async function postCommand(

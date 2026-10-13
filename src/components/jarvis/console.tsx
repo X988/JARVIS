@@ -18,7 +18,10 @@ import {
 import { alternativesFrom, interpretSpeech, type RawResult, type SpeechAlt, type SpeechReading } from "@/lib/jarvis/hearing";
 import { useJarvis, type Notice, type Phase, type Turn } from "@/lib/jarvis/store";
 import { WATCH_ALERTS, WATCH_HOSTS, type WatchLevel } from "@/lib/jarvis/watch";
+import { authEnabled } from "@/lib/auth/client";
 import { UserButton } from "@/lib/auth/gates";
+import { useCurrentUser } from "@/lib/auth/use-current-user";
+import { webActorEnvSnippet } from "@/lib/jarvis/web-actor";
 
 type SideTab = "site" | "audit" | "access";
 
@@ -460,6 +463,44 @@ function AccessPanel() {
   );
 }
 
+function ActorDeniedBanner() {
+  const authCode = useJarvis((state) => state.authCode);
+  const authUserId = useJarvis((state) => state.authUserId);
+  const user = useCurrentUser();
+  const [copied, setCopied] = useState(false);
+  const userId = authUserId || (user && !user.isDevFallback ? user.id : null);
+  if (!authEnabled || authCode !== "ACTOR_DENIED" || !userId) return null;
+  const snippet = webActorEnvSnippet(userId);
+  return (
+    <div className="border-b border-line bg-elevated px-4 py-3">
+      <p className="text-sm font-medium">Учётка вошла, но не назначена оператором</p>
+      <p className="mt-1 max-w-3xl text-pretty text-sm text-muted">
+        Регистрация не выдаёт права. Добавьте Better Auth user id в JARVIS_WEB_ACTORS_JSON на сервере и перезапустите JARVIS.
+      </p>
+      <p className="mt-2 break-all font-mono text-xs text-paper">user id: {userId}</p>
+      <p className="mt-2 break-all font-mono text-xs text-moss">{snippet}</p>
+      <button
+        type="button"
+        className="mt-3 min-h-11 rounded-md border border-line px-3 text-sm"
+        onClick={() => {
+          const write = navigator.clipboard?.writeText(snippet);
+          if (!write) return;
+          void write.then(
+            () => {
+              setCopied(true);
+            },
+            () => {
+              setCopied(false);
+            },
+          );
+        }}
+      >
+        {copied ? "Скопировано" : "Скопировать JSON"}
+      </button>
+    </div>
+  );
+}
+
 function Side({ tab }: { tab: SideTab }) {
   if (tab === "audit") return <AuditPanel />;
   if (tab === "access") return <AccessPanel />;
@@ -743,6 +784,7 @@ export function Console() {
           ))}
         </ul>
       </header>
+      <ActorDeniedBanner />
       {!dryRun ? (
         <p className="border-b border-line bg-paper px-4 py-2 text-sm text-ink">
           Сервер в режиме REAL. Кнопка в браузере этот режим не включает.

@@ -56,6 +56,8 @@ export type Notice = WatchAlert & { at: number };
 
 type JarvisState = {
   actorId: string;
+  authCode: string;
+  authUserId: string | null;
   sessionReady: boolean;
   dryRun: boolean;
   serverMode: string;
@@ -116,6 +118,8 @@ let lock = false;
 
 export const useJarvis = create<JarvisState>((set, get) => ({
   actorId: "unauthenticated",
+  authCode: "",
+  authUserId: null,
   sessionReady: false,
   dryRun: true,
   serverMode: "dry-run",
@@ -135,11 +139,20 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       set({
         serverMode: session.executionMode,
         dryRun: session.executionMode !== "real",
-        actorId: session.actorId ?? "authenticated",
+        actorId: session.ok ? (session.actorId ?? "authenticated") : "unauthenticated",
+        authCode: session.code,
+        authUserId: session.userId ?? null,
         sessionReady: true,
       });
     } catch {
-      set({ serverMode: "dry-run", dryRun: true, actorId: "unauthenticated", sessionReady: true });
+      set({
+        serverMode: "dry-run",
+        dryRun: true,
+        actorId: "unauthenticated",
+        authCode: "AUTH_REQUIRED",
+        authUserId: null,
+        sessionReady: true,
+      });
     }
   },
 
