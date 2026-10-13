@@ -97,7 +97,19 @@ export function ttsProbe(env: NodeJS.ProcessEnv = process.env): {
   return { provider, model: resolved, ready: probe.status === 0 };
 }
 
-export function synthesizeVoice(sourceText: string, env: NodeJS.ProcessEnv = process.env): TtsHit | TtsFailure {
+export type WavHit = {
+  provider: "piper";
+  wav: string;
+  text: string;
+  cleanup: string[];
+};
+
+export function ttsConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env.JARVIS_TTS_PROVIDER || "disabled") === "piper" && modelPath(env) !== null;
+}
+
+/** Piper WAV only. The browser call plays this directly and skips the Telegram Opus encode. */
+export function synthesizeWav(sourceText: string, env: NodeJS.ProcessEnv = process.env): WavHit | TtsFailure {
   if ((env.JARVIS_TTS_PROVIDER || "disabled") !== "piper") return { code: "NOT_CONFIGURED" };
   const model = modelPath(env);
   if (!model) return { code: "NOT_CONFIGURED" };
@@ -109,8 +121,7 @@ export function synthesizeVoice(sourceText: string, env: NodeJS.ProcessEnv = pro
   const root = audioRoot(env);
   fs.mkdirSync(root, { recursive: true });
   const wav = safeAudioFile(root, "tts-" + randomUUID() + ".wav");
-  const ogg = safeAudioFile(root, "tts-" + randomUUID() + ".ogg");
-  if (!wav || !ogg) return { code: "TTS_FAILED" };
+  if (!wav) return { code: "TTS_FAILED" };
 
   const bin = env.JARVIS_TTS_BIN?.trim() || "piper";
   const timeout = Math.trunc(bounded(env.JARVIS_TTS_TIMEOUT_MS, 30_000, 5_000, 120_000));
@@ -133,24 +144,35 @@ export function synthesizeVoice(sourceText: string, env: NodeJS.ProcessEnv = pro
   const error = run.error as NodeJS.ErrnoException | undefined;
   if (error || run.status !== 0 || !fs.existsSync(wav) || fs.statSync(wav).size === 0) {
     fs.rmSync(wav, { force: true });
-    fs.rmSync(ogg, { force: true });
     return { code: error?.code === "ENOENT" ? "NOT_CONFIGURED" : "TTS_FAILED" };
   }
+  return { provider: "piper", wav, text, cleanup: [wav] };
+}
 
+export function synthesizeVoice(sourceText: string, env: NodeJS.ProcessEnv = process.env): TtsHit | TtsFailure {
+  const spoken = synthesizeWav(sourceText, env);
+  if ("code" in spoken) return spoken;
+
+  const root = audioRoot(env);
+  const ogg = safeAudioFile(root, "tts-" + randomUUID() + ".ogg");
+  if (!ogg) {
+    fs.rmSync(spoken.wav, { force: true });
+    return { code: "TTS_FAILED" };
+  }
   const encoded = spawnSync(
     "ffmpeg",
     [
-      "-nostdin", "-y", "-i", wav, "-ac", "1", "-ar", "48000",
+      "-nostdin", "-y", "-i", spoken.wav, "-ac", "1", "-ar", "48000",
       "-c:a", "libopus", "-b:a", "32k", "-application", "voip", ogg,
     ],
     { timeout: 15_000 },
   );
   if (encoded.status !== 0 || !fs.existsSync(ogg) || fs.statSync(ogg).size === 0) {
-    fs.rmSync(wav, { force: true });
+    fs.rmSync(spoken.wav, { force: true });
     fs.rmSync(ogg, { force: true });
     return { code: "AUDIO_ENCODE_FAILED" };
   }
-  return { provider: "piper", wav, ogg, text, cleanup: [wav, ogg] };
+  return { provider: "piper", wav: spoken.wav, ogg, text: spoken.text, cleanup: [spoken.wav, ogg] };
 }
 
 

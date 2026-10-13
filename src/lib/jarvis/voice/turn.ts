@@ -25,7 +25,7 @@ function readPcm(wav: Buffer): Int16Array | null {
   return samples;
 }
 
-function aliasesFromInventory(file = path.join(process.cwd(), "config/jarvis/inventory.json")): SpokenAlias[] {
+export function inventoryAliases(file = path.join(process.cwd(), "config/jarvis/inventory.json")): SpokenAlias[] {
   const extra = [...SPOKEN];
   if (!fs.existsSync(file)) return extra;
   const doc = JSON.parse(fs.readFileSync(file, "utf8")) as {
@@ -64,7 +64,7 @@ export function runVoiceWav(
   const normalized = normalizeTranscript(
     stripWake(heard.text, env.JARVIS_WAKE_WORD_ENABLED === "1"),
     heard.confidence,
-    aliasesFromInventory(),
+    inventoryAliases(),
     minConfidence,
   );
   if (normalized.code === "CLARIFY" || !normalized.text.trim()) {

@@ -5,6 +5,7 @@ import { adapterStatus } from "./adapters.ts";
 import { monitoringStatus } from "../monitoring.ts";
 import { requestOriginAllowed } from "../../public-origin.ts";
 import { authenticateRequest } from "./auth.ts";
+import type { Session } from "./session.ts";
 import { processCommand } from "./pipeline.ts";
 import { validRequestId } from "./idempotency.ts";
 import { runHybridTurn } from "../plane/hybrid.ts";
@@ -225,4 +226,31 @@ export async function handleAgentCommand(request: Request): Promise<Response> {
     mode: executionMode(),
   });
   return json(result, httpStatus(result.code));
+}
+
+export async function guardWebPost(
+  request: Request,
+  bucket: string,
+  limit: number,
+): Promise<{ ok: true; session: Session } | { ok: false; response: Response }> {
+  const auth = await authenticateRequest(request);
+  if (!auth.session || auth.code !== "OK") {
+    return { ok: false, response: json({ code: auth.code }, httpStatus(auth.code)) };
+  }
+  if (auth.session.role !== "operator") {
+    return { ok: false, response: json({ code: "ACTOR_DENIED" }, 403) };
+  }
+  if (!csrfOk(request, auth.channel)) return { ok: false, response: json({ code: "AUTH_REQUIRED" }, 401) };
+  let rateAllowed = false;
+  try {
+    rateAllowed = takeToken(bucket + ":" + auth.session.accountId, limit, 60_000);
+  } catch {
+    increment("jarvis_rate_limit_denied_total");
+    return { ok: false, response: json({ code: "SECURITY_STATE_UNAVAILABLE" }, 503) };
+  }
+  if (!rateAllowed) {
+    increment("jarvis_rate_limit_denied_total");
+    return { ok: false, response: json({ code: "RATE_LIMIT" }, 429) };
+  }
+  return { ok: true, session: auth.session };
 }

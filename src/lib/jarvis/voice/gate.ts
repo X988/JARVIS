@@ -148,6 +148,45 @@ export function sentences(text: string): string[] {
     .slice(0, 3);
 }
 
+const CONFIRM_TOKEN = /\bCONFIRM(?:\s+FINAL)?\s+APPROVAL-[A-Z0-9-]+\b/gi;
+
+function clipSpeech(text: string, maxChars: number): string[] {
+  const chunks: string[] = [];
+  let rest = text.trim();
+  while (rest) {
+    if (rest.length <= maxChars) {
+      chunks.push(rest);
+      break;
+    }
+    const window = rest.slice(0, maxChars + 1);
+    const boundary = window.lastIndexOf(" ");
+    const take = boundary >= Math.floor(maxChars * 0.6) ? boundary : maxChars;
+    const piece = rest.slice(0, take).trim();
+    if (!piece) break;
+    chunks.push(piece);
+    rest = rest.slice(take).trim();
+  }
+  return chunks;
+}
+
+/** Sentence-sized pieces for streamed Piper playback. Confirmation phrases stay on screen only. */
+export function speechChunks(source: string, maxChars = 360, maxChunks = 8): string[] {
+  const clean = sanitizeForSpeech(source).replace(CONFIRM_TOKEN, " ").replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  const parts = clean
+    .split(/(?<=[.!?])\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const chunks: string[] = [];
+  for (const part of parts.length > 0 ? parts : [clean]) {
+    for (const piece of clipSpeech(part, maxChars)) {
+      if (chunks.length >= maxChunks) return chunks;
+      chunks.push(piece);
+    }
+  }
+  return chunks;
+}
+
 export type VoiceContext = {
   mode?: string;
   executionCalled?: boolean;

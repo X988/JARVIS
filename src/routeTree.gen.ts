@@ -20,6 +20,7 @@ import { Route as ApiCommandsRouteImport } from './routes/api/commands'
 import { Route as ApiLocalAuthRouteImport } from './routes/api/local-auth'
 import { Route as ApiSessionRouteImport } from './routes/api/session'
 import { Route as ApiTelegramRouteImport } from './routes/api/telegram'
+import { Route as ApiVoiceRouteImport } from './routes/api/voice'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
@@ -77,6 +78,11 @@ const ApiTelegramRoute = ApiTelegramRouteImport.update({
   path: '/api/telegram',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiVoiceRoute = ApiVoiceRouteImport.update({
+  id: '/api/voice',
+  path: '/api/voice',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -95,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/api/local-auth': typeof ApiLocalAuthRoute
   '/api/session': typeof ApiSessionRoute
   '/api/telegram': typeof ApiTelegramRoute
+  '/api/voice': typeof ApiVoiceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
@@ -109,6 +116,7 @@ export interface FileRoutesByTo {
   '/api/local-auth': typeof ApiLocalAuthRoute
   '/api/session': typeof ApiSessionRoute
   '/api/telegram': typeof ApiTelegramRoute
+  '/api/voice': typeof ApiVoiceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
@@ -124,6 +132,7 @@ export interface FileRoutesById {
   '/api/local-auth': typeof ApiLocalAuthRoute
   '/api/session': typeof ApiSessionRoute
   '/api/telegram': typeof ApiTelegramRoute
+  '/api/voice': typeof ApiVoiceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
@@ -140,6 +149,7 @@ export interface FileRouteTypes {
     | '/api/local-auth'
     | '/api/session'
     | '/api/telegram'
+    | '/api/voice'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -154,6 +164,7 @@ export interface FileRouteTypes {
     | '/api/local-auth'
     | '/api/session'
     | '/api/telegram'
+    | '/api/voice'
     | '/api/auth/$'
   id:
     | '__root__'
@@ -168,6 +179,7 @@ export interface FileRouteTypes {
     | '/api/local-auth'
     | '/api/session'
     | '/api/telegram'
+    | '/api/voice'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
@@ -183,6 +195,7 @@ export interface RootRouteChildren {
   ApiLocalAuthRoute: typeof ApiLocalAuthRoute
   ApiSessionRoute: typeof ApiSessionRoute
   ApiTelegramRoute: typeof ApiTelegramRoute
+  ApiVoiceRoute: typeof ApiVoiceRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
@@ -265,6 +278,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTelegramRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/voice': {
+      id: '/api/voice'
+      path: '/api/voice'
+      fullPath: '/api/voice'
+      preLoaderRoute: typeof ApiVoiceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -287,6 +307,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiLocalAuthRoute: ApiLocalAuthRoute,
   ApiSessionRoute: ApiSessionRoute,
   ApiTelegramRoute: ApiTelegramRoute,
+  ApiVoiceRoute: ApiVoiceRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport

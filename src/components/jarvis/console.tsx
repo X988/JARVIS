@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, KeyRound, MessageSquare, Mic, ScrollText, Server, Square, X } from "lucide-react";
+import { ArrowUp, KeyRound, MessageSquare, Mic, Phone, ScrollText, Server, Square, X } from "lucide-react";
+import { VoiceCall, beginVoiceCall, releaseVoiceCall, type VoiceCallHandle } from "@/components/jarvis/voice-call";
 import {
   ACCOUNTS,
   ONEC_DEV,
@@ -532,6 +533,7 @@ export function Console() {
   const tick = useJarvis((state) => state.tick);
   const [draft, setDraft] = useState("");
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [callHandle, setCallHandle] = useState<VoiceCallHandle | null>(null);
   const [hearing, setHearing] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const [live, setLive] = useState("");
@@ -540,6 +542,9 @@ export function Console() {
   const [mobile, setMobile] = useState<"dialog" | SideTab>("dialog");
   const [panel, setPanel] = useState<SideTab>("site");
   const endRef = useRef<HTMLDivElement>(null);
+  const callRef = useRef<VoiceCallHandle | null>(null);
+  const openingCall = useRef(false);
+  callRef.current = callHandle;
   const recRef = useRef<SpeechRec | null>(null);
   const pendingRef = useRef("");
   const cancelRef = useRef(false);
@@ -577,6 +582,8 @@ export function Console() {
       recRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => () => releaseVoiceCall(callRef.current), []);
 
   async function send(text: string, source: "text" | "voice") {
     const value = text.trim();
@@ -642,7 +649,7 @@ export function Console() {
   }
 
   function beginVoice() {
-    if (busy || hearing || voiceBusy.current) return;
+    if (busy || hearing || voiceBusy.current || callHandle) return;
     const previous = recRef.current;
     recRef.current = null;
     if (previous) {
@@ -719,6 +726,25 @@ export function Console() {
     rec.stop();
   }
 
+  async function openCall() {
+    if (listening || hearing || callHandle || openingCall.current) return;
+    openingCall.current = true;
+    cancelVoice();
+    try {
+      const opened = await beginVoiceCall();
+      setCallHandle(opened);
+    } finally {
+      openingCall.current = false;
+    }
+  }
+
+  function closeCall() {
+    setCallHandle((current) => {
+      releaseVoiceCall(current);
+      return null;
+    });
+  }
+
   function cancelVoice() {
     cancelRef.current = true;
     pendingRef.current = "";
@@ -740,6 +766,7 @@ export function Console() {
   }
 
   const reading = live ? interpretSpeech([{ transcript: live, confidence: 1 }]) : null;
+  const awaiting = turns.find((item) => item.phase === "awaiting") ?? null;
   const recognized = Boolean(reading && reading.changed && !reading.uncertain && reading.text);
 
   return (
@@ -860,14 +887,24 @@ export function Console() {
                 type="button"
                 aria-label={listening ? "Остановить запись" : "Голосовая команда"}
                 aria-pressed={listening}
-                disabled={busy || hearing !== null}
+                disabled={busy || hearing !== null || callHandle !== null}
                 onClick={() => (listening ? finishVoice() : beginVoice())}
                 className={
-                  "flex size-11 items-center justify-center rounded-md disabled:opacity-40 " +
+                  "flex size-11 shrink-0 items-center justify-center rounded-md disabled:opacity-40 " +
                   (listening ? "bg-forest text-paper" : "border border-line")
                 }
               >
                 {listening ? <Square className="size-4" aria-hidden="true" /> : <Mic className="size-5" aria-hidden="true" />}
+              </button>
+              <button
+                type="button"
+                aria-label="Голосовой разговор"
+                aria-pressed={callHandle !== null}
+                disabled={listening || hearing !== null}
+                onClick={() => void openCall()}
+                className="flex size-11 shrink-0 items-center justify-center rounded-md border border-line disabled:opacity-40"
+              >
+                <Phone className="size-5" aria-hidden="true" />
               </button>
               <button
                 type="submit"
@@ -1031,6 +1068,13 @@ export function Console() {
             </div>
           </div>
         </div>
+      ) : null}
+      {callHandle ? (
+        <VoiceCall
+          handle={callHandle}
+          approval={awaiting ? <ApprovalBox turn={awaiting} now={now} /> : null}
+          onClose={closeCall}
+        />
       ) : null}
     </main>
   );

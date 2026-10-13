@@ -238,7 +238,7 @@ POST /api/agent
 
 `/api/agent` работает как hybrid endpoint: известные команды сначала идут в детерминированный command pipeline; LLM используется для свободных запросов, которые старый intent classifier не распознал. Если AI предлагает изменение, модель не создаёт approval сама — исходный текст независимо повторно проверяется command pipeline.
 
-При `JARVIS_AI_AGENT_ENABLED=1` тот же hybrid routing используется для **текстовых** сообщений Telegram. Голосовой Telegram-контур пока остаётся на существующем deterministic STT → `processCommand` пути.
+При `JARVIS_AI_AGENT_ENABLED=1` тот же hybrid routing используется для **текстовых** сообщений Telegram и для кнопки «голосовой разговор» в браузере (`POST /api/voice`). Голосовой Telegram-контур пока остаётся на существующем deterministic STT → `processCommand` пути. Браузерный разговор не подтверждает заявки голосом.
 
 Критическая граница текущей реализации: автономный agent loop может исполнять только зарегистрированные `risk=0`, `mutates=false`, `policy=ALLOW` runbooks. Любой mutating runbook останавливается с `MUTATION_REQUIRES_APPROVAL` и не передаётся executor. Изменения инфраструктуры продолжают проходить через обычный Approval Engine и command pipeline.
 

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { postCommand, unavailableDecision, ensureServerSession, type ServerTrace } from "@/lib/jarvis/client-api";
 import { type Decision } from "@/lib/jarvis/model";
+import type { VoiceTurnResponse } from "@/lib/jarvis/voice/contract";
 import { WATCH_ALERTS, type WatchAlert } from "@/lib/jarvis/watch";
 
 export type Phase = "running" | "awaiting" | "done" | "denied" | "expired" | "cancelled";
@@ -73,6 +74,7 @@ type JarvisState = {
   ensureSession: () => Promise<void>;
   pushNotice: (id: string) => void;
   submit: (raw: string, source: "text" | "voice", heard?: string) => Promise<void>;
+  showVoiceResult: (payload: VoiceTurnResponse, heard?: string) => void;
   reply: (turnId: string, phrase: string) => Promise<void>;
   cancel: (turnId: string) => void;
   tick: (ts: number) => void;
@@ -204,6 +206,104 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       return;
     }
     set({ now: ts, turns, audit: [...extra, ...state.audit].slice(0, 80) });
+  },
+
+  showVoiceResult: (payload, heard) => {
+    const user = get().actorId;
+    const at = Date.now();
+    if (payload.command) {
+      const result = payload.command;
+      const request = result.trace.original || heard || payload.spoken;
+      const phase: Phase = result.approval ? "awaiting" : result.decision.verdict === "deny" ? "denied" : "done";
+      const next: Turn = {
+        id: uid("turn"),
+        source: "voice",
+        request,
+        heard: heard && heard.trim() && heard.trim() !== request ? heard.trim() : null,
+        at,
+        phase,
+        step: 4,
+        decision: result.decision,
+        approval: result.approval
+          ? {
+              id: result.approval.id,
+              stage: result.approval.stage,
+              expiresAt: result.approval.expiresAt,
+              phrase: result.approval.phrase,
+            }
+          : null,
+        executed: result.executionCalled,
+        showFindings: result.decision.verdict === "allow" && result.decision.findings.length > 0,
+        dryRun: result.mode !== "real",
+        exitCode: result.decision.verdict === "allow" ? 0 : 1,
+        durationMs: result.decision.durationMs,
+        hint: result.decision.reason,
+        replies: [],
+        trace: result.trace,
+        serverCode: result.code,
+      };
+      set({
+        turns: [...get().turns, next],
+        serverMode: result.mode || get().serverMode,
+        audit: [auditFrom(next, user, result.code, result.decision.reason, result.approval?.id ?? null), ...get().audit].slice(0, 80),
+      });
+      return;
+    }
+    const answer = (payload.answer || payload.spoken || "Ответа нет.").trim();
+    const verdict = payload.code === "OK" || payload.code === "DRY_RUN" || payload.code === "CLARIFY" || payload.code === "AGENT_PARTIAL"
+      ? "clarify"
+      : "deny";
+    const decision: Decision = {
+      id: "unknown",
+      title: answer.length > 180 ? `${answer.slice(0, 177).trimEnd()}…` : answer,
+      normalized: "voice-chat",
+      risk: 0,
+      tool: "разговор",
+      target: "—",
+      runbook: null,
+      account: "—",
+      parameters: [],
+      confirmation: "none",
+      mutation: false,
+      forceDeny: verdict === "deny",
+      clarify: verdict === "clarify",
+      denyReason: verdict === "deny" ? answer : null,
+      clarifyReason: verdict === "clarify" ? answer : null,
+      plan: [],
+      toolCall: "—",
+      consequences: [],
+      findings: [],
+      recommendation: null,
+      durationMs: 0,
+      verdict,
+      reason: answer.length > 180 ? answer : null,
+      policyNotes: ["Голосовой ответ. Голос ничего не подтверждает и не выполняет."],
+      previewFindings: false,
+    };
+    const next: Turn = {
+      id: uid("turn"),
+      source: "voice",
+      request: heard?.trim() || "голос",
+      heard: null,
+      at,
+      phase: verdict === "deny" ? "denied" : "done",
+      step: 4,
+      decision,
+      approval: null,
+      executed: false,
+      showFindings: false,
+      dryRun: (payload.mode || get().serverMode) !== "real",
+      exitCode: null,
+      durationMs: null,
+      hint: null,
+      replies: [],
+      trace: null,
+      serverCode: payload.code,
+    };
+    set({
+      turns: [...get().turns, next],
+      audit: [auditFrom(next, user, payload.code, null, null), ...get().audit].slice(0, 80),
+    });
   },
 
   cancel: (turnId) => {

@@ -1,4 +1,5 @@
 import type { Decision } from "@/lib/jarvis/model";
+import type { VoiceHearResponse, VoiceTurnResponse } from "@/lib/jarvis/voice/contract";
 
 export type ServerTrace = {
   original: string;
@@ -133,4 +134,82 @@ export async function postCommand(
     };
   }
   return body as ServerCommand;
+}
+
+export async function postVoiceHear(wav: Blob, signal?: AbortSignal): Promise<VoiceHearResponse> {
+  const response = await fetch("/api/voice", {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "audio/wav", "x-jarvis-csrf": csrf() },
+    body: wav,
+    signal,
+  });
+  const body = (await response.json()) as Partial<VoiceHearResponse> & { code?: string };
+  return {
+    code: body.code || (response.ok ? "STT_FAILED" : "AUTH_REQUIRED"),
+    text: body.text ?? null,
+    raw: body.raw ?? null,
+    confidence: body.confidence ?? null,
+    message: body.message ?? null,
+  };
+}
+
+export async function postVoiceTurn(
+  text: string,
+  requestId: string,
+  signal?: AbortSignal,
+): Promise<VoiceTurnResponse> {
+  const response = await fetch("/api/voice", {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json", "x-jarvis-csrf": csrf() },
+    body: JSON.stringify({ action: "turn", text, request_id: requestId }),
+    signal,
+  });
+  const body = (await response.json()) as Partial<VoiceTurnResponse> & { code?: string };
+  if (!body.spoken && !body.command) {
+    return {
+      code: body.code || "AUTH_REQUIRED",
+      spoken: "",
+      sentences: [],
+      kind: "agent",
+      executionCalled: false,
+      mode: "dry-run",
+      tts: false,
+      command: null,
+      answer: null,
+    };
+  }
+  return {
+    code: body.code || "OK",
+    spoken: body.spoken || "",
+    sentences: body.sentences ?? [],
+    kind: body.kind || "agent",
+    executionCalled: Boolean(body.executionCalled),
+    mode: body.mode || "dry-run",
+    tts: Boolean(body.tts),
+    command: body.command ?? null,
+    answer: body.answer ?? null,
+  };
+}
+
+export async function postVoiceSpeak(
+  text: string,
+  signal?: AbortSignal,
+): Promise<{ ok: true; audio: ArrayBuffer } | { ok: false; code: string }> {
+  const response = await fetch("/api/voice", {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json", "x-jarvis-csrf": csrf() },
+    body: JSON.stringify({ action: "speak", text }),
+    signal,
+  });
+  const type = response.headers.get("content-type") ?? "";
+  if (response.ok && type.includes("audio/")) return { ok: true, audio: await response.arrayBuffer() };
+  try {
+    const body = (await response.json()) as { code?: string };
+    return { ok: false, code: body.code || "TTS_FAILED" };
+  } catch {
+    return { ok: false, code: "TTS_FAILED" };
+  }
 }
