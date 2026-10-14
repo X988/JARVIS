@@ -136,6 +136,27 @@ export async function postCommand(
   return body as ServerCommand;
 }
 
+/** Text and voice share the authenticated deterministic-first AI gateway. */
+export async function postConversation(
+  text: string,
+  requestId: string,
+): Promise<(ServerCommand & { kind: "command" }) | { kind: "agent"; code: string; answer: string; executionCalled: boolean }> {
+  const response = await fetch("/api/agent", {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json", "x-jarvis-csrf": csrf() },
+    body: JSON.stringify({ text, request_id: requestId }),
+  });
+  const body = await response.json();
+  if (body?.kind === "command" && body.decision && body.trace) return body;
+  return {
+    kind: "agent",
+    code: typeof body?.code === "string" ? body.code : "SCHEMA_INVALID",
+    answer: typeof body?.answer === "string" ? body.answer : String(body?.code || "Сервер не ответил."),
+    executionCalled: Array.isArray(body?.observations) && body.observations.some((item: { executionCalled?: boolean }) => item?.executionCalled === true),
+  };
+}
+
 export async function postVoiceHear(wav: Blob, signal?: AbortSignal): Promise<VoiceHearResponse> {
   const response = await fetch("/api/voice", {
     method: "POST",
@@ -213,3 +234,4 @@ export async function postVoiceSpeak(
     return { ok: false, code: "TTS_FAILED" };
   }
 }
+

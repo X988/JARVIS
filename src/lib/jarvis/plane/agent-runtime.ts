@@ -1,4 +1,4 @@
-import { canExecute, type Session } from "../server/session.ts";
+import { canExecute, sessionUsable, type Session } from "../server/session.ts";
 import {
   processRegisteredReadOnlyTool,
   type Mode,
@@ -117,9 +117,9 @@ export async function runAgentTurn(
       model: null,
     };
   }
-  if (!opts.session || !canExecute(opts.session.role)) {
+  if (!sessionUsable(opts.session, opts.now?.getTime() ?? Date.now()) || !canExecute(opts.session.role)) {
     return {
-      code: opts.session ? "ACTOR_DENIED" : "AUTH_REQUIRED",
+      code: sessionUsable(opts.session, opts.now?.getTime() ?? Date.now()) ? "ACTOR_DENIED" : "AUTH_REQUIRED",
       answer: "AI agent requires an authenticated operator session.",
       plan: null,
       observations: [],
@@ -221,3 +221,4 @@ export async function runAgentTurn(
     model: final.model ?? planned.model,
   };
 }
+

@@ -332,3 +332,19 @@ describe("bounded AI runtime", () => {
   });
 
 });
+
+
+it("rejects expired agent sessions before calling the model or any tool", async () => {
+  let called = false;
+  const result = await runAgentTurn("diagnose", {
+    session: { ...session, expiresAt: 1 },
+    stateDir: dir(),
+    env: { JARVIS_AI_AGENT_ENABLED: "1" },
+    planner: async () => {
+      called = true;
+      throw new Error("expired session reached planner");
+    },
+  });
+  assert.equal(result.code, "AUTH_REQUIRED");
+  assert.equal(called, false);
+});
