@@ -287,5 +287,221 @@ function errorResponse(error, debug, errHeaders) {
 		headers
 	});
 }
+var COOKIE_MAX_AGE_LIMIT = 3456e4;
+var cookieNameRegExp = /^[\u0021-\u003A\u003C\u003E-\u007E]+$/;
+var cookieValueRegExp = /^[\u0021-\u003A\u003C-\u007E]*$/;
+var domainValueRegExp = /^([.]?[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)([.][a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+var pathValueRegExp = /^[\u0020-\u003A\u003C-\u007E]*$/;
+var __toString = Object.prototype.toString;
+function serialize(_a0, _a1, _a2) {
+	const isObj = typeof _a0 === "object" && _a0 !== null;
+	const options = isObj ? _a1 : _a2;
+	const stringify = options?.stringify || JSON.stringify;
+	const cookie = isObj ? _a0 : {
+		..._a2,
+		name: _a0,
+		value: _a1 == void 0 ? "" : typeof _a1 === "string" ? _a1 : stringify(_a1)
+	};
+	const enc = options?.encode || encodeURIComponent;
+	if (!cookieNameRegExp.test(cookie.name)) throw new TypeError(`argument name is invalid: ${cookie.name}`);
+	const value = cookie.value ? enc(cookie.value) : "";
+	if (!cookieValueRegExp.test(value)) throw new TypeError(`argument val is invalid: ${cookie.value}`);
+	if (!cookie.secure) {
+		if (cookie.partitioned) throw new TypeError(`Partitioned cookies must have the Secure attribute`);
+		if (cookie.sameSite && String(cookie.sameSite).toLowerCase() === "none") throw new TypeError(`SameSite=None cookies must have the Secure attribute`);
+		if (cookie.name.length > 9 && cookie.name.charCodeAt(0) === 95 && cookie.name.charCodeAt(1) === 95) {
+			const nameLower = cookie.name.toLowerCase();
+			if (nameLower.startsWith("__secure-") || nameLower.startsWith("__host-")) throw new TypeError(`${cookie.name} cookies must have the Secure attribute`);
+		}
+	}
+	if (cookie.name.length > 7 && cookie.name.charCodeAt(0) === 95 && cookie.name.charCodeAt(1) === 95 && cookie.name.toLowerCase().startsWith("__host-")) {
+		if (cookie.path !== "/") throw new TypeError(`__Host- cookies must have Path=/`);
+		if (cookie.domain) throw new TypeError(`__Host- cookies must not have a Domain attribute`);
+	}
+	let str = cookie.name + "=" + value;
+	if (cookie.maxAge !== void 0) {
+		if (!Number.isInteger(cookie.maxAge)) throw new TypeError(`option maxAge is invalid: ${cookie.maxAge}`);
+		str += "; Max-Age=" + Math.max(0, Math.min(cookie.maxAge, COOKIE_MAX_AGE_LIMIT));
+	}
+	if (cookie.domain) {
+		if (!domainValueRegExp.test(cookie.domain)) throw new TypeError(`option domain is invalid: ${cookie.domain}`);
+		str += "; Domain=" + cookie.domain;
+	}
+	if (cookie.path) {
+		if (!pathValueRegExp.test(cookie.path)) throw new TypeError(`option path is invalid: ${cookie.path}`);
+		str += "; Path=" + cookie.path;
+	}
+	if (cookie.expires) {
+		if (!isDate(cookie.expires) || !Number.isFinite(cookie.expires.valueOf())) throw new TypeError(`option expires is invalid: ${cookie.expires}`);
+		str += "; Expires=" + cookie.expires.toUTCString();
+	}
+	if (cookie.httpOnly) str += "; HttpOnly";
+	if (cookie.secure) str += "; Secure";
+	if (cookie.partitioned) str += "; Partitioned";
+	if (cookie.priority) switch (typeof cookie.priority === "string" ? cookie.priority.toLowerCase() : void 0) {
+		case "low":
+			str += "; Priority=Low";
+			break;
+		case "medium":
+			str += "; Priority=Medium";
+			break;
+		case "high":
+			str += "; Priority=High";
+			break;
+		default: throw new TypeError(`option priority is invalid: ${cookie.priority}`);
+	}
+	if (cookie.sameSite) switch (typeof cookie.sameSite === "string" ? cookie.sameSite.toLowerCase() : cookie.sameSite) {
+		case true:
+		case "strict":
+			str += "; SameSite=Strict";
+			break;
+		case "lax":
+			str += "; SameSite=Lax";
+			break;
+		case "none":
+			str += "; SameSite=None";
+			break;
+		default: throw new TypeError(`option sameSite is invalid: ${cookie.sameSite}`);
+	}
+	return str;
+}
+function isDate(val) {
+	return __toString.call(val) === "[object Date]";
+}
+var maxAgeRegExp = /^-?\d+$/;
+var _nullProto = /* @__PURE__ */ Object.getPrototypeOf({});
+function parseSetCookie(str, options) {
+	const len = str.length;
+	let _endIdx = len;
+	let eqIdx = -1;
+	for (let i = 0; i < len; i++) {
+		const c = str.charCodeAt(i);
+		if (c === 59) {
+			_endIdx = i;
+			break;
+		}
+		if (c === 61 && eqIdx === -1) eqIdx = i;
+	}
+	if (eqIdx >= _endIdx) eqIdx = -1;
+	const name = eqIdx === -1 ? "" : _trim(str, 0, eqIdx);
+	if (name && name in _nullProto) return void 0;
+	let value = eqIdx === -1 ? _trim(str, 0, _endIdx) : _trim(str, eqIdx + 1, _endIdx);
+	if (!name && !value) return void 0;
+	if (name.length + value.length > 4096) return void 0;
+	if (options?.decode !== false) value = _decode(value, options?.decode);
+	const setCookie = {
+		name,
+		value
+	};
+	let index = _endIdx + 1;
+	while (index < len) {
+		let endIdx = len;
+		let attrEqIdx = -1;
+		for (let i = index; i < len; i++) {
+			const c = str.charCodeAt(i);
+			if (c === 59) {
+				endIdx = i;
+				break;
+			}
+			if (c === 61 && attrEqIdx === -1) attrEqIdx = i;
+		}
+		if (attrEqIdx >= endIdx) attrEqIdx = -1;
+		const attr = attrEqIdx === -1 ? _trim(str, index, endIdx) : _trim(str, index, attrEqIdx);
+		const val = attrEqIdx === -1 ? void 0 : _trim(str, attrEqIdx + 1, endIdx);
+		if (val === void 0 || val.length <= 1024) switch (attr.toLowerCase()) {
+			case "httponly":
+				setCookie.httpOnly = true;
+				break;
+			case "secure":
+				setCookie.secure = true;
+				break;
+			case "partitioned":
+				setCookie.partitioned = true;
+				break;
+			case "domain":
+				if (val) setCookie.domain = (val.charCodeAt(0) === 46 ? val.slice(1) : val).toLowerCase();
+				break;
+			case "path":
+				setCookie.path = val;
+				break;
+			case "max-age":
+				if (val && maxAgeRegExp.test(val)) setCookie.maxAge = Math.min(Number(val), COOKIE_MAX_AGE_LIMIT);
+				break;
+			case "expires": {
+				if (!val) break;
+				const date = new Date(val);
+				if (Number.isFinite(date.valueOf())) {
+					const maxDate = new Date(Date.now() + COOKIE_MAX_AGE_LIMIT * 1e3);
+					setCookie.expires = date > maxDate ? maxDate : date;
+				}
+				break;
+			}
+			case "priority": {
+				if (!val) break;
+				const priority = val.toLowerCase();
+				if (priority === "low" || priority === "medium" || priority === "high") setCookie.priority = priority;
+				break;
+			}
+			case "samesite": {
+				if (!val) break;
+				const sameSite = val.toLowerCase();
+				if (sameSite === "lax" || sameSite === "strict" || sameSite === "none") setCookie.sameSite = sameSite;
+				else setCookie.sameSite = "lax";
+				break;
+			}
+			default: {
+				const attrLower = attr.toLowerCase();
+				if (attrLower && !(attrLower in _nullProto)) setCookie[attrLower] = val;
+			}
+		}
+		index = endIdx + 1;
+	}
+	return setCookie;
+}
+function _trim(str, start, end) {
+	if (start === end) return "";
+	let s = start;
+	let e = end;
+	while (s < e && (str.charCodeAt(s) === 32 || str.charCodeAt(s) === 9)) s++;
+	while (e > s && (str.charCodeAt(e - 1) === 32 || str.charCodeAt(e - 1) === 9)) e--;
+	return str.slice(s, e);
+}
+function _decode(value, decode) {
+	if (!decode && !value.includes("%")) return value;
+	try {
+		return (decode || decodeURIComponent)(value);
+	} catch {
+		return value;
+	}
+}
+function setCookie(event, name, value, options) {
+	const newCookie = serialize({
+		name,
+		value,
+		path: "/",
+		...options
+	});
+	const currentCookies = event.res.headers.getSetCookie();
+	if (currentCookies.length === 0) {
+		event.res.headers.set("set-cookie", newCookie);
+		return;
+	}
+	const newCookieKey = _getDistinctCookieKey(name, options || {});
+	event.res.headers.delete("set-cookie");
+	for (const cookie of currentCookies) {
+		const parsed = parseSetCookie(cookie);
+		if (!parsed) continue;
+		if (_getDistinctCookieKey(cookie.split("=")?.[0], parsed) === newCookieKey) continue;
+		event.res.headers.append("set-cookie", cookie);
+	}
+	event.res.headers.append("set-cookie", newCookie);
+}
+function _getDistinctCookieKey(name, options) {
+	return [
+		name,
+		options.domain || "",
+		options.path || "/"
+	].join(";");
+}
 //#endregion
-export { toResponse as n, H3Event as t };
+export { setCookie as n, toResponse as r, H3Event as t };

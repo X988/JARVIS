@@ -10,11 +10,48 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HealthRouteImport } from './routes/health'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as MetricsRouteImport } from './routes/metrics'
+import { Route as ReadyRouteImport } from './routes/ready'
+import { Route as StatusRouteImport } from './routes/status'
 import { Route as AdminAuditRouteImport } from './routes/admin.audit'
+import { Route as ApiAgentRouteImport } from './routes/api/agent'
+import { Route as ApiCommandsRouteImport } from './routes/api/commands'
+import { Route as ApiLocalAuthRouteImport } from './routes/api/local-auth'
+import { Route as ApiSessionRouteImport } from './routes/api/session'
+import { Route as ApiTelegramRouteImport } from './routes/api/telegram'
+import { Route as ApiVoiceRouteImport } from './routes/api/voice'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HealthRoute = HealthRouteImport.update({
+  id: '/health',
+  path: '/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MetricsRoute = MetricsRouteImport.update({
+  id: '/metrics',
+  path: '/metrics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReadyRoute = ReadyRouteImport.update({
+  id: '/ready',
+  path: '/ready',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StatusRoute = StatusRouteImport.update({
+  id: '/status',
+  path: '/status',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminAuditRoute = AdminAuditRouteImport.update({
@@ -22,31 +59,157 @@ const AdminAuditRoute = AdminAuditRouteImport.update({
   path: '/admin/audit',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAgentRoute = ApiAgentRouteImport.update({
+  id: '/api/agent',
+  path: '/api/agent',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCommandsRoute = ApiCommandsRouteImport.update({
+  id: '/api/commands',
+  path: '/api/commands',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLocalAuthRoute = ApiLocalAuthRouteImport.update({
+  id: '/api/local-auth',
+  path: '/api/local-auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSessionRoute = ApiSessionRouteImport.update({
+  id: '/api/session',
+  path: '/api/session',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTelegramRoute = ApiTelegramRouteImport.update({
+  id: '/api/telegram',
+  path: '/api/telegram',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiVoiceRoute = ApiVoiceRouteImport.update({
+  id: '/api/voice',
+  path: '/api/voice',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/health': typeof HealthRoute
+  '/login': typeof LoginRoute
+  '/metrics': typeof MetricsRoute
+  '/ready': typeof ReadyRoute
+  '/status': typeof StatusRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/api/agent': typeof ApiAgentRoute
+  '/api/commands': typeof ApiCommandsRoute
+  '/api/local-auth': typeof ApiLocalAuthRoute
+  '/api/session': typeof ApiSessionRoute
+  '/api/telegram': typeof ApiTelegramRoute
+  '/api/voice': typeof ApiVoiceRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/health': typeof HealthRoute
+  '/login': typeof LoginRoute
+  '/metrics': typeof MetricsRoute
+  '/ready': typeof ReadyRoute
+  '/status': typeof StatusRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/api/agent': typeof ApiAgentRoute
+  '/api/commands': typeof ApiCommandsRoute
+  '/api/local-auth': typeof ApiLocalAuthRoute
+  '/api/session': typeof ApiSessionRoute
+  '/api/telegram': typeof ApiTelegramRoute
+  '/api/voice': typeof ApiVoiceRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/health': typeof HealthRoute
+  '/login': typeof LoginRoute
+  '/metrics': typeof MetricsRoute
+  '/ready': typeof ReadyRoute
+  '/status': typeof StatusRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/api/agent': typeof ApiAgentRoute
+  '/api/commands': typeof ApiCommandsRoute
+  '/api/local-auth': typeof ApiLocalAuthRoute
+  '/api/session': typeof ApiSessionRoute
+  '/api/telegram': typeof ApiTelegramRoute
+  '/api/voice': typeof ApiVoiceRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin/audit'
+  fullPaths:
+    | '/'
+    | '/health'
+    | '/login'
+    | '/metrics'
+    | '/ready'
+    | '/status'
+    | '/admin/audit'
+    | '/api/agent'
+    | '/api/commands'
+    | '/api/local-auth'
+    | '/api/session'
+    | '/api/telegram'
+    | '/api/voice'
+    | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin/audit'
-  id: '__root__' | '/' | '/admin/audit'
+  to:
+    | '/'
+    | '/health'
+    | '/login'
+    | '/metrics'
+    | '/ready'
+    | '/status'
+    | '/admin/audit'
+    | '/api/agent'
+    | '/api/commands'
+    | '/api/local-auth'
+    | '/api/session'
+    | '/api/telegram'
+    | '/api/voice'
+    | '/api/auth/$'
+  id:
+    | '__root__'
+    | '/'
+    | '/health'
+    | '/login'
+    | '/metrics'
+    | '/ready'
+    | '/status'
+    | '/admin/audit'
+    | '/api/agent'
+    | '/api/commands'
+    | '/api/local-auth'
+    | '/api/session'
+    | '/api/telegram'
+    | '/api/voice'
+    | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HealthRoute: typeof HealthRoute
+  LoginRoute: typeof LoginRoute
+  MetricsRoute: typeof MetricsRoute
+  ReadyRoute: typeof ReadyRoute
+  StatusRoute: typeof StatusRoute
   AdminAuditRoute: typeof AdminAuditRoute
+  ApiAgentRoute: typeof ApiAgentRoute
+  ApiCommandsRoute: typeof ApiCommandsRoute
+  ApiLocalAuthRoute: typeof ApiLocalAuthRoute
+  ApiSessionRoute: typeof ApiSessionRoute
+  ApiTelegramRoute: typeof ApiTelegramRoute
+  ApiVoiceRoute: typeof ApiVoiceRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -58,6 +221,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/health': {
+      id: '/health'
+      path: '/health'
+      fullPath: '/health'
+      preLoaderRoute: typeof HealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/metrics': {
+      id: '/metrics'
+      path: '/metrics'
+      fullPath: '/metrics'
+      preLoaderRoute: typeof MetricsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ready': {
+      id: '/ready'
+      path: '/ready'
+      fullPath: '/ready'
+      preLoaderRoute: typeof ReadyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/status': {
+      id: '/status'
+      path: '/status'
+      fullPath: '/status'
+      preLoaderRoute: typeof StatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/audit': {
       id: '/admin/audit'
       path: '/admin/audit'
@@ -65,12 +263,73 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAuditRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/agent': {
+      id: '/api/agent'
+      path: '/api/agent'
+      fullPath: '/api/agent'
+      preLoaderRoute: typeof ApiAgentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/commands': {
+      id: '/api/commands'
+      path: '/api/commands'
+      fullPath: '/api/commands'
+      preLoaderRoute: typeof ApiCommandsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/local-auth': {
+      id: '/api/local-auth'
+      path: '/api/local-auth'
+      fullPath: '/api/local-auth'
+      preLoaderRoute: typeof ApiLocalAuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/session': {
+      id: '/api/session'
+      path: '/api/session'
+      fullPath: '/api/session'
+      preLoaderRoute: typeof ApiSessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/telegram': {
+      id: '/api/telegram'
+      path: '/api/telegram'
+      fullPath: '/api/telegram'
+      preLoaderRoute: typeof ApiTelegramRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/voice': {
+      id: '/api/voice'
+      path: '/api/voice'
+      fullPath: '/api/voice'
+      preLoaderRoute: typeof ApiVoiceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HealthRoute: HealthRoute,
+  LoginRoute: LoginRoute,
+  MetricsRoute: MetricsRoute,
+  ReadyRoute: ReadyRoute,
+  StatusRoute: StatusRoute,
   AdminAuditRoute: AdminAuditRoute,
+  ApiAgentRoute: ApiAgentRoute,
+  ApiCommandsRoute: ApiCommandsRoute,
+  ApiLocalAuthRoute: ApiLocalAuthRoute,
+  ApiSessionRoute: ApiSessionRoute,
+  ApiTelegramRoute: ApiTelegramRoute,
+  ApiVoiceRoute: ApiVoiceRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

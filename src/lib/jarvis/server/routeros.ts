@@ -1,0 +1,46 @@
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import type { ExecCall, ExecResult } from "./pipeline.ts";
+
+const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../scripts/jarvis_routeros.mjs");
+
+function timeoutMs(raw: string | undefined): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return 10_000;
+  return Math.min(60_000, Math.max(2_000, Math.trunc(value)));
+}
+
+export function runRouterOs(call: ExecCall, env: NodeJS.ProcessEnv = process.env): ExecResult {
+  const mode = {
+    "mikrotik.status": "status",
+    "mikrotik.interfaces": "interfaces",
+    "mikrotik.routes": "routes",
+    "mikrotik.dhcp": "dhcp",
+    "mikrotik.wireguard": "wireguard",
+    "wireguard.status": "wireguard",
+    "mikrotik.firewall.counters": "firewall-counters",
+    "mikrotik.wan.status": "wan-status",
+  }[call.runbook] ?? "";
+  if (!mode) return { called: false, code: "NOT_CONFIGURED", detail: "routeros: для runbook нет фиксированного read-only REST запроса." };
+  if (!env.JARVIS_MIKROTIK_HOST?.trim()) return { called: false, code: "NOT_CONFIGURED", detail: "routeros: JARVIS_MIKROTIK_HOST не задан." };
+  if (!env.JARVIS_MIKROTIK_USER?.trim() || !env.JARVIS_MIKROTIK_PASSWORD) {
+    return { called: false, code: "CREDENTIAL_UNAVAILABLE", detail: "routeros: user/password не настроены." };
+  }
+  const timeout = timeoutMs(env.JARVIS_ROUTEROS_TIMEOUT_MS);
+  const run = spawnSync(process.execPath, [script, mode], {
+    encoding: "utf8",
+    timeout: timeout + 5_000,
+    env: { ...process.env, ...env, JARVIS_ROUTEROS_TIMEOUT_MS: String(timeout) },
+  });
+  const error = run.error as NodeJS.ErrnoException | undefined;
+  if (error?.code === "ETIMEDOUT") return { called: false, code: "EXECUTION_TIMEOUT", detail: "routeros: REST probe превысил timeout." };
+  if (run.error || !run.stdout?.trim()) return { called: false, code: "ADAPTER_DISABLED", detail: "routeros: REST client не запустился." };
+  try {
+    const body = JSON.parse(run.stdout) as { code?: string; detail?: string };
+    const code = body.code || "VERIFICATION_FAILED";
+    return { called: code === "OK", code, detail: `routeros: ${body.detail ?? "нет ответа"}` };
+  } catch {
+    return { called: false, code: "VERIFICATION_FAILED", detail: "routeros: ответ клиента не разобран." };
+  }
+}

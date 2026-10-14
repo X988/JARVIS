@@ -142,6 +142,36 @@ function authPopupPlugin(): Plugin {
   };
 }
 
+/**
+ * Vite already allows localhost and raw IP hosts. A DNS name in front of the
+ * reverse proxy (`jarvis.lan`) is blocked until it is listed here.
+ * `JARVIS_ALLOWED_HOSTS=*` allows every hostname. `JARVIS_DEV_ORIGIN` is the
+ * public browser origin when asset URLs must be absolute.
+ */
+function lanDevServer(): { allowedHosts?: true | string[]; origin?: string } {
+  const extra: { allowedHosts?: true | string[]; origin?: string } = {};
+  const raw = process.env.JARVIS_ALLOWED_HOSTS?.trim();
+  if (raw === "*") extra.allowedHosts = true;
+  else if (raw) {
+    const hosts = raw
+      .split(",")
+      .map((host) => host.trim())
+      .filter(Boolean)
+      .map((host) => {
+        try {
+          if (host.includes("://")) return new URL(host).hostname;
+        } catch {
+          /* keep the raw token */
+        }
+        return host.replace(/:\d+$/, "");
+      });
+    if (hosts.length > 0) extra.allowedHosts = hosts;
+  }
+  const origin = process.env.JARVIS_DEV_ORIGIN?.trim().replace(/\/+$/, "");
+  if (origin) extra.origin = origin;
+  return extra;
+}
+
 // `0.0.0.0:8080` is the live-preview contract — don't change host/port.
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
@@ -150,6 +180,7 @@ export default defineConfig(({ command, isPreview }) => ({
     host: "0.0.0.0",
     port: 8080,
     strictPort: true,
+    ...lanDevServer(),
   },
   preview: {
     host: "127.0.0.1",

@@ -8,7 +8,7 @@ import {
   appNameFromHost,
   createHeadInjector,
   grokXCreatorHeadTags,
-  injectGrokPwaHead,
+  injectGrokPwaHead as injectGrokPwaHeadRaw,
   isDocumentPath,
   isInstallQuery,
   publicAppHost,
@@ -20,6 +20,18 @@ import {
 import { renderInstallPage } from "./grok-pwa-plugin.mjs";
 
 const TEMPLATE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const ISOLATED = mkdtempSync(join(tmpdir(), "grok-og-isolated-"));
+
+function injectGrokPwaHead(html, ctx = {}) {
+  return injectGrokPwaHeadRaw(html, { site: {}, cwd: ISOLATED, ...ctx });
+}
+
+test("workspace site title stays JARVIS", () => {
+  const out = injectGrokPwaHeadRaw("<html><head><title>Hello World</title></head></html>", {
+    cwd: TEMPLATE_ROOT,
+  });
+  assert.match(out, /property="og:title" content="JARVIS"/);
+});
 
 test("injects before </head>", () => {
   const out = injectGrokPwaHead("<html><head><title>x</title></head><body></body></html>");
@@ -370,7 +382,7 @@ test("injects into documents with no head element", () => {
 });
 
 test("streaming injector matches </HEAD> case-insensitively", () => {
-  const injector = createHeadInjector({ appName: "Wild Race" });
+  const injector = createHeadInjector({ appName: "Wild Race", site: {}, cwd: ISOLATED });
   const chunks = [
     ...injector.push("<html><HEAD><title>x</title></HE"),
     ...injector.push("AD><body>hello</body></html>"),

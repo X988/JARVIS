@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowUp, KeyRound, MessageSquare, Mic, ScrollText, Server, Square, X } from "lucide-react";
+import { ArrowUp, KeyRound, MessageSquare, Mic, Phone, ScrollText, Server, Square, X } from "lucide-react";
+import { VoiceCall, beginVoiceCall, releaseVoiceCall, type VoiceCallHandle } from "@/components/jarvis/voice-call";
 import {
   ACCOUNTS,
   ONEC_DEV,
@@ -24,6 +25,10 @@ import { getToolStatus, listToolAudit } from "@/lib/jarvis/tools/api";
 import type { AuditRecord } from "@/lib/jarvis/tools/types";
 import { ToolRunCard } from "@/components/jarvis/tool-run";
 import { WATCH_ALERTS, WATCH_HOSTS, type WatchLevel } from "@/lib/jarvis/watch";
+import { authEnabled } from "@/lib/auth/client";
+import { UserButton } from "@/lib/auth/gates";
+import { useCurrentUser } from "@/lib/auth/use-current-user";
+import { webActorEnvSnippet } from "@/lib/jarvis/web-actor";
 
 type SideTab = "site" | "audit" | "access";
 
@@ -128,14 +133,15 @@ function phaseTone(phase: Phase, verdict: Turn["decision"]["verdict"]): string {
   return "text-moss";
 }
 
-function Wave() {
+function Wave({ levels }: { levels?: number[] }) {
+  const bars = levels && levels.length > 0 ? levels : [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2];
   return (
-    <div className="flex h-8 items-center gap-1" aria-hidden="true">
-      {Array.from({ length: 12 }, (_, index) => (
+    <div className="flex h-8 items-end gap-1" aria-hidden="true">
+      {bars.slice(0, 12).map((level, index) => (
         <span
           key={index}
-          className="wave-bar h-6 w-1 rounded-sm bg-moss"
-          style={{ animationDelay: `${index * 60}ms` }}
+          className="w-1 rounded-sm bg-moss"
+          style={{ height: `${Math.max(4, Math.round(level * 32))}px` }}
         />
       ))}
     </div>
@@ -236,6 +242,23 @@ function TurnCard({ turn, now }: { turn: Turn; now: number }) {
         <p className={`font-mono text-xs ${phaseTone(turn.phase, turn.decision.verdict)}`}>{stamp(turn)}</p>
       </div>
       <h2 className="mt-3 text-lg font-semibold tracking-tight text-balance">{turn.decision.title}</h2>
+      {turn.trace ? (
+        <dl className="mt-3 grid gap-1 font-mono text-xs text-muted">
+          <div>Code: {turn.serverCode}</div>
+          <div>Original: {turn.trace.original}</div>
+          <div>Normalized: {turn.trace.normalized}</div>
+          <div>Steps: {turn.trace.steps.join(" → ")}</div>
+          <div>Constraint: {turn.trace.constraint}</div>
+          <div>Target: {turn.trace.target}</div>
+          <div>Runbook: {turn.trace.runbook}</div>
+          <div>Risk: {turn.trace.risk}</div>
+          <div>Policy: {turn.trace.policy}</div>
+          <div>Mode: {turn.trace.mode}</div>
+          <div>Execution: {turn.trace.execution}</div>
+          <div>Verification: {turn.trace.verification}</div>
+          <div>Audit: {turn.trace.audit}</div>
+        </dl>
+      ) : null}
       {turn.decision.reason ? <p className="mt-2 text-pretty text-sm text-fg">{turn.decision.reason}</p> : null}
       <ol className="mt-3 flex flex-wrap gap-x-3 gap-y-1">
         {labels.map((label, index) => (
@@ -519,6 +542,44 @@ function AccessPanel() {
   );
 }
 
+function ActorDeniedBanner() {
+  const authCode = useJarvis((state) => state.authCode);
+  const authUserId = useJarvis((state) => state.authUserId);
+  const user = useCurrentUser();
+  const [copied, setCopied] = useState(false);
+  const userId = authUserId || (user && !user.isDevFallback ? user.id : null);
+  if (!authEnabled || authCode !== "ACTOR_DENIED" || !userId) return null;
+  const snippet = webActorEnvSnippet(userId);
+  return (
+    <div className="border-b border-line bg-elevated px-4 py-3">
+      <p className="text-sm font-medium">Учётка вошла, но не назначена оператором</p>
+      <p className="mt-1 max-w-3xl text-pretty text-sm text-muted">
+        Регистрация не выдаёт права. Добавьте Better Auth user id в JARVIS_WEB_ACTORS_JSON на сервере и перезапустите JARVIS.
+      </p>
+      <p className="mt-2 break-all font-mono text-xs text-paper">user id: {userId}</p>
+      <p className="mt-2 break-all font-mono text-xs text-moss">{snippet}</p>
+      <button
+        type="button"
+        className="mt-3 min-h-11 rounded-md border border-line px-3 text-sm"
+        onClick={() => {
+          const write = navigator.clipboard?.writeText(snippet);
+          if (!write) return;
+          void write.then(
+            () => {
+              setCopied(true);
+            },
+            () => {
+              setCopied(false);
+            },
+          );
+        }}
+      >
+        {copied ? "Скопировано" : "Скопировать JSON"}
+      </button>
+    </div>
+  );
+}
+
 function Side({ tab }: { tab: SideTab }) {
   if (tab === "audit") return <AuditPanel />;
   if (tab === "access") return <AccessPanel />;
@@ -531,6 +592,7 @@ const SIDE: { id: SideTab; label: string }[] = [
   { id: "access", label: "Доступ" },
 ];
 
+let started = false;
 let adminTicketQueued = false;
 
 export function Console() {
@@ -538,17 +600,21 @@ export function Console() {
   const now = useJarvis((state) => state.now);
   const busy = useJarvis((state) => state.busy);
   const dryRun = useJarvis((state) => state.dryRun);
+  const serverMode = useJarvis((state) => state.serverMode);
   const watch = useJarvis((state) => state.watch);
   const notices = useJarvis((state) => state.notices);
+  const actorId = useJarvis((state) => state.actorId);
   const operatorId = useJarvis((state) => state.operatorId);
-  const setDryRun = useJarvis((state) => state.setDryRun);
+  const sessionReady = useJarvis((state) => state.sessionReady);
+  const setOperator = useJarvis((state) => state.setOperator);
   const setWatch = useJarvis((state) => state.setWatch);
   const pushNotice = useJarvis((state) => state.pushNotice);
-  const setOperator = useJarvis((state) => state.setOperator);
+  const ensureSession = useJarvis((state) => state.ensureSession);
   const submit = useJarvis((state) => state.submit);
   const tick = useJarvis((state) => state.tick);
   const [draft, setDraft] = useState("");
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [callHandle, setCallHandle] = useState<VoiceCallHandle | null>(null);
   const [hearing, setHearing] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const [live, setLive] = useState("");
@@ -557,6 +623,9 @@ export function Console() {
   const [mobile, setMobile] = useState<"dialog" | SideTab>("dialog");
   const [panel, setPanel] = useState<SideTab>("site");
   const endRef = useRef<HTMLDivElement>(null);
+  const callRef = useRef<VoiceCallHandle | null>(null);
+  const openingCall = useRef(false);
+  callRef.current = callHandle;
   const recRef = useRef<SpeechRec | null>(null);
   const pendingRef = useRef("");
   const cancelRef = useRef(false);
@@ -564,7 +633,7 @@ export function Console() {
   const silenceRef = useRef<number | null>(null);
   const limitRef = useRef<number | null>(null);
   const candidatesRef = useRef<SpeechAlt[]>([]);
-  const locked = busy || hearing !== null || listening;
+  const locked = !sessionReady || busy || hearing !== null || listening;
   const [toolMode, setToolMode] = useState<"dry-run" | "live">("dry-run");
   const stranger = OPERATORS.find((item) => item.id === operatorId)?.allowed === false;
 
@@ -588,6 +657,12 @@ export function Console() {
   }, []);
 
   useEffect(() => {
+    if (started) return;
+    started = true;
+    void ensureSession();
+  }, [ensureSession]);
+
+  useEffect(() => {
     if (adminTicketQueued) return;
     adminTicketQueued = true;
     void submit("Создай заявку на учётку jarvis-1c-admin", "text");
@@ -595,12 +670,7 @@ export function Console() {
 
   useEffect(() => {
     if (!watch) return;
-    const timers = WATCH_ALERTS.map((item, index) =>
-      window.setTimeout(() => pushNotice(item.id), 900 + index * 2800),
-    );
-    return () => {
-      for (const timer of timers) window.clearTimeout(timer);
-    };
+    for (const item of WATCH_ALERTS) pushNotice(item.id);
   }, [watch, pushNotice]);
 
   useEffect(() => {
@@ -615,6 +685,8 @@ export function Console() {
       recRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => () => releaseVoiceCall(callRef.current), []);
 
   async function send(text: string, source: "text" | "voice") {
     const value = text.trim();
@@ -680,7 +752,7 @@ export function Console() {
   }
 
   function beginVoice() {
-    if (busy || hearing || voiceBusy.current) return;
+    if (busy || hearing || voiceBusy.current || callHandle) return;
     const previous = recRef.current;
     recRef.current = null;
     if (previous) {
@@ -757,6 +829,25 @@ export function Console() {
     rec.stop();
   }
 
+  async function openCall() {
+    if (listening || hearing || callHandle || openingCall.current) return;
+    openingCall.current = true;
+    cancelVoice();
+    try {
+      const opened = await beginVoiceCall();
+      setCallHandle(opened);
+    } finally {
+      openingCall.current = false;
+    }
+  }
+
+  function closeCall() {
+    setCallHandle((current) => {
+      releaseVoiceCall(current);
+      return null;
+    });
+  }
+
   function cancelVoice() {
     cancelRef.current = true;
     pendingRef.current = "";
@@ -778,6 +869,7 @@ export function Console() {
   }
 
   const reading = live ? interpretSpeech([{ transcript: live, confidence: 1 }]) : null;
+  const awaiting = turns.find((item) => item.phase === "awaiting") ?? null;
   const recognized = Boolean(reading && reading.changed && !reading.uncertain && reading.text);
 
   return (
@@ -785,7 +877,7 @@ export function Console() {
       <header className="border-b border-line">
         <div className="flex items-center justify-between gap-3 px-4 pt-3">
           <div>
-            <p className="font-mono text-xs text-moss">демо-консоль</p>
+            <p className="font-mono text-xs text-moss">DEMO</p>
             <h1 className="text-xl font-semibold tracking-tight">JARVIS</h1>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -800,20 +892,16 @@ export function Console() {
             >
               {watch ? "Слежу" : "Пауза"}
             </button>
-            <button
-              type="button"
-              aria-pressed={dryRun}
-              onClick={() => setDryRun(!dryRun)}
-              className={
-                "min-h-11 rounded-md px-3 font-mono text-xs " +
-                (dryRun ? "bg-forest text-paper" : "bg-paper text-ink")
-              }
-            >
-              {dryRun ? "DRY RUN" : "Боевой"}
-            </button>
+            <span className="flex min-h-11 items-center rounded-md bg-forest px-3 font-mono text-xs text-paper">
+              {serverMode === "real" ? "REAL" : serverMode === "mock" ? "MOCK" : "DRY RUN"}
+            </span>
           </div>
         </div>
-        <div className="grid grid-cols-4 gap-2 px-4 py-3">
+        <div className="flex items-center justify-between gap-3 px-4 pt-3">
+          <p className="font-mono text-xs text-subtle">Session actor: {actorId}</p>
+          <UserButton />
+        </div>
+        <div className="grid grid-cols-2 gap-2 px-4 py-3 sm:grid-cols-4">
           {OPERATORS.map((operator) => {
             const active = operator.id === operatorId;
             return (
@@ -832,7 +920,7 @@ export function Console() {
           })}
         </div>
         <p className="px-4 font-mono text-xs text-subtle">
-          {watch ? "Слежение включено. Чинить сам не начинаю." : "Слежение на паузе."}
+          {watch ? "MONITORING_NOT_CONFIGURED. Ниже только demo-фикстуры, не телеметрия." : "Слежение на паузе."}
         </p>
         <p className="px-4 pb-3 font-mono text-xs text-moss">
           tools {toolMode}
@@ -853,9 +941,10 @@ export function Console() {
           Этот Telegram ID не в allowlist. Команды будут отклонены.
         </p>
       ) : null}
+      <ActorDeniedBanner />
       {!dryRun ? (
-        <p className="border-b border-line bg-forest px-4 py-2 text-sm text-paper">
-          Боевой режим здесь тоже симуляция: серверы компании не вызываются.
+        <p className="border-b border-line bg-paper px-4 py-2 text-sm text-ink">
+          Сервер в режиме REAL. Кнопка в браузере этот режим не включает.
         </p>
       ) : null}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -886,7 +975,7 @@ export function Console() {
             <Thread notices={notices} turns={turns} now={now} locked={locked} onOpen={(command) => void send(command, "text")} />
             {hearing ? (
               <div className="turn-in rounded-xl border border-line bg-surface p-4">
-                <p className="font-mono text-xs text-moss">Whisper</p>
+                <p className="font-mono text-xs text-moss">TRANSCRIBING</p>
                 <div className="mt-3">
                   <Wave />
                 </div>
@@ -928,14 +1017,24 @@ export function Console() {
                 type="button"
                 aria-label={listening ? "Остановить запись" : "Голосовая команда"}
                 aria-pressed={listening}
-                disabled={busy || hearing !== null}
+                disabled={busy || hearing !== null || callHandle !== null}
                 onClick={() => (listening ? finishVoice() : beginVoice())}
                 className={
-                  "flex size-11 items-center justify-center rounded-md disabled:opacity-40 " +
+                  "flex size-11 shrink-0 items-center justify-center rounded-md disabled:opacity-40 " +
                   (listening ? "bg-forest text-paper" : "border border-line")
                 }
               >
                 {listening ? <Square className="size-4" aria-hidden="true" /> : <Mic className="size-5" aria-hidden="true" />}
+              </button>
+              <button
+                type="button"
+                aria-label="Голосовой разговор"
+                aria-pressed={callHandle !== null}
+                disabled={listening || hearing !== null}
+                onClick={() => void openCall()}
+                className="flex size-11 shrink-0 items-center justify-center rounded-md border border-line disabled:opacity-40"
+              >
+                <Phone className="size-5" aria-hidden="true" />
               </button>
               <button
                 type="submit"
@@ -1016,7 +1115,7 @@ export function Console() {
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold tracking-tight">{listening ? "Слушаю" : "Голос"}</h2>
+                <h2 className="text-lg font-semibold tracking-tight">{listening ? "LISTENING" : "Голос"}</h2>
                 <p className="mt-1 text-pretty text-sm text-muted">
                   Говорите целиком и сделайте короткую паузу. Похожие слова сверяю со списком команд, опасные не угадываю.
                 </p>
@@ -1099,6 +1198,13 @@ export function Console() {
             </div>
           </div>
         </div>
+      ) : null}
+      {callHandle ? (
+        <VoiceCall
+          handle={callHandle}
+          approval={awaiting ? <ApprovalBox turn={awaiting} now={now} /> : null}
+          onClose={closeCall}
+        />
       ) : null}
     </main>
   );
