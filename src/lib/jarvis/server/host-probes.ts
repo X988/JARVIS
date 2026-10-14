@@ -47,10 +47,23 @@ function safePath(value: string): boolean {
   return value.length > 0 && !value.includes("\0") && !/[\r\n]/.test(value);
 }
 
+/** Real and production contours must not learn unknown host keys. */
+export function sshKnownHostsRequired(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (
+    env.NODE_ENV === "production" ||
+    env.EXECUTION_MODE === "real" ||
+    env.JARVIS_PROFILE === "production-infra" ||
+    env.JARVIS_SSH_REQUIRE_KNOWN_HOSTS === "1"
+  );
+}
+
 export function sshArgs(call: ExecCall, env: NodeJS.ProcessEnv = process.env): string[] | null {
   const host = targetHost(call.target, "ssh", env);
   const user = env.JARVIS_SSH_USER?.trim() ?? "";
   if (!host || !safeUser(user)) return null;
+  const knownHosts = env.JARVIS_SSH_KNOWN_HOSTS_FILE?.trim() ?? "";
+  const key = env.JARVIS_SSH_KEY_FILE?.trim() ?? "";
+  if (sshKnownHostsRequired(env) && (!knownHosts || !safePath(knownHosts) || !key || !safePath(key))) return null;
   const port = envInt(env.JARVIS_SSH_PORT, 22, 1, 65535);
   const timeout = Math.max(1, Math.ceil(envInt(env.JARVIS_SSH_TIMEOUT_MS, 15_000, 1_000, 120_000) / 1000));
   const args = [
@@ -58,12 +71,13 @@ export function sshArgs(call: ExecCall, env: NodeJS.ProcessEnv = process.env): s
     "-o", `ConnectTimeout=${timeout}`,
     "-o", "ConnectionAttempts=1",
     "-o", "StrictHostKeyChecking=yes",
+    "-o", "UpdateHostKeys=no",
     "-p", String(port),
   ];
-  const knownHosts = env.JARVIS_SSH_KNOWN_HOSTS_FILE?.trim();
   if (knownHosts && safePath(knownHosts)) args.push("-o", `UserKnownHostsFile=${knownHosts}`);
-  const key = env.JARVIS_SSH_KEY_FILE?.trim();
-  if (key && safePath(key)) args.push("-i", key);
+  if (key && safePath(key)) {
+    args.push("-o", "IdentitiesOnly=yes", "-i", key);
+  }
   const remote = sshCommand(call.runbook);
   args.push(`${user}@${host}`, `sh -c ${shellQuote(remote)}`);
   return args;
@@ -117,6 +131,13 @@ export function runSshProbe(call: ExecCall, env: NodeJS.ProcessEnv = process.env
   const args = sshArgs(call, env);
   if (!args) {
     const target = targetHost(call.target, "ssh", env);
+    if (target && sshKnownHostsRequired(env)) {
+      return {
+        called: false,
+        code: "NOT_CONFIGURED",
+        detail: "ssh: production/real требует заранее проверенный JARVIS_SSH_KNOWN_HOSTS_FILE и ключ JARVIS_SSH_KEY_FILE. Соединение не открывалось.",
+      };
+    }
     return {
       called: false,
       code: target ? "CREDENTIAL_UNAVAILABLE" : "NOT_CONFIGURED",

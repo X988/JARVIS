@@ -1,10 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 import { bindWebUser } from "../web-actor.ts";
-import type { Session } from "./session.ts";
+import { allowTestAuth, canRead, isJarvisRole, roleForTestActor, type JarvisRole, type Session } from "./session.ts";
 
-type Role="operator"|"none";
-type WebBinding={actorId:string;role:Role};
-type TelegramBinding={actorId:string;role:Role};
+type WebBinding={actorId:string;role:JarvisRole};
+type TelegramBinding={actorId:string;role:JarvisRole};
 
 export type AuthResult={session:Session|null;code:"OK"|"AUTH_REQUIRED"|"ACTOR_DENIED";channel:"web"|"telegram"|"test"|null;userId?:string};
 
@@ -29,12 +28,29 @@ function makeSession(id:string,binding:WebBinding|TelegramBinding,channel:Sessio
   return {id,accountId:binding.actorId,role:binding.role,expiresAt:Date.now()+8*60*60_000,channel};
 }
 
+function usableBinding(value: unknown): WebBinding | TelegramBinding | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as { actorId?: unknown; role?: unknown };
+  if (typeof row.actorId !== "string" || !row.actorId.trim()) return null;
+  if (typeof row.role !== "string" || !isJarvisRole(row.role)) return null;
+  return { actorId: row.actorId, role: row.role };
+}
+
+function authCode(role: JarvisRole): "OK" | "ACTOR_DENIED" {
+  return canRead(role) ? "OK" : "ACTOR_DENIED";
+}
+
 export async function authenticateRequest(request:Request):Promise<AuthResult>{
-  if(process.env.NODE_ENV!=="production" && process.env.JARVIS_TEST_AUTH==="1"){
+  if(allowTestAuth()){
     const actor=request.headers.get("x-jarvis-test-actor")?.trim();
     if(!actor) return {session:null,code:"AUTH_REQUIRED",channel:"test"};
-    const role:Role=actor==="admin1" ? "operator" : "none";
-    return {session:makeSession("test-"+actor,{actorId:actor,role},"test"),code:role==="operator"?"OK":"ACTOR_DENIED",channel:"test"};
+    if(request.headers.get("x-jarvis-test-expired")==="1"){
+      return {session:null,code:"AUTH_REQUIRED",channel:"test"};
+    }
+    const role=roleForTestActor(actor);
+    const session=makeSession("test-"+actor,{actorId:actor,role},"test");
+    if(session.expiresAt<=Date.now()) return {session:null,code:"AUTH_REQUIRED",channel:"test"};
+    return {session,code:authCode(role),channel:"test"};
   }
 
   const telegramId=request.headers.get("x-telegram-id")?.trim();
@@ -42,15 +58,24 @@ export async function authenticateRequest(request:Request):Promise<AuthResult>{
     const supplied=request.headers.get("x-jarvis-telegram-secret") ?? "";
     const expected=process.env.JARVIS_TELEGRAM_WEBHOOK_SECRET ?? "";
     if(!expected || !sameSecret(supplied,expected)) return {session:null,code:"AUTH_REQUIRED",channel:"telegram"};
-    const binding=jsonMap<TelegramBinding>("JARVIS_TELEGRAM_ACTORS_JSON")[telegramId];
+    const binding=usableBinding(jsonMap<TelegramBinding>("JARVIS_TELEGRAM_ACTORS_JSON")[telegramId]);
     if(!binding) return {session:null,code:"ACTOR_DENIED",channel:"telegram"};
-    return {session:makeSession("telegram-"+telegramId,binding,"telegram"),code:binding.role==="operator"?"OK":"ACTOR_DENIED",channel:"telegram"};
+    const session=makeSession("telegram-"+telegramId,binding,"telegram");
+    if(session.expiresAt<=Date.now()) return {session:null,code:"AUTH_REQUIRED",channel:"telegram"};
+    return {session,code:authCode(binding.role),channel:"telegram"};
   }
 
-  const { getSessionUser } = await import("../../auth/verify.server.ts");
-  const user=await getSessionUser();
+  let user: { id: string } | null = null;
+  try {
+    const { getSessionUser } = await import("../../auth/verify.server.ts");
+    user = await getSessionUser();
+  } catch {
+    return { session: null, code: "AUTH_REQUIRED", channel: "web" };
+  }
   if(!user) return {session:null,code:"AUTH_REQUIRED",channel:"web"};
   const resolved=bindWebUser(user.id);
   if(!resolved.binding) return {session:null,code:"ACTOR_DENIED",channel:"web",userId:user.id};
-  return {session:makeSession("web-"+user.id,resolved.binding,"web"),code:resolved.code,channel:"web",userId:user.id};
+  const session=makeSession("web-"+user.id,resolved.binding,"web");
+  if(session.expiresAt<=Date.now()) return {session:null,code:"AUTH_REQUIRED",channel:"web",userId:user.id};
+  return {session,code:resolved.code,channel:"web",userId:user.id};
 }

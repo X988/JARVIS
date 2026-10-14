@@ -5,12 +5,12 @@ import { createLockProvider } from "../locks.ts";
 import { OPERATORS, evaluate, type Decision } from "../model.ts";
 import { configProblems } from "./config.ts";
 import { defaultRealExecute } from "./adapters.ts";
-import { createApproval, findApproval, parameterHash, saveApproval } from "./approvals.ts";
+import { attachApprovalAudit, createApproval, parameterHash, settleApproval, takeApproval } from "./approvals.ts";
 import { rememberRequest } from "./idempotency.ts";
 import { matchTarget, targetById, unknownLatinToken, type Target } from "./inventory.ts";
 import { runbookById, runbookForIntent, type Runbook } from "./runbooks.ts";
 import { evaluateRuntimePolicy, maintenanceWindowOpen } from "./policy.ts";
-import type { Session } from "./session.ts";
+import { canExecute, canRead, sessionUsable, type Session } from "./session.ts";
 
 export type Mode = "dry-run" | "mock" | "real";
 
@@ -110,10 +110,18 @@ function denyShell(text: string, reason: string, risk: 0 | 1 | 2 | 3 = 3): Decis
 }
 
 function finish(
-  input: { text: string; requestId: string; session: Session | null; stateDir: string; now: Date },
+  input: {
+    text: string;
+    requestId: string;
+    session: Session | null;
+    stateDir: string;
+    now: Date;
+    channel?: Session["channel"];
+  },
   partial: Omit<PipelineResult, "auditId" | "requestId" | "trace"> & { trace: Omit<Trace, "audit"> },
 ): PipelineResult {
   const auditId = randomUUID();
+  const channel = input.channel ?? input.session?.channel ?? "web";
   const row = appendAudit(
     {
       at: input.now.toISOString(),
@@ -133,6 +141,9 @@ function finish(
       result: partial.code,
       verification: partial.trace.verification,
       externalSink: externalSinkLabel(),
+      channel,
+      tool: partial.trace.runbook,
+      error: partial.verdict === "deny" ? partial.code : "",
     },
     input.stateDir,
   );
@@ -188,6 +199,35 @@ function gateway(
   }
 }
 
+function safeGateway(
+  runbook: Runbook,
+  target: string,
+  mode: Mode,
+  stateDir: string,
+  execute?: (call: ExecCall) => ExecResult,
+  parameters: Readonly<Record<string, string>> = {},
+): ExecResult {
+  try {
+    const result = gateway(runbook, target, mode, stateDir, execute, parameters);
+    return {
+      called: result.called,
+      code: result.code || "EXECUTION_FAILED",
+      detail: (result.detail || "пустой ответ исполнителя").slice(0, 4_000),
+    };
+  } catch {
+    return { called: false, code: "EXECUTION_FAILED", detail: "исполнитель завершился ошибкой и не считается успехом" };
+  }
+}
+
+function rememberAudit(stateDir: string, approvalId: string | undefined, auditId: string): void {
+  if (!approvalId) return;
+  try {
+    attachApprovalAudit(stateDir, approvalId, auditId);
+  } catch {
+    // The hash-chain row is already durable. A link failure must not turn a denial into success.
+  }
+}
+
 
 export type RegisteredToolResult = {
   code: string;
@@ -212,6 +252,7 @@ export function processRegisteredReadOnlyTool(input: {
   mode?: Mode;
   execute?: (call: ExecCall) => ExecResult;
   capabilities?: ServerCapabilities;
+  channel?: Session["channel"];
 }): RegisteredToolResult {
   const now = input.now ?? new Date();
   const mode = modeOf(input.mode);
@@ -245,6 +286,9 @@ export function processRegisteredReadOnlyTool(input: {
         result: code,
         verification: book?.verification ?? "not executed",
         externalSink: externalSinkLabel(),
+        channel: input.channel ?? input.session?.channel ?? "agent",
+        tool: book?.id ?? input.runbook,
+        error: verdict === "deny" ? code : "",
       },
       input.stateDir,
     );
@@ -262,11 +306,17 @@ export function processRegisteredReadOnlyTool(input: {
     };
   }
 
-  if (!input.session) {
-    return finishRegistered("AUTH_REQUIRED", "deny", "Нет серверной сессии.", null, input.target);
+  if (!sessionUsable(input.session, now.getTime())) {
+    return finishRegistered(
+      input.session ? "AUTH_REQUIRED" : "AUTH_REQUIRED",
+      "deny",
+      input.session ? "Сессия истекла." : "Нет серверной сессии.",
+      null,
+      input.target,
+    );
   }
-  if (input.session.role !== "operator") {
-    return finishRegistered("ACTOR_DENIED", "deny", "Эта учётка не оператор.", null, input.target);
+  if (!canRead(input.session.role)) {
+    return finishRegistered("ACTOR_DENIED", "deny", "Эта учётка не допущена.", null, input.target);
   }
 
   const book = runbookById(input.runbook);
@@ -286,6 +336,9 @@ export function processRegisteredReadOnlyTool(input: {
 
   // Autonomous AI execution is intentionally read-only. Mutations continue
   // through processCommand/Approval Engine and can never be enabled by model output.
+  if (!canExecute(input.session.role) && book.mutates) {
+    return finishRegistered("ACTOR_DENIED", "deny", "Этой роли нельзя менять инфраструктуру.", book, target.id);
+  }
   if (book.mutates || book.risk !== 0 || book.approval !== "none") {
     return finishRegistered(
       "MUTATION_REQUIRES_APPROVAL",
@@ -311,7 +364,7 @@ export function processRegisteredReadOnlyTool(input: {
     );
   }
 
-  const result = gateway(book, target.id, mode, input.stateDir, input.execute);
+  const result = safeGateway(book, target.id, mode, input.stateDir, input.execute);
   const allowed = result.code === "OK" || result.code === "MOCK" || result.code === "DRY_RUN";
   return finishRegistered(
     result.code,
@@ -332,8 +385,9 @@ export function processCommand(input: {
   mode?: Mode;
   execute?: (call: ExecCall) => ExecResult;
   forged?: Record<string, unknown>;
-  approval?: { id: string; confirmation: string };
+  approval?: { id: string; confirmation: string; decision?: "confirm" | "reject" };
   capabilities?: ServerCapabilities;
+  channel?: Session["channel"];
 }): PipelineResult {
   const startedAt = Date.now();
   increment("jarvis_commands_total");
@@ -390,25 +444,26 @@ export function processCommand(input: {
       session: current.session,
       stateDir: current.stateDir,
       now: current.now,
+      channel: current.channel,
     };
-    if (!current.session) {
+    if (!sessionUsable(current.session, current.now.getTime())) {
       return finish(base, {
         code: "AUTH_REQUIRED",
         verdict: "deny",
         mode: current.mode,
         executionCalled: false,
-        decision: denyShell(text, "Нет серверной сессии."),
+        decision: denyShell(text, current.session ? "Сессия истекла." : "Нет серверной сессии."),
         approval: null,
         trace: emptyTrace(text, current.mode, "нет сессии"),
       });
     }
-    if (current.session.role !== "operator") {
+    if (!canRead(current.session.role)) {
       return finish(base, {
         code: "ACTOR_DENIED",
         verdict: "deny",
         mode: current.mode,
         executionCalled: false,
-        decision: denyShell(text, "Эта учётка не оператор."),
+        decision: denyShell(text, "Эта учётка не допущена."),
         approval: null,
         trace: emptyTrace(text, current.mode, "учётка без прав"),
       });
@@ -446,129 +501,127 @@ function emptyTrace(original: string, mode: Mode, normalized: string): Omit<Trac
 }
 
 function confirmApproval(
-  base: { text: string; requestId: string; session: Session | null; stateDir: string; now: Date },
+  base: { text: string; requestId: string; session: Session | null; stateDir: string; now: Date; channel?: Session["channel"] },
   current: {
     mode: Mode;
     stateDir: string;
     now: Date;
     session: Session | null;
     execute?: (call: ExecCall) => ExecResult;
-    approval?: { id: string; confirmation: string };
+    approval?: { id: string; confirmation: string; decision?: "confirm" | "reject" };
     capabilities?: ServerCapabilities;
   },
   approvalId: string,
   confirmation: string,
 ): PipelineResult {
-  const row = findApproval(current.stateDir, approvalId);
-  if (!row || !current.session) {
+  if (!current.session || !canExecute(current.session.role)) {
     return finish(base, {
-      code: "APPROVAL_MISMATCH", verdict: "deny", mode: current.mode, executionCalled: false,
-      decision: denyShell(base.text, "Такой заявки нет или она не принадлежит текущей сессии."), approval: null,
+      code: "ACTOR_DENIED", verdict: "deny", mode: current.mode, executionCalled: false,
+      decision: denyShell(base.text, "Подтверждать может только admin или operator."), approval: null,
       trace: emptyTrace(base.text, current.mode, "approval"),
     });
   }
-  if (row.actorId !== current.session.accountId) {
-    return finish(base, {
-      code: "ACTOR_DENIED", verdict: "deny", mode: current.mode, executionCalled: false,
-      decision: denyShell(base.text, "Заявка принадлежит другому actor."), approval: null,
-      trace: emptyTrace(base.text, current.mode, row.normalized),
-    });
-  }
-  if (row.status !== "pending") {
-    return finish(base, {
-      code: row.status === "expired" ? "APPROVAL_EXPIRED" : "APPROVAL_MISMATCH", verdict: "deny", mode: current.mode, executionCalled: false,
-      decision: denyShell(base.text, "Заявка уже недействительна."), approval: null,
-      trace: { ...emptyTrace(base.text, current.mode, row.normalized), runbook: row.runbook, target: row.target, risk: row.risk as 0 | 1 | 2 | 3 },
-    });
-  }
-  if (row.expiresAt <= current.now.getTime()) {
-    saveApproval(current.stateDir, { ...row, status: "expired" });
-    return finish(base, {
-      code: "APPROVAL_EXPIRED", verdict: "deny", mode: current.mode, executionCalled: false,
-      decision: denyShell(base.text, "Срок подтверждения истёк."), approval: null,
-      trace: { ...emptyTrace(base.text, current.mode, row.normalized), runbook: row.runbook, target: row.target, risk: row.risk as 0 | 1 | 2 | 3 },
-    });
-  }
-
-  const expected = row.required === 2 && row.stage === 2 ? "CONFIRM FINAL " + row.id : "CONFIRM " + row.id;
-  if (SHORT_YES.test(confirmation.trim()) || confirmation.trim() !== expected) {
-    return finish(base, {
-      code: "APPROVAL_MISMATCH", verdict: "deny", mode: current.mode, executionCalled: false,
-      decision: denyShell(base.text, "Нужна точная серверная фраза подтверждения."),
-      approval: { id: row.id, phrase: expected, expiresAt: row.expiresAt, stage: row.stage },
-      trace: { ...emptyTrace(base.text, current.mode, row.normalized), runbook: row.runbook, target: row.target, risk: row.risk as 0 | 1 | 2 | 3 },
-    });
-  }
-
   const parsed = evaluate(base.text, OPERATORS[0], current.now);
   const book = runbookForIntent(parsed.normalized) ?? inferRunbook(base.text);
   const hinted = matchTarget(base.text) ?? (parsed.target === "fleet" ? targetById("fleet") : targetById(parsed.target));
   const constraint = NO_CHANGE.test(base.text.toLowerCase()) ? "NO_CHANGE" : "нет";
   const hash = book && hinted ? approvalHash(book, hinted.id, parsed, constraint) : "";
-  if (!book || !hinted || hash !== row.parameterHash || book.risk !== row.risk) {
-    saveApproval(current.stateDir, { ...row, status: "mismatch" });
+  const runtime = book
+    ? evaluateRuntimePolicy(book.policy, {
+        mode: current.mode,
+        elevated: current.capabilities?.elevated ?? false,
+        maintenanceWindow: current.capabilities?.maintenanceWindow ?? maintenanceWindowOpen(current.now),
+      })
+    : { code: "DENY" as const, reason: "Runbook отсутствует." };
+  const taken = takeApproval(current.stateDir, {
+    id: approvalId,
+    actorId: current.session.accountId,
+    now: current.now.getTime(),
+    decision: current.approval?.decision === "reject" ? "reject" : "confirm",
+    phrase: confirmation,
+    expectedHash: hash,
+    risk: book?.risk ?? -1,
+    policyDeny: !book || book.policy === "DENY_ALWAYS" || runtime.code === "DENY",
+  });
+
+  if (taken.action === "missing") {
     return finish(base, {
       code: "APPROVAL_MISMATCH", verdict: "deny", mode: current.mode, executionCalled: false,
-      decision: denyShell(base.text, "Команда или её параметры изменились. Требуется новая заявка."), approval: null,
-      trace: { ...emptyTrace(base.text, current.mode, parsed.normalized), runbook: book?.id ?? "—", target: hinted?.id ?? "—", risk: book?.risk ?? 3 },
+      decision: denyShell(base.text, "Такой заявки нет."), approval: null,
+      trace: emptyTrace(base.text, current.mode, "approval"),
     });
   }
-
-  if (book.policy === "DENY_ALWAYS") {
+  if (taken.action === "rejected") {
+    const done = finish(base, {
+      code: "APPROVAL_REJECTED", verdict: "deny", mode: current.mode, executionCalled: false,
+      decision: denyShell(base.text, "Заявка отклонена. Исполнитель не вызывался."), approval: null,
+      trace: { ...emptyTrace(base.text, current.mode, taken.row.normalized), runbook: taken.row.runbook, target: taken.row.target, risk: taken.row.risk as 0 | 1 | 2 | 3 },
+    });
+    rememberAudit(current.stateDir, taken.row.id, done.auditId);
+    return done;
+  }
+  if (taken.action === "deny") {
+    const phrase = taken.row && taken.row.status === "pending"
+      ? (taken.row.required === 2 && taken.row.stage === 2 ? "CONFIRM FINAL " + taken.row.id : "CONFIRM " + taken.row.id)
+      : "";
+    const done = finish(base, {
+      code: taken.code, verdict: "deny", mode: current.mode, executionCalled: false,
+      decision: denyShell(base.text, taken.code === "ACTOR_DENIED" ? "Заявка принадлежит другому actor." : "Заявка не подтверждена."),
+      approval: taken.row && taken.row.status === "pending" && phrase
+        ? { id: taken.row.id, phrase, expiresAt: taken.row.expiresAt, stage: taken.row.stage }
+        : null,
+      trace: {
+        ...emptyTrace(base.text, current.mode, taken.row?.normalized ?? "approval"),
+        runbook: taken.row?.runbook ?? "—",
+        target: taken.row?.target ?? "—",
+        risk: (taken.row?.risk ?? 3) as 0 | 1 | 2 | 3,
+      },
+    });
+    if (taken.row) rememberAudit(current.stateDir, taken.row.id, done.auditId);
+    return done;
+  }
+  if (taken.action === "policy" || !book || !hinted) {
     return finish(base, {
       code: "POLICY_DENIED", verdict: "deny", mode: current.mode, executionCalled: false,
-      decision: denyShell(base.text, "DENY_ALWAYS нельзя отменить заявкой."), approval: null,
-      trace: { ...emptyTrace(base.text, current.mode, parsed.normalized), runbook: book.id, target: hinted.id, risk: book.risk, policy: "DENY_ALWAYS" },
-    });
-  }
-
-  const confirmedPolicy = evaluateRuntimePolicy(book.policy, {
-    mode: current.mode,
-    elevated: current.capabilities?.elevated ?? false,
-    maintenanceWindow: current.capabilities?.maintenanceWindow ?? maintenanceWindowOpen(current.now),
-  });
-  if (confirmedPolicy.code === "DENY") {
-    return finish(base, {
-      code: "POLICY_DENIED",
-      verdict: "deny",
-      mode: current.mode,
-      executionCalled: false,
-      decision: denyShell(base.text, confirmedPolicy.reason, book.risk),
+      decision: denyShell(base.text, book?.policy === "DENY_ALWAYS" ? "DENY_ALWAYS нельзя отменить заявкой." : "Политика запрещает исполнение."),
       approval: null,
-      trace: { ...emptyTrace(base.text, current.mode, parsed.normalized), runbook: book.id, target: hinted.id, risk: book.risk, policy: book.policy },
+      trace: { ...emptyTrace(base.text, current.mode, parsed.normalized), runbook: book?.id ?? "—", target: hinted?.id ?? "—", risk: book?.risk ?? 3, policy: book?.policy ?? "DENY" },
     });
   }
-
-  if (row.required === 2 && row.stage === 1) {
-    const next = { ...row, stage: 2 as const };
-    saveApproval(current.stateDir, next);
-    return finish(base, {
+  if (taken.action === "advance") {
+    const done = finish(base, {
       code: "APPROVAL_REQUIRED", verdict: "deny", mode: current.mode, executionCalled: false,
       decision: denyShell(base.text, "Требуется второй серверный этап подтверждения.", book.risk),
-      approval: { id: next.id, phrase: "CONFIRM FINAL " + next.id, expiresAt: next.expiresAt, stage: 2 },
+      approval: { id: taken.row.id, phrase: "CONFIRM FINAL " + taken.row.id, expiresAt: taken.row.expiresAt, stage: 2 },
       trace: traceOf(base.text, parsed.normalized, "нет", hinted.id, book, current.mode, "не вызывался", "ждёт второе подтверждение"),
     });
+    rememberAudit(current.stateDir, taken.row.id, done.auditId);
+    return done;
   }
 
-  saveApproval(current.stateDir, { ...row, status: "confirmed" });
-  const exec = gateway(
-    book,
-    hinted.id,
-    current.mode,
-    current.stateDir,
-    current.execute,
-    normalizedParametersOf(parsed),
-  );
+  const exec = safeGateway(book, hinted.id, current.mode, current.stateDir, current.execute, normalizedParametersOf(parsed));
   const ok = exec.code === "DRY_RUN" || exec.code === "MOCK" || exec.code === "OK";
+  try {
+    settleApproval(current.stateDir, taken.row.id, ok ? "confirmed" : "failed");
+  } catch {
+    return finish(base, {
+      code: "EXECUTION_FAILED", verdict: "deny", mode: current.mode, executionCalled: false,
+      decision: denyShell(base.text, "Состояние заявки не позволило зафиксировать результат. Успех не подменяется."),
+      approval: null,
+      trace: traceOf(base.text, parsed.normalized, "нет", hinted.id, book, current.mode, exec.detail, "проверка не выполнялась"),
+    });
+  }
   const decision: Decision = {
     ...parsed, verdict: ok ? "allow" : "deny", reason: ok ? null : exec.detail, risk: book.risk, runbook: book.id, target: hinted.id, forceDeny: !ok,
     policyNotes: ["Решение принято на сервере.", "Режим " + current.mode + ".", exec.detail],
   };
-  return finish(base, {
+  const done = finish(base, {
     code: ok ? "OK" : exec.code === "NOT_CONFIGURED" ? "EXECUTION_DISABLED" : exec.code,
     verdict: decision.verdict, mode: current.mode, executionCalled: exec.called, decision, approval: null,
     trace: traceOf(base.text, parsed.normalized, "нет", hinted.id, book, current.mode, exec.detail, exec.code === "OK" ? book.verification : "проверка не выполнялась"),
   });
+  rememberAudit(current.stateDir, taken.row.id, done.auditId);
+  return done;
 }
 
 function inferRunbook(text: string): Runbook | null {
@@ -598,6 +651,9 @@ function fresh(
   const book = runbookForIntent(parsed.normalized) ?? inferRunbook(text);
   if (!book) {
     return denied(base, current.mode, "—", "DENY", 3, "RUNBOOK_NOT_FOUND", "Такого runbook нет. Новый я не придумываю.", parsed.normalized, constraint);
+  }
+  if (book.mutates && !canExecute(current.session?.role)) {
+    return denied(base, current.mode, book.id, book.policy, book.risk, "ACTOR_DENIED", "Этой роли нельзя вызывать изменяющий инструмент.", parsed.normalized, constraint, book.risk);
   }
   if (book.policy === "DENY_ALWAYS" || parsed.forceDeny) {
     return denied(base, current.mode, book.id, "DENY_ALWAYS", book.risk, "POLICY_DENIED", parsed.denyReason ?? "Запрещено всегда. Заявка это не отменяет.", parsed.normalized, constraint, book.risk);
@@ -659,7 +715,7 @@ function fresh(
     decision.confirmation = book.approval === "double" ? "double" : "single";
     decision.runbook = book.id;
     decision.target = target.id;
-    return finish(base, {
+    const opened = finish(base, {
       code: "APPROVAL_REQUIRED",
       verdict: "deny",
       mode: current.mode,
@@ -668,8 +724,10 @@ function fresh(
       approval: { id: record.id, phrase: `CONFIRM ${record.id}`, expiresAt: record.expiresAt, stage: 1 },
       trace: traceOf(text, parsed.normalized, constraint, target.id, book, current.mode, "заявка, исполнитель не вызывался", "ждёт заявку"),
     });
+    rememberAudit(current.stateDir, record.id, opened.auditId);
+    return opened;
   }
-  const exec = gateway(
+  const exec = safeGateway(
     book,
     target.id,
     current.mode,

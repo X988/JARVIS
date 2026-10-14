@@ -1,7 +1,7 @@
 import { processCommand, type PipelineResult } from "../server/pipeline.ts";
-import type { Session } from "../server/session.ts";
+import { canExecute, isJarvisRole, type JarvisRole, type Session } from "../server/session.ts";
 
-export type TelegramActor = { actorId: string; role: "operator" | "none" };
+export type TelegramActor = { actorId: string; role: JarvisRole };
 
 export type TelegramUpdate = {
   updateId: number;
@@ -32,7 +32,7 @@ export function actorsFromEnv(env: NodeJS.ProcessEnv = process.env): Record<stri
     for (const [id, value] of Object.entries(parsed)) {
       if (!/^[1-9]\d*$/.test(id)) continue;
       const row = value as Partial<TelegramActor>;
-      if ((row.role !== "operator" && row.role !== "none") || !row.actorId) continue;
+      if (typeof row.role !== "string" || !isJarvisRole(row.role) || !row.actorId) continue;
       actors[id] = { actorId: row.actorId, role: row.role };
     }
     return actors;
@@ -47,11 +47,11 @@ export function sessionForTelegram(
   now = Date.now(),
 ): Session | null {
   const actor = actors[String(userId)];
-  if (!actor || actor.role !== "operator") return null;
+  if (!actor || !canExecute(actor.role)) return null;
   return {
     id: `tg-${userId}`,
     accountId: actor.actorId,
-    role: "operator",
+    role: actor.role,
     expiresAt: now + 15 * 60_000,
     channel: "telegram",
   };
@@ -84,6 +84,7 @@ export function acceptTelegram(
     session,
     now: opts.now,
     stateDir: opts.stateDir,
+    channel: "telegram",
   });
   return { accepted: true, result };
 }

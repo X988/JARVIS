@@ -4,7 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { mark } from "../metrics.ts";
 import { processCommand, type PipelineResult } from "../server/pipeline.ts";
-import type { Session } from "../server/session.ts";
+import { canExecute, type Session } from "../server/session.ts";
 import { acceptTelegram, actorsFromEnv, sessionForTelegram, type TelegramActor, type TelegramUpdate } from "../plane/telegram.ts";
 import { classifyPcm, normalizeTranscript, SPOKEN, stripWake, voiceLine, wavConvertArgs, type SpokenAlias } from "./gate.ts";
 import { audioRoot, safeAudioFile, sweepAudio, transcribeWav, type SttHit } from "./whisper.ts";
@@ -77,6 +77,7 @@ export function runVoiceWav(
     };
   }
   const technical = processCommand({
+    channel: "voice",
     text: normalized.text,
     requestId: opts.requestId || randomUUID(),
     session: opts.session,
@@ -137,7 +138,7 @@ export function acceptTelegramVoice(
   },
 ): VoiceTurn | { code: "ACTOR_DENIED" | "EMPTY" | "AUDIO_TOO_LARGE" | "AUDIO_DECODE_FAILED" } {
   const actors = opts.actors ?? actorsFromEnv(opts.env);
-  if (!actors[String(update.userId)] || actors[String(update.userId)].role !== "operator") return { code: "ACTOR_DENIED" };
+  if (!actors[String(update.userId)] || !canExecute(actors[String(update.userId)].role)) return { code: "ACTOR_DENIED" };
   if (!update.voiceFileId) {
     const text = acceptTelegram(update, { stateDir: opts.stateDir, actors, now: opts.now });
     if (!text.accepted) return { code: text.code === "ACTOR_DENIED" ? "ACTOR_DENIED" : "EMPTY" };

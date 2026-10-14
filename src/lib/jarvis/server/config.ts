@@ -11,7 +11,7 @@ const DEPRECATED: Record<string, string> = {
   JARVIS_ROUTEROS_USER: "JARVIS_MIKROTIK_USER",
 };
 const ENABLED_NEEDS_HOST: Array<[string,string]>=[["JARVIS_SQL_ENABLED","JARVIS_SQL_HOST"],["JARVIS_DOCKER_ENABLED","JARVIS_DOCKER_HOST"]];
-const actorSchema=z.object({actorId:z.string().min(1),role:z.enum(["operator","none"])});
+const actorSchema=z.object({actorId:z.string().min(1),role:z.enum(["admin","operator","viewer","none"])});
 const hostMapSchema=z.record(z.string().min(1),z.string().regex(/^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/));
 export type JarvisProblems=string[];
 function enabled(value:string|undefined):boolean{return value==="1"||value==="true";}

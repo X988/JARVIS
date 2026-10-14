@@ -35,12 +35,15 @@ export function mailcowSshArgs(env: NodeJS.ProcessEnv = process.env): string[] |
     "-o", `ConnectTimeout=${timeout}`,
     "-o", "ConnectionAttempts=1",
     "-o", "StrictHostKeyChecking=yes",
+    "-o", "UpdateHostKeys=no",
     "-p", String(port),
   ];
   const knownHosts = env.JARVIS_DOCKER_KNOWN_HOSTS_FILE || env.JARVIS_SSH_KNOWN_HOSTS_FILE;
-  if (knownHosts?.trim() && !/[\r\n\0]/.test(knownHosts)) args.push("-o", `UserKnownHostsFile=${knownHosts.trim()}`);
   const key = env.JARVIS_DOCKER_SSH_KEY_FILE || env.JARVIS_SSH_KEY_FILE;
-  if (key?.trim() && !/[\r\n\0]/.test(key)) args.push("-i", key.trim());
+  const strict = env.NODE_ENV === "production" || env.EXECUTION_MODE === "real" || env.JARVIS_PROFILE === "production-infra";
+  if (strict && (!knownHosts?.trim() || !key?.trim())) return null;
+  if (knownHosts?.trim() && !/[\r\n\0]/.test(knownHosts)) args.push("-o", `UserKnownHostsFile=${knownHosts.trim()}`);
+  if (key?.trim() && !/[\r\n\0]/.test(key)) args.push("-o", "IdentitiesOnly=yes", "-i", key.trim());
   const composeArg = shellQuote(compose);
   const remote = [
     "set -eu",

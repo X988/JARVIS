@@ -341,6 +341,17 @@ in-browser say so and ship the best web-only build.
 
 ---
 
+## JARVIS self-host (Linux)
+
+The Grok preview shell (`0.0.0.0:8080`, `startup.sh`, PWA injector) is how this workspace is reviewed in chat. It is not required to run JARVIS on a Linux server you control.
+
+- Keep for preview only: `public/__grok/`, `server/middleware/grok-pwa.ts`, the branding injector, and `npm run dev`.
+- Vercel-only: `vercel.json` and the Nitro preset. Do not treat a green Vercel build as a production rollout.
+- On your own host: `npm ci`, `npm run build`, then `npm run db:migrate` only when `DATABASE_URL` is set, then `EXECUTION_MODE=dry-run npm run start:linux`.
+- Authentication for that host is the local email/password contour (`JARVIS_WEB_ACTORS_JSON`). A client `operatorId` is not an identity.
+- `EXECUTION_MODE=real` refuses SSH without a pinned `known_hosts` file and a key. RouterOS TLS verification cannot be turned off.
+- This repository is not production-ready until the live adapters are exercised on non-production copies of the infrastructure.
+
 ## Quick reference
 
 ```text

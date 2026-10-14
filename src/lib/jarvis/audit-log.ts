@@ -24,15 +24,34 @@ export type AuditRow = {
   result?: string;
   verification?: string;
   externalSink?: string;
+  channel?: string;
+  tool?: string;
+  error?: string;
   hash?: string;
 };
+
+const SECRET_PATTERNS: Array<[RegExp, string]> = [
+  [/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g, "[REDACTED_PRIVATE_KEY]"],
+  [/\b(password|passwd|secret|api[_-]?key|token|authorization)\b\s*[:=]\s*\S+/gi, "$1=[REDACTED]"],
+  [/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]"],
+  [/\bsk-[A-Za-z0-9]{8,}\b/g, "[REDACTED_KEY]"],
+];
+
+/** Removes credentials before they are hashed into the audit chain. */
+export function redactSecrets(value: string): string {
+  let next = value;
+  for (const [pattern, replacement] of SECRET_PATTERNS) {
+    next = next.replace(pattern, replacement);
+  }
+  return next;
+}
 
 export function auditFile(dir = process.env.JARVIS_STATE_DIR || path.join(process.cwd(), "data")): string {
   return path.join(dir, "audit.jsonl");
 }
 
 function canon(row: Omit<AuditRow, "hash">): string {
-  return JSON.stringify([
+  const legacy = [
     1,
     row.at,
     row.executionId,
@@ -53,7 +72,34 @@ function canon(row: Omit<AuditRow, "hash">): string {
     row.result ?? "",
     row.verification ?? "",
     row.externalSink ?? "NOT_CONFIGURED",
+  ];
+  // Rows written before channel/tool/error keep version 1. New rows set channel.
+  if (!row.channel && !row.tool && row.error === undefined) return JSON.stringify(legacy);
+  return JSON.stringify([
+    2,
+    ...legacy.slice(1),
+    row.channel ?? "",
+    row.tool ?? "",
+    row.error ?? "",
   ]);
+}
+
+function redactRow(row: Omit<AuditRow, "previousHash" | "hash">): Omit<AuditRow, "previousHash" | "hash"> {
+  const text = (value: string | undefined) => (value === undefined ? undefined : redactSecrets(value));
+  return {
+    ...row,
+    action: redactSecrets(row.action),
+    actor: redactSecrets(row.actor),
+    normalized: text(row.normalized),
+    result: text(row.result),
+    verification: text(row.verification),
+    error: text(row.error),
+    executor: text(row.executor),
+    target: text(row.target),
+    runbook: text(row.runbook),
+    tool: text(row.tool),
+    policy: text(row.policy),
+  };
 }
 
 export function appendAudit(row: Omit<AuditRow, "previousHash" | "hash">, dir?: string): AuditRow {
@@ -66,7 +112,7 @@ export function appendAudit(row: Omit<AuditRow, "previousHash" | "hash">, dir?: 
       const lines = fs.readFileSync(file, "utf8").trim().split("\n").filter(Boolean);
       if (lines.length) previousHash = (JSON.parse(lines[lines.length - 1]) as AuditRow).hash || "GENESIS";
     }
-    const body = { ...row, previousHash };
+    const body = { ...redactRow(row), previousHash };
     const hash = createHash("sha256").update(canon(body)).digest("hex");
     const saved = { ...body, hash };
     fs.appendFileSync(file, `${JSON.stringify(saved)}\n`);

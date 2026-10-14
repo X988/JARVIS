@@ -5,7 +5,7 @@ import { adapterStatus } from "./adapters.ts";
 import { monitoringStatus } from "../monitoring.ts";
 import { requestOriginAllowed } from "../../public-origin.ts";
 import { authenticateRequest } from "./auth.ts";
-import type { Session } from "./session.ts";
+import { canExecute, type Session } from "./session.ts";
 import { processCommand } from "./pipeline.ts";
 import { validRequestId } from "./idempotency.ts";
 import { runHybridTurn } from "../plane/hybrid.ts";
@@ -56,7 +56,8 @@ function httpStatus(code:string):number{
   if(code==="AUTH_REQUIRED") return 401;
   if(code==="ACTOR_DENIED" || code==="POLICY_DENIED") return 403;
   if(code==="APPROVAL_REQUIRED" || code==="MUTATION_REQUIRES_APPROVAL") return 202;
-  if(code==="APPROVAL_EXPIRED" || code==="APPROVAL_MISMATCH" || code==="PRECONDITION_FAILED") return 409;
+  if(code==="APPROVAL_EXPIRED" || code==="APPROVAL_MISMATCH" || code==="APPROVAL_CLOSED" || code==="PRECONDITION_FAILED") return 409;
+  if(code==="APPROVAL_REJECTED") return 200;
   if(code==="TARGET_NOT_FOUND" || code==="RUNBOOK_NOT_FOUND") return 404;
   if(code==="SCHEMA_INVALID") return 400;
   if(code==="PLAN_INVALID" || code==="PLAN_REJECTED") return 422;
@@ -140,8 +141,11 @@ export async function handleCommand(request:Request):Promise<Response>{
   // Security-sensitive values are deliberately ignored. They are accepted only
   // so older/future clients cannot accidentally become an authority.
   const forged:Record<string,unknown>={};
-  for(const key of ["risk","policy","role","allowed","runbook","approved","executor","approvalStatus","parameters"]){
+  for(const key of ["risk","policy","role","allowed","runbook","approved","executor","approvalStatus","parameters","operatorId","actorId"]){
     if(key in body) forged[key]=body[key];
+  }
+  if(body.decision!==undefined && body.decision!=="confirm" && body.decision!=="reject"){
+    return json({code:"SCHEMA_INVALID",verdict:"deny"},400);
   }
   const requestIdRaw=typeof body.request_id==="string" ? body.request_id : typeof body.requestId==="string" ? body.requestId : "";
   const requestId=requestIdRaw ? requestIdRaw.trim() : randomUUID();
@@ -154,7 +158,11 @@ export async function handleCommand(request:Request):Promise<Response>{
   ){
     return json({code:"SCHEMA_INVALID",verdict:"deny"},400);
   }
-  const approval=approvalId && confirmation ? {id:approvalId,confirmation} : undefined;
+  const decision=body.decision==="reject" ? "reject" as const : "confirm" as const;
+  const approval=decision==="reject"
+    ? (approvalId ? {id:approvalId,confirmation:confirmation || "REJECT",decision} : undefined)
+    : (approvalId && confirmation ? {id:approvalId,confirmation,decision} : undefined);
+  if(decision==="reject" && !approval) return json({code:"SCHEMA_INVALID",verdict:"deny"},400);
   const result=processCommand({
     text:body.text,
     requestId,
@@ -162,6 +170,7 @@ export async function handleCommand(request:Request):Promise<Response>{
     stateDir:stateDir(),
     forged,
     approval,
+    channel:auth.channel ?? "web",
   });
   return json(result,httpStatus(result.code));
 }
@@ -237,7 +246,7 @@ export async function guardWebPost(
   if (!auth.session || auth.code !== "OK") {
     return { ok: false, response: json({ code: auth.code }, httpStatus(auth.code)) };
   }
-  if (auth.session.role !== "operator") {
+  if (!canExecute(auth.session.role)) {
     return { ok: false, response: json({ code: "ACTOR_DENIED" }, 403) };
   }
   if (!csrfOk(request, auth.channel)) return { ok: false, response: json({ code: "AUTH_REQUIRED" }, 401) };

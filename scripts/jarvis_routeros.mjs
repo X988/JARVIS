@@ -13,8 +13,18 @@ const password = process.env.JARVIS_MIKROTIK_PASSWORD ?? "";
 const port = Number(process.env.JARVIS_MIKROTIK_PORT || 443);
 const timeout = Number(process.env.JARVIS_ROUTEROS_TIMEOUT_MS || 10000);
 
-if (!["status", "interfaces", "routes", "dhcp", "wireguard", "firewall-counters", "wan-status"].includes(mode)) {
-  out("NOT_CONFIGURED", "Неизвестный read-only режим.");
+const READ_MODES = ["status", "interfaces", "routes", "dhcp", "wireguard", "firewall-counters", "wan-status", "logs"];
+const CHANGE_MODES = ["backup", "interface-set"];
+if (![...READ_MODES, ...CHANGE_MODES].includes(mode)) {
+  out("NOT_CONFIGURED", "Неизвестный режим. Произвольный REST path запрещён.");
+  process.exit(0);
+}
+if (process.env.JARVIS_MIKROTIK_TLS_INSECURE === "1" || process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0") {
+  out("POLICY_DENIED", "Проверка TLS не отключается. Запрос не отправлялся.");
+  process.exit(0);
+}
+if (CHANGE_MODES.includes(mode) && process.env.JARVIS_MIKROTIK_CHANGE_ENABLED !== "1") {
+  out("ADAPTER_DISABLED", "Изменяющий REST-вызов выключен.");
   process.exit(0);
 }
 if (!safeHost(host) || !user || !password || !Number.isInteger(port) || port < 1 || port > 65535) {
@@ -25,7 +35,34 @@ if (!safeHost(host) || !user || !password || !Number.isInteger(port) || port < 1
 const auth = Buffer.from(`${user}:${password}`).toString("base64");
 const base = `https://${host}:${port}/rest`;
 
+const PATHS = {
+  status: ["system/resource", "interface", "ip/route"],
+  interfaces: ["interface"],
+  routes: ["ip/route"],
+  dhcp: ["ip/dhcp-server/lease"],
+  wireguard: ["interface/wireguard/peers"],
+  "firewall-counters": ["ip/firewall/filter"],
+  "wan-status": ["interface", "ip/route"],
+  logs: ["log"],
+};
+
+const ALLOWED_PATHS = new Set(Object.values(PATHS).flat());
+
+function assertRelativePath(resource) {
+  if (
+    typeof resource !== "string" ||
+    !ALLOWED_PATHS.has(resource) ||
+    resource.startsWith("/") ||
+    resource.includes("..") ||
+    resource.includes("?") ||
+    resource.includes("\\")
+  ) {
+    throw new Error("path rejected");
+  }
+}
+
 async function get(resource) {
+  assertRelativePath(resource);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.min(60000, Math.max(2000, timeout)));
   try {
@@ -64,7 +101,12 @@ function handshakeAgeMs(raw, now) {
 }
 
 try {
-  if (mode === "wireguard") {
+  if (mode === "logs") {
+    const rows = array(await get("log"));
+    out("OK", `entries=${rows.length}`);
+  } else if (mode === "backup" || mode === "interface-set") {
+    out("ADAPTER_DISABLED", "Изменяющий вызов подготовлен политикой, но этот блок не открывает изменяющее соединение.");
+  } else if (mode === "wireguard") {
     const peers = array(await get("interface/wireguard/peers"));
     const now = Date.now();
     const staleMs = 5 * 60 * 1000;

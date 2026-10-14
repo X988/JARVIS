@@ -381,9 +381,26 @@ Secrets должны передаваться через environment/secret stor
 npm run typecheck
 npm run lint
 npm test
+npm run coverage
+npm run security:secrets
+npm run security:audit
 npm run build
+npm run db:migrate
 npm run e2e
 ```
+
+Сборка и миграции разделены. `npm run build` только собирает приложение. `npm run db:migrate` применяется отдельно и без `DATABASE_URL` ничего не меняет.
+
+Linux-сервер без Grok preview:
+
+```bash
+npm ci
+npm run build
+npm run db:migrate
+EXECUTION_MODE=dry-run npm run start:linux
+```
+
+`start:linux` слушает `0.0.0.0:8080`. Это ещё не ввод в промышленную эксплуатацию: живые SSH, RouterOS, SQL и 1С в этом блоке не проверялись.
 
 Полная CI-проверка включает:
 
@@ -398,6 +415,7 @@ npm ci
 → npm audit (critical gate)
 → CycloneDX SBOM validation
 → build
+→ db:migrate
 → Playwright E2E
 ```
 
