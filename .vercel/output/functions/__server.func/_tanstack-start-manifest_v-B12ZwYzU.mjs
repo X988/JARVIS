@@ -1,7 +1,7 @@
-//#region node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-BOuXUwF2.js
+//#region node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-B12ZwYzU.js
 var tsrStartManifest = () => ({ routes: {
 	__root__: {
-		filePath: "/workspace/src/routes/__root.tsx",
+		filePath: "/workspace/jarvis-int/src/routes/__root.tsx",
 		children: [
 			"/",
 			"/health",
@@ -26,7 +26,7 @@ var tsrStartManifest = () => ({ routes: {
 		} }]
 	},
 	"/": {
-		filePath: "/workspace/src/routes/index.tsx",
+		filePath: "/workspace/jarvis-int/src/routes/index.tsx",
 		children: void 0,
 		preloads: [
 			"/assets/routes-BL6XrTBh.js",
@@ -35,12 +35,12 @@ var tsrStartManifest = () => ({ routes: {
 		]
 	},
 	"/login": {
-		filePath: "/workspace/src/routes/login.tsx",
+		filePath: "/workspace/jarvis-int/src/routes/login.tsx",
 		children: void 0,
 		preloads: ["/assets/login-_cwVefBu.js", "/assets/client-BeRV9Bd9.js"]
 	},
 	"/admin/audit": {
-		filePath: "/workspace/src/routes/admin.audit.tsx",
+		filePath: "/workspace/jarvis-int/src/routes/admin.audit.tsx",
 		children: void 0,
 		preloads: ["/assets/admin.audit-BSxbrAr4.js", "/assets/store-BvriJHlc.js"]
 	}

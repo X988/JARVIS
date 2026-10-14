@@ -1,6 +1,6 @@
 import { a as getRequest } from "./ssr.mjs";
-import { D as authConfigured, E as auth, N as gateIdentityEnabled } from "./router-DHZGPzSw.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/verify.server-LnlwrJ3m.js
+import { D as authConfigured, E as auth, N as gateIdentityEnabled } from "./router-ANjjZ9ur.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/verify.server-BLgpytsm.js
 if (Boolean(process.env.DATABASE_URL?.trim()) && !authConfigured) console.error("[auth] DATABASE_URL is set but auth is disabled (VITE_AUTH_ENABLED=false) — requireUserId() will reject every request (fail closed) rather than share one dev user on a real database.");
 /**
 * Resolve the signed-in user from the current request, or `null` when auth isn't

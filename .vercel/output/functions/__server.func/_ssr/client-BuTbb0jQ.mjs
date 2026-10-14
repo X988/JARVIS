@@ -2,9 +2,9 @@ import { o as __toESM } from "../_runtime.mjs";
 import { Y as require_react } from "../_libs/@tanstack/react-router+[...].mjs";
 import { Ut as capitalizeFirstLetter, Wt as toKebabCase, m as isSafeUrlScheme, o as createFetch } from "../_libs/@better-auth/core+[...].mjs";
 import { n as defu } from "../_libs/defu.mjs";
-import { A as GENERIC_OAUTH_ERROR_CODES, M as getBaseURL, j as PACKAGE_VERSION } from "./router-DHZGPzSw.mjs";
+import { A as GENERIC_OAUTH_ERROR_CODES, M as getBaseURL, j as PACKAGE_VERSION } from "./router-ANjjZ9ur.mjs";
 import { a as atom, i as onSet, n as STORE_UNMOUNT_DELAY, r as onMount, t as listenKeys } from "../_libs/nanostores.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/client-kg2MC1Ui.js
+//#region node_modules/.nitro/vite/services/ssr/assets/client-BuTbb0jQ.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var PROTO_POLLUTION_PATTERNS = {
 	proto: /"(?:_|\\u0{2}5[Ff]){2}(?:p|\\u0{2}70)(?:r|\\u0{2}72)(?:o|\\u0{2}6[Ff])(?:t|\\u0{2}74)(?:o|\\u0{2}6[Ff])(?:_|\\u0{2}5[Ff]){2}"\s*:/,

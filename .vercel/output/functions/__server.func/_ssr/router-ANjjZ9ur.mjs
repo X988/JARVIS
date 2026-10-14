@@ -19,7 +19,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-//#region node_modules/.nitro/vite/services/ssr/assets/router-DHZGPzSw.js
+//#region node_modules/.nitro/vite/services/ssr/assets/router-ANjjZ9ur.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function env$2(key) {
@@ -9978,7 +9978,7 @@ var Route$14 = createRootRoute({
 		] })]
 	})
 });
-var $$splitComponentImporter$2 = () => import("./routes-W8X8rWMU.mjs");
+var $$splitComponentImporter$2 = () => import("./routes-CBF-RKVr.mjs");
 var Route$13 = createFileRoute("/")({ component: lazyRouteComponent($$splitComponentImporter$2, "component") });
 function mode() {
 	const raw = process.env.EXECUTION_MODE;
@@ -9993,7 +9993,7 @@ var Route$12 = createFileRoute("/health")({ server: { handlers: { GET: async () 
 	status: 200,
 	headers: { "cache-control": "no-store" }
 }) } } });
-var $$splitComponentImporter$1 = () => import("./login-BKmmJsm8.mjs");
+var $$splitComponentImporter$1 = () => import("./login-CsRdg_Wt.mjs");
 var Route$11 = createFileRoute("/login")({ component: lazyRouteComponent($$splitComponentImporter$1, "component") });
 var depth = /* @__PURE__ */ new Map();
 function pause(ms) {
@@ -10428,6 +10428,53 @@ var BOOKS = [
 		timeoutSec: 30,
 		verification: "fixed WireGuard peer GET summarized"
 	}),
+	readOnly({
+		id: "mikrotik.logs",
+		title: "MikroTik log count",
+		executor: "routeros",
+		targets: ["rb5009"],
+		inputSchema: ["router inventory id"],
+		timeoutSec: 30,
+		verification: "log entry count only; message text is not stored"
+	}),
+	{
+		id: "mikrotik.backup",
+		title: "MikroTik backup",
+		executor: "routeros",
+		targets: ["rb5009"],
+		inputSchema: ["router inventory id"],
+		timeoutSec: 120,
+		verification: "backup response recorded; not enabled on the default inventory",
+		lock: "mikrotik-change",
+		idempotent: false,
+		risk: 3,
+		mutates: true,
+		policy: "APPROVAL_REQUIRED",
+		approval: "double",
+		lockingStrategy: "target-runbook",
+		idempotencyStrategy: "request-id"
+	},
+	{
+		id: "mikrotik.interface.set",
+		title: "MikroTik interface enable or disable",
+		executor: "routeros",
+		targets: ["rb5009"],
+		inputSchema: [
+			"router inventory id",
+			"interface name",
+			"disabled"
+		],
+		timeoutSec: 30,
+		verification: "interface disabled flag matches the approved value",
+		lock: "mikrotik-change",
+		idempotent: true,
+		risk: 3,
+		mutates: true,
+		policy: "APPROVAL_REQUIRED",
+		approval: "double",
+		lockingStrategy: "target-runbook",
+		idempotencyStrategy: "request-id"
+	},
 	readOnly({
 		id: "github.ci",
 		title: "GitHub CI diagnostics",
@@ -11374,10 +11421,17 @@ function safeUser$1(value) {
 function safePath$1(value) {
 	return value.length > 0 && !value.includes("\0") && !/[\r\n]/.test(value);
 }
+/** Real and production contours must not learn unknown host keys. */
+function sshKnownHostsRequired(env = process.env) {
+	return env.NODE_ENV === "production" || env.EXECUTION_MODE === "real" || env.JARVIS_PROFILE === "production-infra" || env.JARVIS_SSH_REQUIRE_KNOWN_HOSTS === "1";
+}
 function sshArgs(call, env = process.env) {
 	const host = targetHost(call.target, "ssh", env);
 	const user = env.JARVIS_SSH_USER?.trim() ?? "";
 	if (!host || !safeUser$1(user)) return null;
+	const knownHosts = env.JARVIS_SSH_KNOWN_HOSTS_FILE?.trim() ?? "";
+	const key = env.JARVIS_SSH_KEY_FILE?.trim() ?? "";
+	if (sshKnownHostsRequired(env) && (!knownHosts || !safePath$1(knownHosts) || !key || !safePath$1(key))) return null;
 	const port = envInt(env.JARVIS_SSH_PORT, 22, 1, 65535);
 	const args = [
 		"-o",
@@ -11388,13 +11442,13 @@ function sshArgs(call, env = process.env) {
 		"ConnectionAttempts=1",
 		"-o",
 		"StrictHostKeyChecking=yes",
+		"-o",
+		"UpdateHostKeys=no",
 		"-p",
 		String(port)
 	];
-	const knownHosts = env.JARVIS_SSH_KNOWN_HOSTS_FILE?.trim();
 	if (knownHosts && safePath$1(knownHosts)) args.push("-o", `UserKnownHostsFile=${knownHosts}`);
-	const key = env.JARVIS_SSH_KEY_FILE?.trim();
-	if (key && safePath$1(key)) args.push("-i", key);
+	if (key && safePath$1(key)) args.push("-o", "IdentitiesOnly=yes", "-i", key);
 	const remote = sshCommand(call.runbook);
 	args.push(`${user}@${host}`, `sh -c ${shellQuote$1(remote)}`);
 	return args;
@@ -11444,6 +11498,11 @@ function runSshProbe(call, env = process.env) {
 	const args = sshArgs(call, env);
 	if (!args) {
 		const target = targetHost(call.target, "ssh", env);
+		if (target && sshKnownHostsRequired(env)) return {
+			called: false,
+			code: "NOT_CONFIGURED",
+			detail: "ssh: production/real требует заранее проверенный JARVIS_SSH_KNOWN_HOSTS_FILE и ключ JARVIS_SSH_KEY_FILE. Соединение не открывалось."
+		};
 		return {
 			called: false,
 			code: target ? "CREDENTIAL_UNAVAILABLE" : "NOT_CONFIGURED",
@@ -11622,7 +11681,30 @@ function timeoutMs$1(raw) {
 	if (!Number.isFinite(value)) return 1e4;
 	return Math.min(6e4, Math.max(2e3, Math.trunc(value)));
 }
+var CHANGE_RUNBOOKS = /* @__PURE__ */ new Set(["mikrotik.backup", "mikrotik.interface.set"]);
+function tlsVerificationDisabled(env) {
+	return env.JARVIS_MIKROTIK_TLS_INSECURE === "1" || env.NODE_TLS_REJECT_UNAUTHORIZED === "0";
+}
 function runRouterOs(call, env = process.env) {
+	if (tlsVerificationDisabled(env)) return {
+		called: false,
+		code: "POLICY_DENIED",
+		detail: "routeros: отключение проверки TLS запрещено. Запрос не отправлялся."
+	};
+	if (CHANGE_RUNBOOKS.has(call.runbook) && env.JARVIS_MIKROTIK_CHANGE_ENABLED !== "1") return {
+		called: false,
+		code: "ADAPTER_DISABLED",
+		detail: "routeros: изменяющие REST-вызовы выключены (JARVIS_MIKROTIK_CHANGE_ENABLED не равен 1). Соединение не открывалось."
+	};
+	if (call.runbook === "mikrotik.interface.set") {
+		const name = call.parameters?.name ?? "";
+		const disabled = call.parameters?.disabled ?? "";
+		if (!/^[A-Za-z0-9_-]{1,32}$/.test(name) || disabled !== "true" && disabled !== "false") return {
+			called: false,
+			code: "NOT_CONFIGURED",
+			detail: "routeros: имя интерфейса или флаг disabled не прошли серверную проверку."
+		};
+	}
 	const mode = {
 		"mikrotik.status": "status",
 		"mikrotik.interfaces": "interfaces",
@@ -11631,7 +11713,10 @@ function runRouterOs(call, env = process.env) {
 		"mikrotik.wireguard": "wireguard",
 		"wireguard.status": "wireguard",
 		"mikrotik.firewall.counters": "firewall-counters",
-		"mikrotik.wan.status": "wan-status"
+		"mikrotik.wan.status": "wan-status",
+		"mikrotik.logs": "logs",
+		"mikrotik.backup": "backup",
+		"mikrotik.interface.set": "interface-set"
 	}[call.runbook] ?? "";
 	if (!mode) return {
 		called: false,
@@ -11655,7 +11740,9 @@ function runRouterOs(call, env = process.env) {
 		env: {
 			...process.env,
 			...env,
-			JARVIS_ROUTEROS_TIMEOUT_MS: String(timeout)
+			JARVIS_ROUTEROS_TIMEOUT_MS: String(timeout),
+			JARVIS_MIKROTIK_INTERFACE: call.parameters?.name ?? "",
+			JARVIS_MIKROTIK_DISABLED: call.parameters?.disabled ?? ""
 		}
 	});
 	if (run.error?.code === "ETIMEDOUT") return {
@@ -11716,13 +11803,16 @@ function mailcowSshArgs(env = process.env) {
 		"ConnectionAttempts=1",
 		"-o",
 		"StrictHostKeyChecking=yes",
+		"-o",
+		"UpdateHostKeys=no",
 		"-p",
 		String(port)
 	];
 	const knownHosts = env.JARVIS_DOCKER_KNOWN_HOSTS_FILE || env.JARVIS_SSH_KNOWN_HOSTS_FILE;
-	if (knownHosts?.trim() && !/[\r\n\0]/.test(knownHosts)) args.push("-o", `UserKnownHostsFile=${knownHosts.trim()}`);
 	const key = env.JARVIS_DOCKER_SSH_KEY_FILE || env.JARVIS_SSH_KEY_FILE;
-	if (key?.trim() && !/[\r\n\0]/.test(key)) args.push("-i", key.trim());
+	if ((env.NODE_ENV === "production" || env.EXECUTION_MODE === "real" || env.JARVIS_PROFILE === "production-infra") && (!knownHosts?.trim() || !key?.trim())) return null;
+	if (knownHosts?.trim() && !/[\r\n\0]/.test(knownHosts)) args.push("-o", `UserKnownHostsFile=${knownHosts.trim()}`);
+	if (key?.trim() && !/[\r\n\0]/.test(key)) args.push("-o", "IdentitiesOnly=yes", "-i", key.trim());
 	const composeArg = shellQuote(compose);
 	const remote = [
 		"set -eu",
@@ -12306,7 +12396,12 @@ var DEPRECATED = {
 var ENABLED_NEEDS_HOST = [["JARVIS_SQL_ENABLED", "JARVIS_SQL_HOST"], ["JARVIS_DOCKER_ENABLED", "JARVIS_DOCKER_HOST"]];
 var actorSchema = object({
 	actorId: string().min(1),
-	role: _enum(["operator", "none"])
+	role: _enum([
+		"admin",
+		"operator",
+		"viewer",
+		"none"
+	])
 });
 var hostMapSchema = record(string().min(1), string().regex(/^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/));
 function enabled(value) {
@@ -12387,11 +12482,23 @@ function readiness(env = process.env, opts = {}) {
 		probes
 	};
 }
+var SECRET_PATTERNS$1 = [
+	[/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g, "[REDACTED_PRIVATE_KEY]"],
+	[/\b(password|passwd|secret|api[_-]?key|token|authorization)\b\s*[:=]\s*\S+/gi, "$1=[REDACTED]"],
+	[/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]"],
+	[/\bsk-[A-Za-z0-9]{8,}\b/g, "[REDACTED_KEY]"]
+];
+/** Removes credentials before they are hashed into the audit chain. */
+function redactSecrets(value) {
+	let next = value;
+	for (const [pattern, replacement] of SECRET_PATTERNS$1) next = next.replace(pattern, replacement);
+	return next;
+}
 function auditFile(dir = process.env.JARVIS_STATE_DIR || path.join(process.cwd(), "data")) {
 	return path.join(dir, "audit.jsonl");
 }
 function canon(row) {
-	return JSON.stringify([
+	const legacy = [
 		1,
 		row.at,
 		row.executionId,
@@ -12412,12 +12519,38 @@ function canon(row) {
 		row.result ?? "",
 		row.verification ?? "",
 		row.externalSink ?? "NOT_CONFIGURED"
+	];
+	if (!row.channel && !row.tool && row.error === void 0) return JSON.stringify(legacy);
+	return JSON.stringify([
+		2,
+		...legacy.slice(1),
+		row.channel ?? "",
+		row.tool ?? "",
+		row.error ?? ""
 	]);
+}
+function redactRow(row) {
+	const text = (value) => value === void 0 ? void 0 : redactSecrets(value);
+	return {
+		...row,
+		action: redactSecrets(row.action),
+		actor: redactSecrets(row.actor),
+		normalized: text(row.normalized),
+		result: text(row.result),
+		verification: text(row.verification),
+		error: text(row.error),
+		executor: text(row.executor),
+		target: text(row.target),
+		runbook: text(row.runbook),
+		tool: text(row.tool),
+		policy: text(row.policy)
+	};
 }
 function appendAudit(row, dir) {
 	const file = auditFile(dir);
 	const stateDir = path.dirname(file);
 	const stored = withStateLock(stateDir, () => {
+		if (!verifyAudit(stateDir).ok) throw new Error("audit integrity");
 		fs.mkdirSync(stateDir, { recursive: true });
 		let previousHash = "GENESIS";
 		if (fs.existsSync(file)) {
@@ -12425,7 +12558,7 @@ function appendAudit(row, dir) {
 			if (lines.length) previousHash = JSON.parse(lines[lines.length - 1]).hash || "GENESIS";
 		}
 		const body = {
-			...row,
+			...redactRow(row),
 			previousHash
 		};
 		const hash = createHash("sha256").update(canon(body)).digest("hex");
@@ -12438,6 +12571,57 @@ function appendAudit(row, dir) {
 	});
 	enqueueAuditDelivery(stored, stateDir);
 	return stored;
+}
+function verifyAudit(dir) {
+	const file = auditFile(dir);
+	if (!fs.existsSync(file)) return {
+		ok: true,
+		rows: 0,
+		reason: "ok"
+	};
+	const lines = fs.readFileSync(file, "utf8").trim().split("\n").filter(Boolean);
+	let previous = "GENESIS";
+	for (const line of lines) {
+		let row;
+		try {
+			row = JSON.parse(line);
+		} catch {
+			return {
+				ok: false,
+				rows: lines.length,
+				reason: "invalid-json"
+			};
+		}
+		if (!row || typeof row !== "object" || row.previousHash !== previous) return {
+			ok: false,
+			rows: lines.length,
+			reason: "chain"
+		};
+		const { hash, ...body } = row;
+		if (createHash("sha256").update(canon(body)).digest("hex") !== hash) return {
+			ok: false,
+			rows: lines.length,
+			reason: "hash"
+		};
+		previous = hash || previous;
+	}
+	return {
+		ok: true,
+		rows: lines.length,
+		reason: "ok"
+	};
+}
+/** Local alert outside the hash chain. A broken chain must not gain new rows. */
+function recordAuditIntegrityAlert(dir, alert) {
+	fs.mkdirSync(dir, { recursive: true });
+	const file = path.join(dir, "audit-integrity-alert.json");
+	const body = JSON.stringify({
+		...alert,
+		execution: "refused"
+	});
+	const temp = `${file}.${process.pid}.tmp`;
+	fs.writeFileSync(temp, body);
+	fs.renameSync(temp, file);
 }
 /**
 * Local hash chain detects a changed line, not a file that was replaced wholesale.
@@ -15117,6 +15301,10 @@ function parameterHash(parts) {
 		parameters
 	])).digest("hex");
 }
+function validAuditIds(value) {
+	if (value === void 0) return true;
+	return Array.isArray(value) && value.length <= 16 && value.every((item) => typeof item === "string" && /^[A-Za-z0-9-]{8,80}$/.test(item));
+}
 function validApproval(value) {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
 	const row = value;
@@ -15124,8 +15312,11 @@ function validApproval(value) {
 		"pending",
 		"confirmed",
 		"expired",
-		"mismatch"
-	].includes(String(row.status))) return false;
+		"mismatch",
+		"rejected",
+		"executing",
+		"failed"
+	].includes(String(row.status)) || !validAuditIds(row.auditIds)) return false;
 	return row.parameterHash === parameterHash({
 		runbook: row.runbook,
 		target: row.target,
@@ -15146,7 +15337,8 @@ function readAll(dir) {
 	if (!Array.isArray(parsed) || !parsed.every(validApproval)) throw new Error("approval state has invalid records");
 	return parsed.map((row) => ({
 		...row,
-		normalizedParameters: { ...row.normalizedParameters }
+		normalizedParameters: { ...row.normalizedParameters },
+		...row.auditIds ? { auditIds: [...row.auditIds] } : {}
 	}));
 }
 function writeAll(dir, rows) {
@@ -15178,16 +15370,128 @@ function createApproval(dir, row) {
 	});
 	return stored;
 }
-function findApproval(dir, id) {
-	return readAll(dir).find((item) => item.id === id) ?? null;
+/**
+* Single locked transition. Concurrent confirmations serialize on state.lock;
+* the loser sees `executing` / `confirmed` and cannot run the gateway again.
+*/
+function takeApproval(dir, input) {
+	return withStateLock(dir, () => {
+		const rows = retainedApprovals(readAll(dir), input.now);
+		const index = rows.findIndex((item) => item.id === input.id);
+		if (index < 0) return { action: "missing" };
+		const row = rows[index];
+		if (!row) return { action: "missing" };
+		if (row.actorId !== input.actorId) return {
+			action: "deny",
+			code: "ACTOR_DENIED",
+			row
+		};
+		if (row.expiresAt <= input.now || row.status === "expired") {
+			const expired = {
+				...row,
+				status: "expired"
+			};
+			rows[index] = expired;
+			writeAll(dir, rows);
+			return {
+				action: "deny",
+				code: "APPROVAL_EXPIRED",
+				row: expired
+			};
+		}
+		if (row.status !== "pending") return {
+			action: "deny",
+			code: row.status === "mismatch" ? "APPROVAL_MISMATCH" : "APPROVAL_CLOSED",
+			row
+		};
+		if (input.decision === "reject") {
+			const rejected = {
+				...row,
+				status: "rejected"
+			};
+			rows[index] = rejected;
+			writeAll(dir, rows);
+			return {
+				action: "rejected",
+				row: rejected
+			};
+		}
+		const expected = row.required === 2 && row.stage === 2 ? "CONFIRM FINAL " + row.id : "CONFIRM " + row.id;
+		if (input.phrase.trim() !== expected) return {
+			action: "deny",
+			code: "APPROVAL_MISMATCH",
+			row
+		};
+		if (input.expectedHash !== row.parameterHash || input.risk !== row.risk) {
+			const mismatch = {
+				...row,
+				status: "mismatch"
+			};
+			rows[index] = mismatch;
+			writeAll(dir, rows);
+			return {
+				action: "deny",
+				code: "APPROVAL_MISMATCH",
+				row: mismatch
+			};
+		}
+		if (input.policyDeny) return {
+			action: "policy",
+			row
+		};
+		if (row.required === 2 && row.stage === 1) {
+			const next = {
+				...row,
+				stage: 2
+			};
+			rows[index] = next;
+			writeAll(dir, rows);
+			return {
+				action: "advance",
+				row: next
+			};
+		}
+		const executing = {
+			...row,
+			status: "executing"
+		};
+		rows[index] = executing;
+		writeAll(dir, rows);
+		return {
+			action: "ready",
+			row: executing
+		};
+	});
 }
-function saveApproval(dir, next) {
-	if (!validApproval(next)) throw new Error("invalid approval record");
-	withStateLock(dir, () => {
-		const rows = retainedApprovals(readAll(dir));
-		const index = rows.findIndex((item) => item.id === next.id);
-		if (index < 0) throw new Error("approval record not found");
+function settleApproval(dir, id, status) {
+	return withStateLock(dir, () => {
+		const rows = readAll(dir);
+		const index = rows.findIndex((item) => item.id === id);
+		const current = index >= 0 ? rows[index] : void 0;
+		if (!current) throw new Error("approval record not found");
+		if (current.status !== "executing") throw new Error("approval is not executing");
+		const next = {
+			...current,
+			status
+		};
 		rows[index] = next;
+		writeAll(dir, rows);
+		return next;
+	});
+}
+function attachApprovalAudit(dir, id, auditId) {
+	if (!/^[A-Za-z0-9-]{8,80}$/.test(auditId)) return;
+	withStateLock(dir, () => {
+		const rows = readAll(dir);
+		const index = rows.findIndex((item) => item.id === id);
+		const current = index >= 0 ? rows[index] : void 0;
+		if (!current) return;
+		const ids = current.auditIds ?? [];
+		if (ids.includes(auditId)) return;
+		rows[index] = {
+			...current,
+			auditIds: [...ids, auditId].slice(-16)
+		};
 		writeAll(dir, rows);
 	});
 }
@@ -15439,6 +15743,33 @@ function maintenanceWindowOpen(now, env = process.env) {
 	if (from < to) return current >= from && current < to;
 	return current >= from || current < to;
 }
+function isJarvisRole(value) {
+	return value === "admin" || value === "operator" || value === "viewer" || value === "none";
+}
+/** Read diagnostics. `none` is not a session that can call the API. */
+function canRead(role) {
+	return role === "admin" || role === "operator" || role === "viewer";
+}
+/** Mutations, approvals and voice/agent execution. Viewers stay read-only. */
+function canExecute(role) {
+	return role === "admin" || role === "operator";
+}
+function sessionUsable(session, now = Date.now()) {
+	return Boolean(session && Number.isFinite(session.expiresAt) && session.expiresAt > now);
+}
+/**
+* Test-header auth is a dev/CI hook. Production never honors it, even if
+* `JARVIS_TEST_AUTH=1` was copied into the environment by mistake.
+*/
+function allowTestAuth(env = process.env) {
+	return env.NODE_ENV !== "production" && env.JARVIS_TEST_AUTH === "1";
+}
+function roleForTestActor(actor) {
+	if (actor === "admin1" || actor === "operator2") return "operator";
+	if (actor === "root") return "admin";
+	if (actor === "viewer1") return "viewer";
+	return "none";
+}
 var SHORT_YES = /^(да|yes|ok|ага|подтверждаю)$/i;
 var NO_CHANGE = /ничего не меняй|только скажи|только чтение|без изменений|только покажи/;
 var DYNAMIC = /Выполнить\s*\(/i;
@@ -15474,6 +15805,7 @@ function denyShell(text, reason, risk = 3) {
 }
 function finish(input, partial) {
 	const auditId = randomUUID();
+	const channel = input.channel ?? input.session?.channel ?? "web";
 	const row = appendAudit({
 		at: input.now.toISOString(),
 		executionId: auditId,
@@ -15491,7 +15823,10 @@ function finish(input, partial) {
 		executor: partial.executionCalled ? partial.trace.execution : "",
 		result: partial.code,
 		verification: partial.trace.verification,
-		externalSink: externalSinkLabel()
+		externalSink: externalSinkLabel(),
+		channel,
+		tool: partial.trace.runbook,
+		error: partial.verdict === "deny" ? partial.code : ""
 	}, input.stateDir);
 	return {
 		...partial,
@@ -15546,10 +15881,68 @@ function gateway(runbook, target, mode, stateDir, execute, parameters = {}) {
 		if (lockKey) locks.release(lockKey);
 	}
 }
+function safeGateway(runbook, target, mode, stateDir, execute, parameters = {}) {
+	try {
+		const result = gateway(runbook, target, mode, stateDir, execute, parameters);
+		return {
+			called: result.called,
+			code: result.code || "EXECUTION_FAILED",
+			detail: (result.detail || "пустой ответ исполнителя").slice(0, 4e3)
+		};
+	} catch {
+		return {
+			called: false,
+			code: "EXECUTION_FAILED",
+			detail: "исполнитель завершился ошибкой и не считается успехом"
+		};
+	}
+}
+function rememberAudit(stateDir, approvalId, auditId) {
+	if (!approvalId) return;
+	try {
+		attachApprovalAudit(stateDir, approvalId, auditId);
+	} catch {}
+}
+function refuseBrokenAudit(stateDir, now, session, requestId) {
+	let integrity;
+	try {
+		integrity = verifyAudit(stateDir);
+	} catch {
+		integrity = {
+			ok: false,
+			rows: 0,
+			reason: "invalid-json"
+		};
+	}
+	if (integrity.ok) return null;
+	try {
+		recordAuditIntegrityAlert(stateDir, {
+			at: now.toISOString(),
+			requestId,
+			actor: session?.accountId ?? "anonymous",
+			rows: integrity.rows,
+			reason: integrity.reason
+		});
+	} catch {}
+	return "Журнал аудита повреждён. Исполнение остановлено, новая запись в цепочку не добавлялась.";
+}
 function processRegisteredReadOnlyTool(input) {
 	const now = input.now ?? /* @__PURE__ */ new Date();
 	const mode = modeOf(input.mode);
 	const requestId = input.requestId || randomUUID();
+	const blocked = refuseBrokenAudit(input.stateDir, now, input.session, requestId);
+	if (blocked) return {
+		code: "AUDIT_INTEGRITY",
+		verdict: "deny",
+		mode,
+		requestId,
+		auditId: "",
+		runbook: input.runbook,
+		target: input.target,
+		executionCalled: false,
+		detail: blocked,
+		verification: "не выполнялась"
+	};
 	function finishRegistered(code, verdict, detail, book, targetId, executionCalled = false) {
 		const auditId = randomUUID();
 		const row = appendAudit({
@@ -15569,7 +15962,10 @@ function processRegisteredReadOnlyTool(input) {
 			executor: executionCalled ? book?.executor ?? "" : "",
 			result: code,
 			verification: book?.verification ?? "not executed",
-			externalSink: externalSinkLabel()
+			externalSink: externalSinkLabel(),
+			channel: input.channel ?? input.session?.channel ?? "agent",
+			tool: book?.id ?? input.runbook,
+			error: verdict === "deny" ? code : ""
 		}, input.stateDir);
 		return {
 			code,
@@ -15584,14 +15980,15 @@ function processRegisteredReadOnlyTool(input) {
 			verification: book?.verification ?? "not executed"
 		};
 	}
-	if (!input.session) return finishRegistered("AUTH_REQUIRED", "deny", "Нет серверной сессии.", null, input.target);
-	if (input.session.role !== "operator") return finishRegistered("ACTOR_DENIED", "deny", "Эта учётка не оператор.", null, input.target);
+	if (!sessionUsable(input.session, now.getTime())) return finishRegistered(input.session ? "AUTH_REQUIRED" : "AUTH_REQUIRED", "deny", input.session ? "Сессия истекла." : "Нет серверной сессии.", null, input.target);
+	if (!canRead(input.session.role)) return finishRegistered("ACTOR_DENIED", "deny", "Эта учётка не допущена.", null, input.target);
 	const book = runbookById(input.runbook);
 	if (!book) return finishRegistered("RUNBOOK_NOT_FOUND", "deny", "Runbook отсутствует в registry.", null, input.target);
 	const target = targetById(input.target);
 	if (!target) return finishRegistered("TARGET_NOT_FOUND", "deny", "Target отсутствует в inventory.", book, input.target);
 	if (book.targets.length > 0 && !book.targets.includes(target.id)) return finishRegistered("POLICY_DENIED", "deny", "Runbook не разрешён для этого target.", book, target.id);
 	if (!target.allowedRunbooks.includes(book.id)) return finishRegistered("POLICY_DENIED", "deny", "Inventory не разрешает этот runbook.", book, target.id);
+	if (!canExecute(input.session.role) && book.mutates) return finishRegistered("ACTOR_DENIED", "deny", "Этой роли нельзя менять инфраструктуру.", book, target.id);
 	if (book.mutates || book.risk !== 0 || book.approval !== "none") return finishRegistered("MUTATION_REQUIRES_APPROVAL", "deny", "AI loop не исполняет изменения автономно; требуется обычный approval-контур.", book, target.id);
 	const policy = evaluateRuntimePolicy(book.policy, {
 		mode,
@@ -15599,7 +15996,7 @@ function processRegisteredReadOnlyTool(input) {
 		maintenanceWindow: input.capabilities?.maintenanceWindow ?? maintenanceWindowOpen(now)
 	});
 	if (policy.code !== "ALLOW") return finishRegistered(policy.code === "APPROVAL_REQUIRED" ? "MUTATION_REQUIRES_APPROVAL" : "POLICY_DENIED", "deny", policy.code === "DENY" ? policy.reason : "Policy требует approval.", book, target.id);
-	const result = gateway(book, target.id, mode, input.stateDir, input.execute);
+	const result = safeGateway(book, target.id, mode, input.stateDir, input.execute);
 	const allowed = result.code === "OK" || result.code === "MOCK" || result.code === "DRY_RUN";
 	return finishRegistered(result.code, allowed ? "allow" : "deny", result.detail, book, target.id, result.called);
 }
@@ -15611,6 +16008,25 @@ function processCommand(input) {
 	const requestId = input.requestId || randomUUID();
 	const actorId = input.session?.accountId ?? "anonymous";
 	try {
+		const blocked = refuseBrokenAudit(input.stateDir, now, input.session, requestId);
+		if (blocked) {
+			increment("jarvis_commands_denied_total");
+			return {
+				code: "AUDIT_INTEGRITY",
+				verdict: "deny",
+				mode,
+				executionCalled: false,
+				auditId: "",
+				requestId,
+				trace: {
+					...emptyTrace(input.text.trim(), mode, "целостность аудита"),
+					audit: "BROKEN",
+					steps: ["audit-integrity"]
+				},
+				decision: denyShell(input.text.trim(), blocked),
+				approval: null
+			};
+		}
 		const stored = rememberRequest(input.stateDir, actorId, requestId, () => runOnce({
 			...input,
 			requestId,
@@ -15649,23 +16065,24 @@ function processCommand(input) {
 			requestId: current.requestId,
 			session: current.session,
 			stateDir: current.stateDir,
-			now: current.now
+			now: current.now,
+			channel: current.channel
 		};
-		if (!current.session) return finish(base, {
+		if (!sessionUsable(current.session, current.now.getTime())) return finish(base, {
 			code: "AUTH_REQUIRED",
 			verdict: "deny",
 			mode: current.mode,
 			executionCalled: false,
-			decision: denyShell(text, "Нет серверной сессии."),
+			decision: denyShell(text, current.session ? "Сессия истекла." : "Нет серверной сессии."),
 			approval: null,
 			trace: emptyTrace(text, current.mode, "нет сессии")
 		});
-		if (current.session.role !== "operator") return finish(base, {
+		if (!canRead(current.session.role)) return finish(base, {
 			code: "ACTOR_DENIED",
 			verdict: "deny",
 			mode: current.mode,
 			executionCalled: false,
-			decision: denyShell(text, "Эта учётка не оператор."),
+			decision: denyShell(text, "Эта учётка не допущена."),
 			approval: null,
 			trace: emptyTrace(text, current.mode, "учётка без прав")
 		});
@@ -15698,166 +16115,137 @@ function emptyTrace(original, mode, normalized) {
 	};
 }
 function confirmApproval(base, current, approvalId, confirmation) {
-	const row = findApproval(current.stateDir, approvalId);
-	if (!row || !current.session) return finish(base, {
-		code: "APPROVAL_MISMATCH",
-		verdict: "deny",
-		mode: current.mode,
-		executionCalled: false,
-		decision: denyShell(base.text, "Такой заявки нет или она не принадлежит текущей сессии."),
-		approval: null,
-		trace: emptyTrace(base.text, current.mode, "approval")
-	});
-	if (row.actorId !== current.session.accountId) return finish(base, {
+	if (!current.session || !canExecute(current.session.role)) return finish(base, {
 		code: "ACTOR_DENIED",
 		verdict: "deny",
 		mode: current.mode,
 		executionCalled: false,
-		decision: denyShell(base.text, "Заявка принадлежит другому actor."),
+		decision: denyShell(base.text, "Подтверждать может только admin или operator."),
 		approval: null,
-		trace: emptyTrace(base.text, current.mode, row.normalized)
-	});
-	if (row.status !== "pending") return finish(base, {
-		code: row.status === "expired" ? "APPROVAL_EXPIRED" : "APPROVAL_MISMATCH",
-		verdict: "deny",
-		mode: current.mode,
-		executionCalled: false,
-		decision: denyShell(base.text, "Заявка уже недействительна."),
-		approval: null,
-		trace: {
-			...emptyTrace(base.text, current.mode, row.normalized),
-			runbook: row.runbook,
-			target: row.target,
-			risk: row.risk
-		}
-	});
-	if (row.expiresAt <= current.now.getTime()) {
-		saveApproval(current.stateDir, {
-			...row,
-			status: "expired"
-		});
-		return finish(base, {
-			code: "APPROVAL_EXPIRED",
-			verdict: "deny",
-			mode: current.mode,
-			executionCalled: false,
-			decision: denyShell(base.text, "Срок подтверждения истёк."),
-			approval: null,
-			trace: {
-				...emptyTrace(base.text, current.mode, row.normalized),
-				runbook: row.runbook,
-				target: row.target,
-				risk: row.risk
-			}
-		});
-	}
-	const expected = row.required === 2 && row.stage === 2 ? "CONFIRM FINAL " + row.id : "CONFIRM " + row.id;
-	if (SHORT_YES.test(confirmation.trim()) || confirmation.trim() !== expected) return finish(base, {
-		code: "APPROVAL_MISMATCH",
-		verdict: "deny",
-		mode: current.mode,
-		executionCalled: false,
-		decision: denyShell(base.text, "Нужна точная серверная фраза подтверждения."),
-		approval: {
-			id: row.id,
-			phrase: expected,
-			expiresAt: row.expiresAt,
-			stage: row.stage
-		},
-		trace: {
-			...emptyTrace(base.text, current.mode, row.normalized),
-			runbook: row.runbook,
-			target: row.target,
-			risk: row.risk
-		}
+		trace: emptyTrace(base.text, current.mode, "approval")
 	});
 	const parsed = evaluate(base.text, OPERATORS[0], current.now);
 	const book = runbookForIntent(parsed.normalized) ?? inferRunbook(base.text);
 	const hinted = matchTarget(base.text) ?? (parsed.target === "fleet" ? targetById("fleet") : targetById(parsed.target));
 	const constraint = NO_CHANGE.test(base.text.toLowerCase()) ? "NO_CHANGE" : "нет";
 	const hash = book && hinted ? approvalHash(book, hinted.id, parsed, constraint) : "";
-	if (!book || !hinted || hash !== row.parameterHash || book.risk !== row.risk) {
-		saveApproval(current.stateDir, {
-			...row,
-			status: "mismatch"
-		});
-		return finish(base, {
-			code: "APPROVAL_MISMATCH",
-			verdict: "deny",
-			mode: current.mode,
-			executionCalled: false,
-			decision: denyShell(base.text, "Команда или её параметры изменились. Требуется новая заявка."),
-			approval: null,
-			trace: {
-				...emptyTrace(base.text, current.mode, parsed.normalized),
-				runbook: book?.id ?? "—",
-				target: hinted?.id ?? "—",
-				risk: book?.risk ?? 3
-			}
-		});
-	}
-	if (book.policy === "DENY_ALWAYS") return finish(base, {
-		code: "POLICY_DENIED",
-		verdict: "deny",
-		mode: current.mode,
-		executionCalled: false,
-		decision: denyShell(base.text, "DENY_ALWAYS нельзя отменить заявкой."),
-		approval: null,
-		trace: {
-			...emptyTrace(base.text, current.mode, parsed.normalized),
-			runbook: book.id,
-			target: hinted.id,
-			risk: book.risk,
-			policy: "DENY_ALWAYS"
-		}
-	});
-	const confirmedPolicy = evaluateRuntimePolicy(book.policy, {
+	const runtime = book ? evaluateRuntimePolicy(book.policy, {
 		mode: current.mode,
 		elevated: current.capabilities?.elevated ?? false,
 		maintenanceWindow: current.capabilities?.maintenanceWindow ?? maintenanceWindowOpen(current.now)
+	}) : {
+		code: "DENY",
+		reason: "Runbook отсутствует."
+	};
+	const taken = takeApproval(current.stateDir, {
+		id: approvalId,
+		actorId: current.session.accountId,
+		now: current.now.getTime(),
+		decision: current.approval?.decision === "reject" ? "reject" : "confirm",
+		phrase: confirmation,
+		expectedHash: hash,
+		risk: book?.risk ?? -1,
+		policyDeny: !book || book.policy === "DENY_ALWAYS" || runtime.code === "DENY"
 	});
-	if (confirmedPolicy.code === "DENY") return finish(base, {
+	if (taken.action === "missing") return finish(base, {
+		code: "APPROVAL_MISMATCH",
+		verdict: "deny",
+		mode: current.mode,
+		executionCalled: false,
+		decision: denyShell(base.text, "Такой заявки нет."),
+		approval: null,
+		trace: emptyTrace(base.text, current.mode, "approval")
+	});
+	if (taken.action === "rejected") {
+		const done = finish(base, {
+			code: "APPROVAL_REJECTED",
+			verdict: "deny",
+			mode: current.mode,
+			executionCalled: false,
+			decision: denyShell(base.text, "Заявка отклонена. Исполнитель не вызывался."),
+			approval: null,
+			trace: {
+				...emptyTrace(base.text, current.mode, taken.row.normalized),
+				runbook: taken.row.runbook,
+				target: taken.row.target,
+				risk: taken.row.risk
+			}
+		});
+		rememberAudit(current.stateDir, taken.row.id, done.auditId);
+		return done;
+	}
+	if (taken.action === "deny") {
+		const phrase = taken.row && taken.row.status === "pending" ? taken.row.required === 2 && taken.row.stage === 2 ? "CONFIRM FINAL " + taken.row.id : "CONFIRM " + taken.row.id : "";
+		const done = finish(base, {
+			code: taken.code,
+			verdict: "deny",
+			mode: current.mode,
+			executionCalled: false,
+			decision: denyShell(base.text, taken.code === "ACTOR_DENIED" ? "Заявка принадлежит другому actor." : "Заявка не подтверждена."),
+			approval: taken.row && taken.row.status === "pending" && phrase ? {
+				id: taken.row.id,
+				phrase,
+				expiresAt: taken.row.expiresAt,
+				stage: taken.row.stage
+			} : null,
+			trace: {
+				...emptyTrace(base.text, current.mode, taken.row?.normalized ?? "approval"),
+				runbook: taken.row?.runbook ?? "—",
+				target: taken.row?.target ?? "—",
+				risk: taken.row?.risk ?? 3
+			}
+		});
+		if (taken.row) rememberAudit(current.stateDir, taken.row.id, done.auditId);
+		return done;
+	}
+	if (taken.action === "policy" || !book || !hinted) return finish(base, {
 		code: "POLICY_DENIED",
 		verdict: "deny",
 		mode: current.mode,
 		executionCalled: false,
-		decision: denyShell(base.text, confirmedPolicy.reason, book.risk),
+		decision: denyShell(base.text, book?.policy === "DENY_ALWAYS" ? "DENY_ALWAYS нельзя отменить заявкой." : "Политика запрещает исполнение."),
 		approval: null,
 		trace: {
 			...emptyTrace(base.text, current.mode, parsed.normalized),
-			runbook: book.id,
-			target: hinted.id,
-			risk: book.risk,
-			policy: book.policy
+			runbook: book?.id ?? "—",
+			target: hinted?.id ?? "—",
+			risk: book?.risk ?? 3,
+			policy: book?.policy ?? "DENY"
 		}
 	});
-	if (row.required === 2 && row.stage === 1) {
-		const next = {
-			...row,
-			stage: 2
-		};
-		saveApproval(current.stateDir, next);
-		return finish(base, {
+	if (taken.action === "advance") {
+		const done = finish(base, {
 			code: "APPROVAL_REQUIRED",
 			verdict: "deny",
 			mode: current.mode,
 			executionCalled: false,
 			decision: denyShell(base.text, "Требуется второй серверный этап подтверждения.", book.risk),
 			approval: {
-				id: next.id,
-				phrase: "CONFIRM FINAL " + next.id,
-				expiresAt: next.expiresAt,
+				id: taken.row.id,
+				phrase: "CONFIRM FINAL " + taken.row.id,
+				expiresAt: taken.row.expiresAt,
 				stage: 2
 			},
 			trace: traceOf(base.text, parsed.normalized, "нет", hinted.id, book, current.mode, "не вызывался", "ждёт второе подтверждение")
 		});
+		rememberAudit(current.stateDir, taken.row.id, done.auditId);
+		return done;
 	}
-	saveApproval(current.stateDir, {
-		...row,
-		status: "confirmed"
-	});
-	const exec = gateway(book, hinted.id, current.mode, current.stateDir, current.execute, normalizedParametersOf(parsed));
+	const exec = safeGateway(book, hinted.id, current.mode, current.stateDir, current.execute, normalizedParametersOf(parsed));
 	const ok = exec.code === "DRY_RUN" || exec.code === "MOCK" || exec.code === "OK";
+	try {
+		settleApproval(current.stateDir, taken.row.id, ok ? "confirmed" : "failed");
+	} catch {
+		return finish(base, {
+			code: "EXECUTION_FAILED",
+			verdict: "deny",
+			mode: current.mode,
+			executionCalled: false,
+			decision: denyShell(base.text, "Состояние заявки не позволило зафиксировать результат. Успех не подменяется."),
+			approval: null,
+			trace: traceOf(base.text, parsed.normalized, "нет", hinted.id, book, current.mode, exec.detail, "проверка не выполнялась")
+		});
+	}
 	const decision = {
 		...parsed,
 		verdict: ok ? "allow" : "deny",
@@ -15872,7 +16260,7 @@ function confirmApproval(base, current, approvalId, confirmation) {
 			exec.detail
 		]
 	};
-	return finish(base, {
+	const done = finish(base, {
 		code: ok ? "OK" : exec.code === "NOT_CONFIGURED" ? "EXECUTION_DISABLED" : exec.code,
 		verdict: decision.verdict,
 		mode: current.mode,
@@ -15881,6 +16269,8 @@ function confirmApproval(base, current, approvalId, confirmation) {
 		approval: null,
 		trace: traceOf(base.text, parsed.normalized, "нет", hinted.id, book, current.mode, exec.detail, exec.code === "OK" ? book.verification : "проверка не выполнялась")
 	});
+	rememberAudit(current.stateDir, taken.row.id, done.auditId);
+	return done;
 }
 function inferRunbook(text) {
 	const source = text.toLowerCase();
@@ -15896,6 +16286,7 @@ function fresh(base, current) {
 	const constraint = NO_CHANGE.test(text.toLowerCase()) ? "NO_CHANGE" : "нет";
 	const book = runbookForIntent(parsed.normalized) ?? inferRunbook(text);
 	if (!book) return denied(base, current.mode, "—", "DENY", 3, "RUNBOOK_NOT_FOUND", "Такого runbook нет. Новый я не придумываю.", parsed.normalized, constraint);
+	if (book.mutates && !canExecute(current.session?.role)) return denied(base, current.mode, book.id, book.policy, book.risk, "ACTOR_DENIED", "Этой роли нельзя вызывать изменяющий инструмент.", parsed.normalized, constraint, book.risk);
 	if (book.policy === "DENY_ALWAYS" || parsed.forceDeny) return denied(base, current.mode, book.id, "DENY_ALWAYS", book.risk, "POLICY_DENIED", parsed.denyReason ?? "Запрещено всегда. Заявка это не отменяет.", parsed.normalized, constraint, book.risk);
 	const hinted = matchTarget(text) ?? (parsed.target === "inventory" || parsed.target === "все серверы" ? targetById("fleet") : targetById(parsed.target));
 	const stray = unknownLatinToken(text);
@@ -15930,7 +16321,7 @@ function fresh(base, current) {
 		decision.confirmation = book.approval === "double" ? "double" : "single";
 		decision.runbook = book.id;
 		decision.target = target.id;
-		return finish(base, {
+		const opened = finish(base, {
 			code: "APPROVAL_REQUIRED",
 			verdict: "deny",
 			mode: current.mode,
@@ -15944,8 +16335,10 @@ function fresh(base, current) {
 			},
 			trace: traceOf(text, parsed.normalized, constraint, target.id, book, current.mode, "заявка, исполнитель не вызывался", "ждёт заявку")
 		});
+		rememberAudit(current.stateDir, record.id, opened.auditId);
+		return opened;
 	}
-	const exec = gateway(book, target.id, current.mode, current.stateDir, current.execute, normalizedParametersOf(parsed));
+	const exec = safeGateway(book, target.id, current.mode, current.stateDir, current.execute, normalizedParametersOf(parsed));
 	const ok = exec.code === "DRY_RUN" || exec.code === "MOCK" || exec.code === "OK";
 	const decision = {
 		...parsed,
@@ -16035,7 +16428,7 @@ function actorsFromEnv(env = process.env) {
 		for (const [id, value] of Object.entries(parsed)) {
 			if (!/^[1-9]\d*$/.test(id)) continue;
 			const row = value;
-			if (row.role !== "operator" && row.role !== "none" || !row.actorId) continue;
+			if (typeof row.role !== "string" || !isJarvisRole(row.role) || !row.actorId) continue;
 			actors[id] = {
 				actorId: row.actorId,
 				role: row.role
@@ -16048,11 +16441,11 @@ function actorsFromEnv(env = process.env) {
 }
 function sessionForTelegram(userId, actors, now = Date.now()) {
 	const actor = actors[String(userId)];
-	if (!actor || actor.role !== "operator") return null;
+	if (!actor || !canExecute(actor.role)) return null;
 	return {
 		id: `tg-${userId}`,
 		accountId: actor.actorId,
-		role: "operator",
+		role: actor.role,
 		expiresAt: now + 9e5,
 		channel: "telegram"
 	};
@@ -16080,7 +16473,8 @@ function acceptTelegram(update, opts) {
 			requestId: `tg-${update.updateId}`,
 			session,
 			now: opts.now,
-			stateDir: opts.stateDir
+			stateDir: opts.stateDir,
+			channel: "telegram"
 		})
 	};
 }
@@ -16412,6 +16806,22 @@ function componentStatus(env = process.env) {
 	}
 	const actors = actorsFromEnv(env);
 	const telegramConfigured = Boolean(env.JARVIS_TELEGRAM_TOKEN?.trim() && env.JARVIS_TELEGRAM_WEBHOOK_SECRET?.trim());
+	let auditChain;
+	try {
+		const integrity = verifyAudit(dir);
+		auditChain = integrity.ok ? {
+			state: "OK",
+			detail: `rows=${integrity.rows}; live delivery not claimed`
+		} : {
+			state: "DEGRADED",
+			detail: `broken; rows=${integrity.rows}; reason=${integrity.reason}`
+		};
+	} catch {
+		auditChain = {
+			state: "DEGRADED",
+			detail: "audit chain unreadable"
+		};
+	}
 	const monitoring = monitoringStatus(env);
 	const auditSink = externalSinkLabel(env);
 	const onecValidation = onecValidationProbe(env);
@@ -16426,6 +16836,9 @@ function componentStatus(env = process.env) {
 			state: auditSink === "NOT_CONFIGURED" || /INVALID|ADAPTER_DISABLED/.test(auditSink) ? "DEGRADED" : "CONFIGURED",
 			detail: auditSink
 		},
+		auditChain,
+		sshLab: sshLabStatus(env),
+		routerosLab: routerosLabStatus(env),
 		scheduler: {
 			state: schedulerHealthy ? "OK" : "DEGRADED",
 			detail: schedulerHealthy ? `tasks=${scheduled}; active=${activeScheduled}` : "schedule state invalid"
@@ -16478,6 +16891,37 @@ function componentStatus(env = process.env) {
 				`testDb=${onecValidation.testDatabase}`
 			].join("; ")
 		}
+	};
+}
+function sshLabStatus(env) {
+	const required = sshKnownHostsRequired(env);
+	const known = Boolean(env.JARVIS_SSH_KNOWN_HOSTS_FILE?.trim());
+	const key = Boolean(env.JARVIS_SSH_KEY_FILE?.trim());
+	if (required && (!known || !key)) return {
+		state: "DEGRADED",
+		detail: "known_hosts и ключ обязательны; соединение не открывалось"
+	};
+	if (!required) return {
+		state: "OK",
+		detail: "live ssh не запрошен; соединение не открывалось"
+	};
+	return {
+		state: "CONFIGURED",
+		detail: "known_hosts и ключ заданы; live probe не выполнялся"
+	};
+}
+function routerosLabStatus(env) {
+	if (tlsVerificationDisabled(env)) return {
+		state: "DEGRADED",
+		detail: "проверка TLS отключена; соединение не открывалось"
+	};
+	if (!env.JARVIS_MIKROTIK_HOST?.trim()) return {
+		state: "NOT_CONFIGURED",
+		detail: "хост не задан; соединение не открывалось"
+	};
+	return {
+		state: "CONFIGURED",
+		detail: "хост задан; изменяющий REST не подключён; live probe не выполнялся"
 	};
 }
 var MAX_UTTERANCE_MS = 3e4;
@@ -17173,12 +17617,27 @@ function takeTokenInDir(dir, key, limit, windowMs, now) {
 function takeToken(key, limit, windowMs, now) {
 	return takeTokenInDir(stateDir$2(), key, limit, windowMs, now);
 }
+function bindingOf(value) {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+	const row = value;
+	if (typeof row.actorId !== "string" || !row.actorId.trim() || row.actorId.length > 128) return null;
+	if (typeof row.role !== "string" || !isJarvisRole(row.role)) return null;
+	return {
+		actorId: row.actorId,
+		role: row.role
+	};
+}
 function parseWebActors(raw) {
 	if (!raw?.trim()) return {};
 	try {
 		const parsed = JSON.parse(raw);
 		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-		return parsed;
+		const out = {};
+		for (const [id, value] of Object.entries(parsed)) {
+			const binding = bindingOf(value);
+			if (binding) out[id] = binding;
+		}
+		return out;
 	} catch {
 		return {};
 	}
@@ -17200,7 +17659,7 @@ function bindWebUser(userId, env = process.env) {
 	};
 	return {
 		binding,
-		code: binding.role === "operator" ? "OK" : "ACTOR_DENIED"
+		code: canRead(binding.role) ? "OK" : "ACTOR_DENIED"
 	};
 }
 function jsonMap(name) {
@@ -17227,7 +17686,48 @@ function makeSession(id, binding, channel) {
 		channel
 	};
 }
+function usableBinding(value) {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+	const row = value;
+	if (typeof row.actorId !== "string" || !row.actorId.trim()) return null;
+	if (typeof row.role !== "string" || !isJarvisRole(row.role)) return null;
+	return {
+		actorId: row.actorId,
+		role: row.role
+	};
+}
+function authCode(role) {
+	return canRead(role) ? "OK" : "ACTOR_DENIED";
+}
 async function authenticateRequest(request) {
+	if (allowTestAuth()) {
+		const actor = request.headers.get("x-jarvis-test-actor")?.trim();
+		if (!actor) return {
+			session: null,
+			code: "AUTH_REQUIRED",
+			channel: "test"
+		};
+		if (request.headers.get("x-jarvis-test-expired") === "1") return {
+			session: null,
+			code: "AUTH_REQUIRED",
+			channel: "test"
+		};
+		const role = roleForTestActor(actor);
+		const session = makeSession("test-" + actor, {
+			actorId: actor,
+			role
+		}, "test");
+		if (session.expiresAt <= Date.now()) return {
+			session: null,
+			code: "AUTH_REQUIRED",
+			channel: "test"
+		};
+		return {
+			session,
+			code: authCode(role),
+			channel: "test"
+		};
+	}
 	const telegramId = request.headers.get("x-telegram-id")?.trim();
 	if (telegramId) {
 		const supplied = request.headers.get("x-jarvis-telegram-secret") ?? "";
@@ -17237,20 +17737,35 @@ async function authenticateRequest(request) {
 			code: "AUTH_REQUIRED",
 			channel: "telegram"
 		};
-		const binding = jsonMap("JARVIS_TELEGRAM_ACTORS_JSON")[telegramId];
+		const binding = usableBinding(jsonMap("JARVIS_TELEGRAM_ACTORS_JSON")[telegramId]);
 		if (!binding) return {
 			session: null,
 			code: "ACTOR_DENIED",
 			channel: "telegram"
 		};
+		const session = makeSession("telegram-" + telegramId, binding, "telegram");
+		if (session.expiresAt <= Date.now()) return {
+			session: null,
+			code: "AUTH_REQUIRED",
+			channel: "telegram"
+		};
 		return {
-			session: makeSession("telegram-" + telegramId, binding, "telegram"),
-			code: binding.role === "operator" ? "OK" : "ACTOR_DENIED",
+			session,
+			code: authCode(binding.role),
 			channel: "telegram"
 		};
 	}
-	const { getSessionUser } = await import("./verify.server-LnlwrJ3m.mjs");
-	const user = await getSessionUser();
+	let user = null;
+	try {
+		const { getSessionUser } = await import("./verify.server-BLgpytsm.mjs");
+		user = await getSessionUser();
+	} catch {
+		return {
+			session: null,
+			code: "AUTH_REQUIRED",
+			channel: "web"
+		};
+	}
 	if (!user) return {
 		session: null,
 		code: "AUTH_REQUIRED",
@@ -17263,8 +17778,15 @@ async function authenticateRequest(request) {
 		channel: "web",
 		userId: user.id
 	};
+	const session = makeSession("web-" + user.id, resolved.binding, "web");
+	if (session.expiresAt <= Date.now()) return {
+		session: null,
+		code: "AUTH_REQUIRED",
+		channel: "web",
+		userId: user.id
+	};
 	return {
-		session: makeSession("web-" + user.id, resolved.binding, "web"),
+		session,
 		code: resolved.code,
 		channel: "web",
 		userId: user.id
@@ -17924,7 +18446,7 @@ async function runAgentTurn(text, opts) {
 		provider: null,
 		model: null
 	};
-	if (!opts.session || opts.session.role !== "operator") return {
+	if (!opts.session || !canExecute(opts.session.role)) return {
 		code: opts.session ? "ACTOR_DENIED" : "AUTH_REQUIRED",
 		answer: "AI agent requires an authenticated operator session.",
 		plan: null,
@@ -17971,7 +18493,8 @@ async function runAgentTurn(text, opts) {
 			session: opts.session,
 			stateDir: opts.stateDir,
 			now: opts.now,
-			mode: opts.mode
+			mode: opts.mode,
+			channel: "agent"
 		});
 		observations.push({
 			tool: step.tool,
@@ -18100,13 +18623,14 @@ function httpStatus(code) {
 	if (code === "AUTH_REQUIRED") return 401;
 	if (code === "ACTOR_DENIED" || code === "POLICY_DENIED") return 403;
 	if (code === "APPROVAL_REQUIRED" || code === "MUTATION_REQUIRES_APPROVAL") return 202;
-	if (code === "APPROVAL_EXPIRED" || code === "APPROVAL_MISMATCH" || code === "PRECONDITION_FAILED") return 409;
+	if (code === "APPROVAL_EXPIRED" || code === "APPROVAL_MISMATCH" || code === "APPROVAL_CLOSED" || code === "PRECONDITION_FAILED") return 409;
+	if (code === "APPROVAL_REJECTED") return 200;
 	if (code === "TARGET_NOT_FOUND" || code === "RUNBOOK_NOT_FOUND") return 404;
 	if (code === "SCHEMA_INVALID") return 400;
 	if (code === "PLAN_INVALID" || code === "PLAN_REJECTED") return 422;
 	if (code === "AGENT_DISABLED" || code === "LLM_UNAVAILABLE") return 503;
 	if (code === "DRY_RUN" || code === "CLARIFY" || code === "AGENT_PARTIAL") return 200;
-	if (code === "EXECUTION_DISABLED" || code === "NOT_CONFIGURED" || code === "CREDENTIAL_UNAVAILABLE" || code === "ADAPTER_DISABLED" || code === "SECURITY_STATE_UNAVAILABLE") return 503;
+	if (code === "EXECUTION_DISABLED" || code === "NOT_CONFIGURED" || code === "CREDENTIAL_UNAVAILABLE" || code === "ADAPTER_DISABLED" || code === "SECURITY_STATE_UNAVAILABLE" || code === "AUDIT_INTEGRITY") return 503;
 	if (code === "EXECUTION_TIMEOUT" || code === "VERIFICATION_FAILED") return 504;
 	return 403;
 }
@@ -18213,8 +18737,14 @@ async function handleCommand(request) {
 		"approved",
 		"executor",
 		"approvalStatus",
-		"parameters"
+		"parameters",
+		"operatorId",
+		"actorId"
 	]) if (key in body) forged[key] = body[key];
+	if (body.decision !== void 0 && body.decision !== "confirm" && body.decision !== "reject") return json$1({
+		code: "SCHEMA_INVALID",
+		verdict: "deny"
+	}, 400);
 	const requestIdRaw = typeof body.request_id === "string" ? body.request_id : typeof body.requestId === "string" ? body.requestId : "";
 	const requestId = requestIdRaw ? requestIdRaw.trim() : randomUUID();
 	if (!validRequestId(requestId)) return json$1({
@@ -18227,17 +18757,28 @@ async function handleCommand(request) {
 		code: "SCHEMA_INVALID",
 		verdict: "deny"
 	}, 400);
-	const approval = approvalId && confirmation ? {
+	const decision = body.decision === "reject" ? "reject" : "confirm";
+	const approval = decision === "reject" ? approvalId ? {
 		id: approvalId,
-		confirmation
+		confirmation: confirmation || "REJECT",
+		decision
+	} : void 0 : approvalId && confirmation ? {
+		id: approvalId,
+		confirmation,
+		decision
 	} : void 0;
+	if (decision === "reject" && !approval) return json$1({
+		code: "SCHEMA_INVALID",
+		verdict: "deny"
+	}, 400);
 	const result = processCommand({
 		text: body.text,
 		requestId,
 		session: auth.session,
 		stateDir: stateDir$1(),
 		forged,
-		approval
+		approval,
+		channel: auth.channel ?? "web"
 	});
 	return json$1(result, httpStatus(result.code));
 }
@@ -18286,7 +18827,7 @@ async function guardWebPost(request, bucket, limit) {
 		ok: false,
 		response: json$1({ code: auth.code }, httpStatus(auth.code))
 	};
-	if (auth.session.role !== "operator") return {
+	if (!canExecute(auth.session.role)) return {
 		ok: false,
 		response: json$1({ code: "ACTOR_DENIED" }, 403)
 	};
@@ -18335,7 +18876,7 @@ var Route$8 = createFileRoute("/status")({ server: { handlers: { GET: async () =
 		headers: { "cache-control": "no-store" }
 	});
 } } } });
-var $$splitComponentImporter = () => import("./admin.audit-CLFgTolY.mjs");
+var $$splitComponentImporter = () => import("./admin.audit-BkUevC1r.mjs");
 var Route$7 = createFileRoute("/admin/audit")({ component: lazyRouteComponent($$splitComponentImporter, "component") });
 var Route$6 = createFileRoute("/api/agent")({ server: { handlers: { POST: async ({ request }) => handleAgentCommand(request) } } });
 var Route$5 = createFileRoute("/api/commands")({ server: { handlers: { POST: async ({ request }) => handleCommand(request) } } });
@@ -18404,6 +18945,7 @@ function runVoiceWav(wavPath, opts) {
 		originalAudioId: path.basename(wavPath)
 	};
 	const technical = processCommand({
+		channel: "voice",
 		text: normalized.text,
 		requestId: opts.requestId || randomUUID(),
 		session: opts.session,
@@ -18454,7 +18996,7 @@ function convertToWav(source, env = process.env) {
 }
 function acceptTelegramVoice(update, opts) {
 	const actors = opts.actors ?? actorsFromEnv(opts.env);
-	if (!actors[String(update.userId)] || actors[String(update.userId)].role !== "operator") return { code: "ACTOR_DENIED" };
+	if (!actors[String(update.userId)] || !canExecute(actors[String(update.userId)].role)) return { code: "ACTOR_DENIED" };
 	if (!update.voiceFileId) {
 		const text = acceptTelegram(update, {
 			stateDir: opts.stateDir,
@@ -18679,7 +19221,7 @@ async function dispatchTelegram(body, opts) {
 	const env = opts.env ?? process.env;
 	const actors = opts.actors ?? actorsFromEnv(env);
 	const actor = actors[String(parsed.update.userId)];
-	if (!actor || actor.role !== "operator") return {
+	if (!actor || !canExecute(actor.role)) return {
 		code: "ACTOR_DENIED",
 		sent: false
 	};
@@ -19162,7 +19704,8 @@ async function runVoiceConversation(text, opts) {
 	const command = opts.command ?? ((input) => {
 		const safe = {
 			...input,
-			execute: voiceDoesNotExecute
+			execute: voiceDoesNotExecute,
+			channel: "voice"
 		};
 		delete safe.approval;
 		return processCommand(safe);
