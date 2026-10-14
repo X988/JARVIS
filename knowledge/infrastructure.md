@@ -16,6 +16,7 @@
 - Voice: speech-to-text with faster-whisper `large-v3-turbo` on CUDA; text-to-speech with Piper `ru_RU-ruslan-medium` (`/opt/jarvis/venv/bin/piper`, models in `/opt/jarvis/models`).
 - Execution mode: `EXECUTION_MODE=real` since 2026-10-14. Read-only tools run; change tools need approval; voice never executes tools.
 - Backups before every change: `~/jarvis-backups/<name>-<timestamp>/` (`data-env.tgz` holds `.env` and `data/`; `head.txt` holds the git commit).
+- MikroMCP v1.13.2 (container `mikromcp`, `~/mikromcp`, managed by the other assistant): MCP server on port 8787 at `/mcp`, identity `jarvis-ro` (read-only), router id `mikrotik-kp`. JARVIS calls it over 127.0.0.1 for router reads (status, interfaces, DHCP, routes, firewall, log, WireGuard) and falls back to its own REST client if MikroMCP fails.
 - Secrets for integrations live in `~/jarvis-secrets/` (mode 700) and in `.env` (mode 600). Never copy them into git or chat.
 
 ## 192.168.0.184 — Prediction-League (сайт прогнозов)
