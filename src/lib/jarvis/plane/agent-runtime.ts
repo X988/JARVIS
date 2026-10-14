@@ -105,6 +105,7 @@ export async function runAgentTurn(
     fetch?: FetchLike;
     planner?: Planner;
     toolRunner?: ToolRunner;
+    team?: typeof runAnalystTeam; // deterministic test injection; never exposed over HTTP
   },
 ): Promise<AgentTurnResult> {
   const env = opts.env ?? process.env;
@@ -205,7 +206,7 @@ export async function runAgentTurn(
     (item) => item.code === "OK" && item.executionCalled && Boolean(item.auditId),
   );
   const team = env.JARVIS_ANALYST_TEAM_ENABLED === "1" && canAnalyze
-    ? await runAnalystTeam(
+    ? await (opts.team ?? runAnalystTeam)(
         { request: text, objective: planned.plan.objective, observations },
         { env, fetch: opts.fetch },
       )
@@ -229,7 +230,7 @@ export async function runAgentTurn(
   return {
     code: blockedMutation
       ? "MUTATION_REQUIRES_APPROVAL"
-      : hasFailure
+      : hasFailure || (team !== null && !team.ok)
         ? "AGENT_PARTIAL"
         : allDryRun
           ? "DRY_RUN"
