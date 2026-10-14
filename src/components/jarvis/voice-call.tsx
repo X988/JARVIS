@@ -5,8 +5,10 @@ import { useJarvis } from "@/lib/jarvis/store";
 import { bargeIn, MIN_SPEECH_MS, PRE_ROLL_MS } from "@/lib/jarvis/voice/gate";
 import {
   LISTEN_INITIAL,
+  MAX_CLIENT_UTTERANCE_MS,
   SPEECH_RMS,
   concatFloats,
+  limitVoiceSamples,
   downsampleAverage,
   encodeWavPcm16,
   rmsOf,
@@ -244,10 +246,9 @@ export function VoiceCall({
           return;
         }
         setTranscript(heard.text);
-        const turn = await postVoiceTurn(heard.text, `voice-${crypto.randomUUID()}`);
-        if (!alive) return;
+        const turn = await postVoiceTurn(heard.text, `voice-${crypto.randomUUID()}`, hearCtrl.signal);
+        if (!alive || ticket !== gen) return;
         showVoiceResult(turn, heard.raw && heard.raw !== heard.text ? heard.raw : undefined);
-        if (ticket !== gen) return;
         if (!turn.spoken) {
           setNote(failText(turn.code));
           phaseNow = "listening";
@@ -329,7 +330,7 @@ export function VoiceCall({
         prerollSamples -= preroll[0].length;
         preroll.shift();
       }
-      const stepped = stepListen(listen, rms, 30);
+      const stepped = stepListen(listen, rms, 30, { maxUtteranceMs: MAX_CLIENT_UTTERANCE_MS });
       listen = stepped.state;
       if (stepped.event === "start") {
         uttered = preroll.map((chunk) => chunk.slice());
@@ -341,7 +342,7 @@ export function VoiceCall({
       }
       if (stepped.event === "endpoint" || stepped.event === "max") {
         uttered.push(down);
-        const pcm = concatFloats(uttered);
+        const pcm = limitVoiceSamples(concatFloats(uttered));
         uttered = [];
         preroll = [];
         prerollSamples = 0;
@@ -408,21 +409,32 @@ export function VoiceCall({
       sink.connect(context.destination);
     };
 
-    const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
-    void context.audioWorklet.addModule(url).then(() => {
-      URL.revokeObjectURL(url);
-      if (stopped || closed) return;
-      worklet = new AudioWorkletNode(context, "jarvis-capture");
-      worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
-        if (event.data) pushNative(event.data);
-      };
-      source.connect(worklet);
-      worklet.connect(sink);
-      sink.connect(context.destination);
-    }).catch(() => {
-      URL.revokeObjectURL(url);
-      if (!stopped && !closed) attachProcessor();
-    });
+    // AudioWorklet may be unavailable or disabled by browser policy.
+    // Always leave a ScriptProcessor fallback rather than a silent "listening" screen.
+    if (!context.audioWorklet?.addModule) {
+      attachProcessor();
+    } else {
+      const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
+      try {
+        void context.audioWorklet.addModule(url).then(() => {
+          URL.revokeObjectURL(url);
+          if (stopped || closed) return;
+          worklet = new AudioWorkletNode(context, "jarvis-capture");
+          worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
+            if (event.data) pushNative(event.data);
+          };
+          source.connect(worklet);
+          worklet.connect(sink);
+          sink.connect(context.destination);
+        }).catch(() => {
+          URL.revokeObjectURL(url);
+          if (!stopped && !closed) attachProcessor();
+        });
+      } catch {
+        URL.revokeObjectURL(url);
+        if (!stopped && !closed) attachProcessor();
+      }
+    }
 
     return () => {
       stopped = true;
