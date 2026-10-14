@@ -1,5 +1,7 @@
 # Runbook: site down (JARVIS web or another web app)
 
+Ключевые слова: сайт не работает, сайт упал, не открывается, ошибка 502, JARVIS недоступен, веб-интерфейс лежит, Caddy, прокси.
+
 1. Check from the host itself whether it is the app or the front proxy:
    - JARVIS: `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8095/ready`, then `https://192.168.0.156:9443/` through Caddy.
    - Prediction-League (.184): only check it if the user asks; do not change it.

@@ -117,6 +117,19 @@ describe("agent uses knowledge", () => {
     assert.match(prompt, /Gateway MikroTik/);
   });
 
+  it("answers how-to questions from knowledge without calling the planner or tools", async () => {
+    const fetchImpl = (async () => ({ ok: true, status: 200, headers: new Headers(), json: async () => ({ message: { content: JSON.stringify({ answer: "Откат: checkout коммита из head.txt и рестарт." }) } }) })) as never;
+    let planned = false;
+    const result = await runAgentTurn("Как откатить деплой JARVIS?", {
+      session, stateDir: tmp(), env, fetch: fetchImpl,
+      planner: (async () => { planned = true; return { ok: false, code: "X", detail: "" }; }) as never,
+      retriever: async () => [{ id: "r", source: "knowledge/runbooks/deploy-rollback.md", heading: "Runbook", text: "Rollback", score: 0.8 }],
+    });
+    assert.equal(planned, false);
+    assert.equal(result.code, "OK");
+    assert.match(result.answer, /Источник: knowledge\/runbooks\/deploy-rollback\.md/);
+  });
+
   it("knowledge append through the agent needs confirmation", async () => {
     const dir = tmp();
     const first = await runAgentTurn("запомни: камера на складе 192.168.0.77", { session, stateDir: dir, env, planner, retriever: async () => [] });

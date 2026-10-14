@@ -39,6 +39,8 @@ type Planner = typeof planAgentTurn;
 type ToolRunner = typeof processRegisteredReadOnlyTool;
 type Retriever = typeof retrieveKnowledge;
 
+const INFO_QUESTION = /^(как|что|где|какой|какая|какое|какие|кто|зачем|почему|сколько|расскажи|объясни|how|what|where|which|who|why)(?=[\s,?!]|$)/iu;
+
 async function answerFromKnowledge(
   request: string,
   hits: Hit[],
@@ -180,6 +182,16 @@ export async function runAgentTurn(
 
   const hits = await (opts.retriever ?? retrieveKnowledge)(text, { env, stateDir: opts.stateDir }).catch(() => [] as Hit[]);
   const sources = [...new Set(hits.map((hit) => hit.source))];
+
+  // Informational "how/what/where" questions with a strong knowledge hit are answered
+  // from the knowledge base directly, without running tools.
+  const directScore = Number(env.JARVIS_KNOWLEDGE_DIRECT_SCORE) || 0.6;
+  if (INFO_QUESTION.test(text.trim()) && hits.length > 0 && hits[0].score >= directScore) {
+    const grounded = await answerFromKnowledge(text, hits, "", { env, fetch: opts.fetch });
+    if (grounded) {
+      return { code: "OK", answer: grounded.answer, plan: null, observations: [], provider: grounded.provider, model: grounded.model, sources };
+    }
+  }
 
   const planner = opts.planner ?? planAgentTurn;
   const planned = await planner(text, { env, fetch: opts.fetch });

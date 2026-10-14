@@ -1,5 +1,7 @@
 # Runbook: audit log check
 
+Ключевые слова: журнал аудита, аудит, цепочка хэшей, audit chain, целостность журнала, проверить журнал, сломана цепочка.
+
 JARVIS writes every command, tool call and knowledge append to a hash-chained log, `data/audit.jsonl`. Each row's `previousHash` links back to `GENESIS`.
 
 1. `curl -s http://127.0.0.1:8095/ready` should show `auditChain` with state `OK` and the row count.

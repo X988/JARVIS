@@ -35,7 +35,7 @@ function listMarkdown(dir: string): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) out.push(...listMarkdown(full));
-    else if (entry.isFile() && entry.name.endsWith(".md")) out.push(full);
+    else if (entry.isFile() && entry.name.endsWith(".md") && entry.name.toLowerCase() !== "readme.md") out.push(full);
   }
   return out.sort();
 }
@@ -129,7 +129,7 @@ export async function buildIndex(
   const missing = chunks.filter((chunk) => !cache.vectors[chunk.id]);
   for (let i = 0; i < missing.length; i += 16) {
     const batch = missing.slice(i, i + 16);
-    const vectors = await embed(batch.map((chunk) => `search_document: ${chunk.heading}\n${chunk.text}`));
+    const vectors = await embed(batch.map((chunk) => `search_document: ${chunk.source} — ${chunk.heading}\n${chunk.text}`));
     batch.forEach((chunk, index) => {
       cache.vectors[chunk.id] = vectors[index];
     });
@@ -143,6 +143,26 @@ export async function buildIndex(
   return chunks.map((chunk) => ({ ...chunk, vector: cache.vectors[chunk.id] }));
 }
 
+const STOP = new Set(["как", "что", "где", "какой", "какая", "какие", "это", "the", "and", "for", "или", "для", "если", "надо", "нужно", "jarvis"]);
+
+function stems(text: string): Set<string> {
+  return new Set(
+    (text.toLowerCase().match(/[\p{L}\d.]+/gu) ?? [])
+      .filter((word) => word.length >= 3 && !STOP.has(word))
+      .map((word) => word.slice(0, 5)),
+  );
+}
+
+/** Share of query stems present in the chunk (crude Russian-friendly prefix match). */
+export function lexicalScore(query: string, chunk: Chunk): number {
+  const q = stems(query);
+  if (q.size === 0) return 0;
+  const doc = stems(`${chunk.source} ${chunk.heading} ${chunk.text}`);
+  let hit = 0;
+  for (const stem of q) if (doc.has(stem)) hit += 1;
+  return hit / q.size;
+}
+
 export async function retrieve(
   query: string,
   index: IndexedChunk[],
@@ -152,7 +172,14 @@ export async function retrieve(
   if (!query.trim() || index.length === 0) return [];
   const [vector] = await embed([`search_query: ${query}`]);
   return index
-    .map((chunk) => ({ id: chunk.id, source: chunk.source, heading: chunk.heading, text: chunk.text, score: cosine(vector, chunk.vector) }))
+    // Hybrid score: embeddings (nomic-embed-text is English-centric) plus lexical overlap.
+    .map((chunk) => ({
+      id: chunk.id,
+      source: chunk.source,
+      heading: chunk.heading,
+      text: chunk.text,
+      score: 0.6 * cosine(vector, chunk.vector) + 0.4 * lexicalScore(query, chunk),
+    }))
     .filter((hit) => hit.score >= (opts.minScore ?? 0.5))
     .sort((a, b) => b.score - a.score)
     .slice(0, opts.k ?? 4);

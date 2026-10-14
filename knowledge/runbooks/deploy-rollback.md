@@ -1,5 +1,7 @@
 # Runbook: deploy and rollback JARVIS on .156
 
+Ключевые слова: как откатить деплой, откат, rollback, развернуть ветку, деплой JARVIS, обновление, восстановить из бэкапа, перезапуск jarvis.service, вернуть предыдущую версию.
+
 Deploy:
 1. Back up: `B=~/jarvis-backups/pre-<name>-$(date +%Y%m%d-%H%M%S); mkdir -p $B; tar -czf $B/data-env.tgz --exclude=data/pglite .env data; git rev-parse HEAD > $B/head.txt`.
 2. `cd ~/jarvis && git fetch origin <branch> && git checkout -B <branch> FETCH_HEAD`. Run `npm ci` only if `package-lock.json` changed.

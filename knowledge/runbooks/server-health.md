@@ -1,5 +1,7 @@
 # Runbook: server health check
 
+Ключевые слова: проверь состояние сервера, здоровье сервера, сервер не отвечает, диск, память, uptime, службы, server.health, fleet.
+
 Goal: check whether a server is healthy without changing it.
 
 1. In JARVIS, ask "проверь состояние <host>" or run the tool `server.health` with target `<host>` (or `fleet` for all servers).

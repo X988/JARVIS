@@ -1,5 +1,7 @@
 # Operator workflow rules
 
+Ключевые слова: правила работы, порядок изменений, pull request, тесты, бэкап, деплой, мерж, секреты, force push.
+
 These rules apply to every change to JARVIS or to servers:
 
 1. Code changes go to a new branch and a pull request. Never push directly to `main`. Never force-push.
