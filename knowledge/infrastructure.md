@@ -1,7 +1,7 @@
 # Office infrastructure
 
 ## Network
-- Office LAN: 192.168.0.0/24, domain `energo.local`. Gateway: MikroTik router at 192.168.0.250 (identity `MikroTik-KP`; inventory id `rb5009`; the user calls it the CCR1009).
+- Office LAN: 192.168.0.0/24, domain `energo.local`. Gateway: MikroTik **CCR1009** router at 192.168.0.250 (identity `MikroTik-KP`). In JARVIS config the router target id is still `rb5009`; that is a legacy id kept so existing config keeps working. The hardware is a CCR1009, not an RB5009.
 - The router's DHCP server hands out DNS servers 192.168.0.173 and 192.168.0.113, which are probably the domain controllers. A second DHCP network, 192.168.55.0/24, runs on a VLAN.
 - Router management that JARVIS uses: REST over HTTPS on port 443 (`www-ssl`, certificate `jarvis-rest` signed by `jarvis-ca`), allowed only from 192.168.0.156. The API port 8728 and Winbox on port 54321 are also open on the LAN. SSH (22) and HTTP (80) are closed.
 - JARVIS reads the router as user `jarvis-read` (group policy `read,api,rest-api`; no write access). Router change tools are disabled (`JARVIS_MIKROTIK_CHANGE_ENABLED=0`).
