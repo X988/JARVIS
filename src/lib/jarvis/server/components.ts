@@ -4,7 +4,9 @@ import { actorsFromEnv } from "../plane/telegram.ts";
 import { loadTasks } from "../plane/scheduler.ts";
 import { loadJobs } from "../plane/jobs.ts";
 import { monitoringStatus } from "../monitoring.ts";
-import { externalSinkLabel } from "../audit-log.ts";
+import { externalSinkLabel, verifyAudit } from "../audit-log.ts";
+import { sshKnownHostsRequired } from "./host-probes.ts";
+import { tlsVerificationDisabled } from "./routeros.ts";
 import { onecValidationProbe } from "../onec/validation.ts";
 
 export type ComponentState = "OK" | "CONFIGURED" | "NOT_CONFIGURED" | "DEGRADED";
@@ -57,6 +59,15 @@ export function componentStatus(env: NodeJS.ProcessEnv = process.env): Record<st
 
   const actors = actorsFromEnv(env);
   const telegramConfigured = Boolean(env.JARVIS_TELEGRAM_TOKEN?.trim() && env.JARVIS_TELEGRAM_WEBHOOK_SECRET?.trim());
+  let auditChain: ComponentStatus;
+  try {
+    const integrity = verifyAudit(dir);
+    auditChain = integrity.ok
+      ? { state: "OK", detail: `rows=${integrity.rows}; live delivery not claimed` }
+      : { state: "DEGRADED", detail: `broken; rows=${integrity.rows}; reason=${integrity.reason}` };
+  } catch {
+    auditChain = { state: "DEGRADED", detail: "audit chain unreadable" };
+  }
   const monitoring = monitoringStatus(env);
   const auditSink = externalSinkLabel(env);
   const onecValidation = onecValidationProbe(env);
@@ -81,6 +92,9 @@ export function componentStatus(env: NodeJS.ProcessEnv = process.env): Record<st
           : "CONFIGURED",
       detail: auditSink,
     },
+    auditChain,
+    sshLab: sshLabStatus(env),
+    routerosLab: routerosLabStatus(env),
     scheduler: {
       state: schedulerHealthy ? "OK" : "DEGRADED",
       detail: schedulerHealthy
@@ -117,5 +131,29 @@ export function componentStatus(env: NodeJS.ProcessEnv = process.env): Record<st
         `testDb=${onecValidation.testDatabase}`,
       ].join("; "),
     },
+  };
+}
+
+function sshLabStatus(env: NodeJS.ProcessEnv): ComponentStatus {
+  const required = sshKnownHostsRequired(env);
+  const known = Boolean(env.JARVIS_SSH_KNOWN_HOSTS_FILE?.trim());
+  const key = Boolean(env.JARVIS_SSH_KEY_FILE?.trim());
+  if (required && (!known || !key)) {
+    return { state: "DEGRADED", detail: "known_hosts и ключ обязательны; соединение не открывалось" };
+  }
+  if (!required) return { state: "OK", detail: "live ssh не запрошен; соединение не открывалось" };
+  return { state: "CONFIGURED", detail: "known_hosts и ключ заданы; live probe не выполнялся" };
+}
+
+function routerosLabStatus(env: NodeJS.ProcessEnv): ComponentStatus {
+  if (tlsVerificationDisabled(env)) {
+    return { state: "DEGRADED", detail: "проверка TLS отключена; соединение не открывалось" };
+  }
+  if (!env.JARVIS_MIKROTIK_HOST?.trim()) {
+    return { state: "NOT_CONFIGURED", detail: "хост не задан; соединение не открывалось" };
+  }
+  return {
+    state: "CONFIGURED",
+    detail: "хост задан; изменяющий REST не подключён; live probe не выполнялся",
   };
 }

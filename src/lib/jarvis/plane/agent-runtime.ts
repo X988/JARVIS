@@ -1,4 +1,4 @@
-import type { Session } from "../server/session.ts";
+import { canExecute, type Session } from "../server/session.ts";
 import {
   processRegisteredReadOnlyTool,
   type Mode,
@@ -117,7 +117,7 @@ export async function runAgentTurn(
       model: null,
     };
   }
-  if (!opts.session || opts.session.role !== "operator") {
+  if (!opts.session || !canExecute(opts.session.role)) {
     return {
       code: opts.session ? "ACTOR_DENIED" : "AUTH_REQUIRED",
       answer: "AI agent requires an authenticated operator session.",
@@ -177,6 +177,7 @@ export async function runAgentTurn(
       stateDir: opts.stateDir,
       now: opts.now,
       mode: opts.mode,
+      channel: "agent",
     });
     observations.push({
       tool: step.tool,

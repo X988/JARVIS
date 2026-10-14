@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { actorsFromEnv, sessionForTelegram, type TelegramActor, type TelegramUpdate } from "./telegram.ts";
+import { canExecute } from "../server/session.ts";
 import { runHybridTurn } from "./hybrid.ts";
 import { acceptTelegramVoice } from "../voice/turn.ts";
 import { voiceLine } from "../voice/gate.ts";
@@ -280,7 +281,7 @@ export async function dispatchTelegram(
   const env = opts.env ?? process.env;
   const actors = opts.actors ?? actorsFromEnv(env);
   const actor = actors[String(parsed.update.userId)];
-  if (!actor || actor.role !== "operator") return { code: "ACTOR_DENIED", sent: false };
+  if (!actor || !canExecute(actor.role)) return { code: "ACTOR_DENIED", sent: false };
 
   await opts.api.sendChatAction?.(parsed.chatId, "typing").catch(() => false);
 

@@ -127,6 +127,18 @@ describe("config", () => {
     assert.equal(status.database.state, "CONFIGURED");
     assert.equal(status.llm.state, "CONFIGURED");
     assert.equal(status.inventory.state, "OK");
+    assert.equal(status.auditChain.state, "OK");
+    assert.equal(status.sshLab.state, "OK");
+    assert.equal(status.routerosLab.state, "NOT_CONFIGURED");
+    const lab = componentStatus({
+      EXECUTION_MODE: "real",
+      JARVIS_SSH_KNOWN_HOSTS_FILE: "",
+      JARVIS_MIKROTIK_TLS_INSECURE: "1",
+      JARVIS_MIKROTIK_HOST: "rb5009.example",
+    });
+    assert.equal(lab.sshLab.state, "DEGRADED");
+    assert.equal(lab.routerosLab.state, "DEGRADED");
+    assert.match(lab.routerosLab.detail, /соединение не открывалось/);
     assert.equal(status.onecValidation.state, "DEGRADED");
     assert.match(status.onecValidation.detail, /level=FALLBACK_ONLY/);
 
