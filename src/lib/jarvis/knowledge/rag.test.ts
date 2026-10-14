@@ -130,6 +130,16 @@ describe("agent uses knowledge", () => {
     assert.match(result.answer, /Источник: knowledge\/runbooks\/deploy-rollback\.md/);
   });
 
+  it("live-state questions skip the knowledge short-circuit and reach the planner", async () => {
+    let planned = false;
+    await runAgentTurn("Какая загрузка роутера?", {
+      session, stateDir: tmp(), env,
+      planner: (async () => { planned = true; return { ok: false, code: "X", detail: "" }; }) as never,
+      retriever: async () => [{ id: "r", source: "knowledge/infrastructure.md", heading: "Network", text: "router", score: 0.9 }],
+    });
+    assert.equal(planned, true);
+  });
+
   it("knowledge append through the agent needs confirmation", async () => {
     const dir = tmp();
     const first = await runAgentTurn("запомни: камера на складе 192.168.0.77", { session, stateDir: dir, env, planner, retriever: async () => [] });

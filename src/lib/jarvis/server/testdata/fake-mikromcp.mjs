@@ -24,7 +24,11 @@ const server = http.createServer((req, res) => {
     if (msg.method === "tools/call") {
       fs.appendFileSync(log, msg.params.name + "\n");
       if (msg.params.name === "get_system_status") result = { content: [{ type: "text", text: "ok" }], structuredContent: { sections: { resource: { "board-name": "CCR1009-7G-1C", version: "7.21.3", uptime: "1d", "cpu-load": 3, "free-memory": 536870912, "total-memory": 1073741824 } } } };
-      if (msg.params.name === "list_dhcp_leases") result = { content: [{ type: "text", text: "x" }], structuredContent: { leases: [{ status: "bound", dynamic: true, "mac-address": "AA:BB:CC:DD:EE:FF" }, { status: "waiting", dynamic: false }], total: 2 } };
+      if (msg.params.name === "list_dhcp_leases") {
+        const offset = msg.params.arguments.offset ?? 0;
+        const leases = offset === 0 ? [{ status: "bound", dynamic: true, "mac-address": "AA:BB:CC:DD:EE:FF" }] : [{ status: "waiting", dynamic: false }];
+        result = { content: [{ type: "text", text: "x" }], structuredContent: { leases, total: 2, offset, limit: 1, hasMore: offset === 0 } };
+      }
     }
     res.writeHead(200, { "content-type": "application/json", "mcp-session-id": "s1" });
     res.end(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }));

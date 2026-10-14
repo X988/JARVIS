@@ -14,13 +14,13 @@ const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../..
 
 export const MIKROMCP_READ_TOOLS: Record<string, { tool: string; args: Record<string, unknown> }> = {
   "mikrotik.status": { tool: "get_system_status", args: {} },
-  "mikrotik.interfaces": { tool: "list_interfaces", args: { limit: 200 } },
-  "mikrotik.routes": { tool: "list_routes", args: { limit: 200 } },
-  "mikrotik.dhcp": { tool: "list_dhcp_leases", args: { limit: 1000 } },
-  "mikrotik.firewall.counters": { tool: "list_firewall_rules", args: { table: "filter", limit: 500 } },
+  "mikrotik.interfaces": { tool: "list_interfaces", args: { limit: 100 } },
+  "mikrotik.routes": { tool: "list_routes", args: { limit: 100 } },
+  "mikrotik.dhcp": { tool: "list_dhcp_leases", args: { limit: 100 } },
+  "mikrotik.firewall.counters": { tool: "list_firewall_rules", args: { table: "filter", limit: 100 } },
   "mikrotik.logs": { tool: "get_log", args: { limit: 50 } },
-  "mikrotik.wireguard": { tool: "list_wireguard_peers", args: { limit: 200 } },
-  "wireguard.status": { tool: "list_wireguard_peers", args: { limit: 200 } },
+  "mikrotik.wireguard": { tool: "list_wireguard_peers", args: { limit: 100 } },
+  "wireguard.status": { tool: "list_wireguard_peers", args: { limit: 100 } },
 };
 
 const WRITE_LIKE = /^(manage|set|run|write|delete|upload|reboot|apply|rollback|create|export|fetch|bulk_execute|plan)_?|run_command/;

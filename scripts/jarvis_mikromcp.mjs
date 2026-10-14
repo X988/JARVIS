@@ -51,10 +51,22 @@ async function main() {
   } catch {
     return out({ code: "NOT_CONFIGURED", detail: "bad args" });
   }
-  const result = await rpc("tools/call", { name: tool, arguments: args });
-  const text = (result?.content ?? []).filter((c) => c?.type === "text").map((c) => c.text).join("\n");
-  if (result?.isError) return out({ code: "VERIFICATION_FAILED", detail: text.slice(0, 300) });
-  return out({ code: "OK", text: text.slice(0, 4000), structured: result?.structuredContent ?? null });
+  const first = await rpc("tools/call", { name: tool, arguments: args });
+  const text = (first?.content ?? []).filter((c) => c?.type === "text").map((c) => c.text).join("\n");
+  if (first?.isError) return out({ code: "VERIFICATION_FAILED", detail: text.slice(0, 300) });
+  // MikroMCP pages list results (limit <= 100). Follow hasMore up to 20 pages
+  // and merge the list field so counts cover the whole table.
+  const structured = first?.structuredContent ?? null;
+  const listKey = structured ? Object.keys(structured).find((k) => Array.isArray(structured[k])) : undefined;
+  let page = structured;
+  for (let i = 0; listKey && page?.hasMore && i < 20; i += 1) {
+    const offset = Number(page.offset ?? 0) + Number(page.limit ?? page[listKey].length);
+    const next = await rpc("tools/call", { name: tool, arguments: { ...args, offset } });
+    if (next?.isError || !Array.isArray(next?.structuredContent?.[listKey])) break;
+    structured[listKey].push(...next.structuredContent[listKey]);
+    page = next.structuredContent;
+  }
+  return out({ code: "OK", text: text.slice(0, 4000), structured });
 }
 
 main().catch((error) => out({ code: error?.code ?? (error?.name === "TimeoutError" ? "EXECUTION_TIMEOUT" : "CONNECT_FAILED"), detail: String(error?.message ?? error).slice(0, 200) }));

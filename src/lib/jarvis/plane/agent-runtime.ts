@@ -39,6 +39,10 @@ type Planner = typeof planAgentTurn;
 type ToolRunner = typeof processRegisteredReadOnlyTool;
 type Retriever = typeof retrieveKnowledge;
 
+// Questions about live state must reach the tools, not the static knowledge base.
+const LIVE_QUERY = /(загрузк|нагрузк|сейчас|текущ|аптайм|uptime|cpu|процессор|памят|аренд|lease|интерфейс|interface|лог[иа ]|журнал роутера|маршрут|статус|состояни|онлайн|работает ли|покажи|проверь)/iu;
+const NO_ANSWER = /(отсутству|нет (информац|данных|сведений)|не (знаю|указан|содержит))/iu;
+
 const INFO_QUESTION = /^(как|что|где|какой|какая|какое|какие|кто|зачем|почему|сколько|расскажи|объясни|how|what|where|which|who|why)(?=[\s,?!]|$)/iu;
 
 async function answerFromKnowledge(
@@ -186,9 +190,9 @@ export async function runAgentTurn(
   // Informational "how/what/where" questions with a strong knowledge hit are answered
   // from the knowledge base directly, without running tools.
   const directScore = Number(env.JARVIS_KNOWLEDGE_DIRECT_SCORE) || 0.55;
-  if (INFO_QUESTION.test(text.trim()) && hits.length > 0 && hits[0].score >= directScore) {
+  if (INFO_QUESTION.test(text.trim()) && !LIVE_QUERY.test(text) && hits.length > 0 && hits[0].score >= directScore) {
     const grounded = await answerFromKnowledge(text, hits, "", { env, fetch: opts.fetch });
-    if (grounded) {
+    if (grounded && !NO_ANSWER.test(grounded.answer)) {
       return { code: "OK", answer: grounded.answer, plan: null, observations: [], provider: grounded.provider, model: grounded.model, sources };
     }
   }
