@@ -6,6 +6,7 @@ import {
 } from "../server/pipeline.ts";
 import { callJsonModel, type FetchLike } from "./llm-client.ts";
 import { planAgentTurn, type AgentPlan } from "./agent-planner.ts";
+import { runAnalystTeam } from "./analyst-team.ts";
 
 export type AgentObservation = {
   tool: string;
@@ -104,6 +105,7 @@ export async function runAgentTurn(
     fetch?: FetchLike;
     planner?: Planner;
     toolRunner?: ToolRunner;
+    team?: typeof runAnalystTeam; // deterministic test injection; never exposed over HTTP
   },
 ): Promise<AgentTurnResult> {
   const env = opts.env ?? process.env;
@@ -198,18 +200,37 @@ export async function runAgentTurn(
   );
   const allDryRun = observations.length > 0 && observations.every((item) => item.code === "DRY_RUN");
 
-  const final = await synthesize(
-    text,
-    planned.plan.objective,
-    observations,
-    planned.plan.message,
-    { env, fetch: opts.fetch },
+  // Opt-in only. The team has no gateway or tools. It receives observations
+  // AFTER the existing admission/verification and cannot alter the plan.
+  const canAnalyze = observations.length > 0 && observations.every(
+    (item) => item.code === "OK" && item.executionCalled && Boolean(item.auditId),
   );
+  const team = env.JARVIS_ANALYST_TEAM_ENABLED === "1" && canAnalyze
+    ? await (opts.team ?? runAnalystTeam)(
+        { request: text, objective: planned.plan.objective, observations },
+        { env, fetch: opts.fetch },
+      )
+    : null;
+  const final = team
+    ? team.ok
+      ? { answer: team.answer, provider: team.provider, model: team.model }
+      : {
+          answer: fallbackAnswer(observations, "Аналитическая команда не подтвердила вывод: " + team.detail),
+          provider: null,
+          model: null,
+        }
+    : await synthesize(
+        text,
+        planned.plan.objective,
+        observations,
+        planned.plan.message,
+        { env, fetch: opts.fetch },
+      );
 
   return {
     code: blockedMutation
       ? "MUTATION_REQUIRES_APPROVAL"
-      : hasFailure
+      : hasFailure || (team !== null && !team.ok)
         ? "AGENT_PARTIAL"
         : allDryRun
           ? "DRY_RUN"

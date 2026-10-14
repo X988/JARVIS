@@ -348,3 +348,115 @@ it("rejects expired agent sessions before calling the model or any tool", async 
   assert.equal(result.code, "AUTH_REQUIRED");
   assert.equal(called, false);
 });
+
+
+describe("analyst team runtime boundary", () => {
+  const planner = async (): Promise<AgentPlanResult> => ({
+    ok: true,
+    provider: "openai",
+    model: "test",
+    requestId: "planning-test",
+    plan: {
+      objective: "Investigate dc01",
+      responseMode: "execute",
+      message: "Diagnostic underway",
+      steps: [{ tool: "server.health", target: "dc01", reason: "read-only" }],
+    },
+  });
+
+  it("calls the team only after the original tool runner returns verified evidence", async () => {
+    let invoked = 0;
+    let observedAudit = "";
+    const result = await runAgentTurn("Investigate dc01", {
+      session,
+      stateDir: dir(),
+      env: { JARVIS_AI_AGENT_ENABLED: "1", JARVIS_ANALYST_TEAM_ENABLED: "1" },
+      planner,
+      toolRunner: () => ({
+        code: "OK",
+        verdict: "allow",
+        mode: "real",
+        requestId: "test",
+        auditId: "verified-audit-1",
+        runbook: "server.health",
+        target: "dc01",
+        executionCalled: true,
+        detail: "cpu=7%",
+        verification: "probe",
+      }),
+      team: async (input) => {
+        invoked += 1;
+        observedAudit = input.observations[0].auditId ?? "";
+        return {
+          ok: true,
+          answer: "Team verified observation",
+          evidenceIds: ["obs-1"],
+          roles: ["coordinator", "context-manager", "root-cause-analyst", "reviewer"],
+          provider: "openai",
+          model: "test",
+        };
+      },
+    });
+    assert.equal(result.code, "OK");
+    assert.equal(result.answer, "Team verified observation");
+    assert.equal(invoked, 1);
+    assert.equal(observedAudit, "verified-audit-1");
+  });
+
+  it("never invokes the team for approval-dependent or denied action", async () => {
+    let invoked = 0;
+    const result = await runAgentTurn("Investigate dc01", {
+      session,
+      stateDir: dir(),
+      env: { JARVIS_AI_AGENT_ENABLED: "1", JARVIS_ANALYST_TEAM_ENABLED: "1" },
+      planner,
+      toolRunner: () => ({
+        code: "MUTATION_REQUIRES_APPROVAL",
+        verdict: "deny",
+        mode: "real",
+        requestId: "test",
+        auditId: "audit-blocked",
+        runbook: "sql.backup",
+        target: "utp",
+        executionCalled: false,
+        detail: "needs approval",
+        verification: "none",
+      }),
+      team: async () => {
+        invoked += 1;
+        throw new Error("team should not be reached for mutations");
+      },
+    });
+    assert.equal(result.code, "MUTATION_REQUIRES_APPROVAL");
+    assert.equal(invoked, 0);
+  });
+
+  it("marks the response partial when the team cannot verify its conclusion", async () => {
+    const result = await runAgentTurn("Investigate dc01", {
+      session,
+      stateDir: dir(),
+      env: { JARVIS_AI_AGENT_ENABLED: "1", JARVIS_ANALYST_TEAM_ENABLED: "1" },
+      planner,
+      toolRunner: () => ({
+        code: "OK",
+        verdict: "allow",
+        mode: "real",
+        requestId: "test",
+        auditId: "verified-audit-1",
+        runbook: "server.health",
+        target: "dc01",
+        executionCalled: true,
+        detail: "cpu=7%",
+        verification: "probe",
+      }),
+      team: async () => ({
+        ok: false,
+        code: "TEAM_UNSUPPORTED",
+        detail: "Reviewer rejected unsupported root-cause claim",
+      }),
+    });
+    assert.equal(result.code, "AGENT_PARTIAL");
+    assert.match(result.answer, /cpu=7%/);
+    assert.match(result.answer, /не подтвердила/);
+  });
+});
