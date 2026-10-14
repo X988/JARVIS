@@ -185,7 +185,7 @@ export async function runAgentTurn(
 
   // Informational "how/what/where" questions with a strong knowledge hit are answered
   // from the knowledge base directly, without running tools.
-  const directScore = Number(env.JARVIS_KNOWLEDGE_DIRECT_SCORE) || 0.6;
+  const directScore = Number(env.JARVIS_KNOWLEDGE_DIRECT_SCORE) || 0.55;
   if (INFO_QUESTION.test(text.trim()) && hits.length > 0 && hits[0].score >= directScore) {
     const grounded = await answerFromKnowledge(text, hits, "", { env, fetch: opts.fetch });
     if (grounded) {
