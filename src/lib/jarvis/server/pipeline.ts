@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { increment, observeDuration } from "../metrics.ts";
-import { appendAudit, externalSinkLabel } from "../audit-log.ts";
+import { appendAudit, externalSinkLabel, recordAuditIntegrityAlert, verifyAudit } from "../audit-log.ts";
 import { createLockProvider } from "../locks.ts";
 import { OPERATORS, evaluate, type Decision } from "../model.ts";
 import { configProblems } from "./config.ts";
@@ -242,6 +242,33 @@ export type RegisteredToolResult = {
   verification: string;
 };
 
+function refuseBrokenAudit(
+  stateDir: string,
+  now: Date,
+  session: Session | null,
+  requestId: string,
+): string | null {
+  let integrity: ReturnType<typeof verifyAudit>;
+  try {
+    integrity = verifyAudit(stateDir);
+  } catch {
+    integrity = { ok: false, rows: 0, reason: "invalid-json" };
+  }
+  if (integrity.ok) return null;
+  try {
+    recordAuditIntegrityAlert(stateDir, {
+      at: now.toISOString(),
+      requestId,
+      actor: session?.accountId ?? "anonymous",
+      rows: integrity.rows,
+      reason: integrity.reason,
+    });
+  } catch {
+    // The refusal stands even when the side alert cannot be written.
+  }
+  return "Журнал аудита повреждён. Исполнение остановлено, новая запись в цепочку не добавлялась.";
+}
+
 export function processRegisteredReadOnlyTool(input: {
   runbook: string;
   target: string;
@@ -257,6 +284,21 @@ export function processRegisteredReadOnlyTool(input: {
   const now = input.now ?? new Date();
   const mode = modeOf(input.mode);
   const requestId = input.requestId || randomUUID();
+  const blocked = refuseBrokenAudit(input.stateDir, now, input.session, requestId);
+  if (blocked) {
+    return {
+      code: "AUDIT_INTEGRITY",
+      verdict: "deny",
+      mode,
+      requestId,
+      auditId: "",
+      runbook: input.runbook,
+      target: input.target,
+      executionCalled: false,
+      detail: blocked,
+      verification: "не выполнялась",
+    };
+  }
 
   function finishRegistered(
     code: string,
@@ -396,6 +438,21 @@ export function processCommand(input: {
   const requestId = input.requestId || randomUUID();
   const actorId = input.session?.accountId ?? "anonymous";
   try {
+    const blocked = refuseBrokenAudit(input.stateDir, now, input.session, requestId);
+    if (blocked) {
+      increment("jarvis_commands_denied_total");
+      return {
+        code: "AUDIT_INTEGRITY",
+        verdict: "deny",
+        mode,
+        executionCalled: false,
+        auditId: "",
+        requestId,
+        trace: { ...emptyTrace(input.text.trim(), mode, "целостность аудита"), audit: "BROKEN", steps: ["audit-integrity"] },
+        decision: denyShell(input.text.trim(), blocked),
+        approval: null,
+      };
+    }
     const stored = rememberRequest(
       input.stateDir,
       actorId,

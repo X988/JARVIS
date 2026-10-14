@@ -489,6 +489,57 @@ describe("audit integrity", () => {
     assert.equal(verifyAudit(dir).ok, false);
   });
 
+  it("refuses the command API when the audit chain is broken and does not extend it", async () => {
+    const stateDir = freshDir();
+    appendAudit(
+      {
+        at: now.toISOString(),
+        executionId: "exec-before-tamper",
+        actor: "admin1",
+        action: "read",
+        verdict: "allow",
+        channel: "web",
+      },
+      stateDir,
+    );
+    const file = path.join(stateDir, "audit.jsonl");
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as { action?: string };
+    parsed.action = "tampered";
+    fs.writeFileSync(file, `${JSON.stringify(parsed)}\n`);
+    let called = false;
+    const result = run("Проверь Mailcow", {
+      stateDir,
+      requestId: "tamper-exec",
+      execute: () => {
+        called = true;
+        return { called: true, code: "OK", detail: "must not run" };
+      },
+    });
+    assert.equal(result.code, "AUDIT_INTEGRITY");
+    assert.equal(result.executionCalled, false);
+    assert.equal(called, false);
+    assert.equal(fs.readFileSync(file, "utf8").trim().split("\n").length, 1);
+    const alert = JSON.parse(fs.readFileSync(path.join(stateDir, "audit-integrity-alert.json"), "utf8")) as {
+      execution?: string;
+      requestId?: string;
+    };
+    assert.equal(alert.execution, "refused");
+    assert.equal(alert.requestId, "tamper-exec");
+    assert.throws(() => appendAudit(
+      { at: now.toISOString(), executionId: "exec-after", actor: "admin1", action: "again", verdict: "deny" },
+      stateDir,
+    ), /audit integrity/);
+
+    process.env.JARVIS_STATE_DIR = stateDir;
+    const { csrf, token } = await authed("admin1");
+    const httpDeny = await handleCommand(
+      post("admin1", { text: "Проверь сервер", request_id: "tamper-http" }, csrf, token),
+    );
+    assert.equal(httpDeny.status, 503);
+    assert.equal((await httpDeny.json()).code, "AUDIT_INTEGRITY");
+    assert.equal(fs.readFileSync(file, "utf8").trim().split("\n").length, 1);
+  });
+
   it("fails closed when approval state is corrupt", () => {
     const stateDir = freshDir();
     fs.writeFileSync(path.join(stateDir, "approvals.json"), "{not-json");

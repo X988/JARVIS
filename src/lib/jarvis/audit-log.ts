@@ -106,6 +106,8 @@ export function appendAudit(row: Omit<AuditRow, "previousHash" | "hash">, dir?: 
   const file = auditFile(dir);
   const stateDir = path.dirname(file);
   const stored = withStateLock(stateDir, () => {
+    const integrity = verifyAudit(stateDir);
+    if (!integrity.ok) throw new Error("audit integrity");
     fs.mkdirSync(stateDir, { recursive: true });
     let previousHash = "GENESIS";
     if (fs.existsSync(file)) {
@@ -125,20 +127,42 @@ export function appendAudit(row: Omit<AuditRow, "previousHash" | "hash">, dir?: 
   return stored;
 }
 
-export function verifyAudit(dir?: string): { ok: boolean; rows: number } {
+export type AuditIntegrity = { ok: boolean; rows: number; reason: "ok" | "invalid-json" | "chain" | "hash" };
+
+export function verifyAudit(dir?: string): AuditIntegrity {
   const file = auditFile(dir);
-  if (!fs.existsSync(file)) return { ok: true, rows: 0 };
+  if (!fs.existsSync(file)) return { ok: true, rows: 0, reason: "ok" };
   const lines = fs.readFileSync(file, "utf8").trim().split("\n").filter(Boolean);
   let previous = "GENESIS";
   for (const line of lines) {
-    const row = JSON.parse(line) as AuditRow;
-    if (row.previousHash !== previous) return { ok: false, rows: lines.length };
+    let row: AuditRow;
+    try {
+      row = JSON.parse(line) as AuditRow;
+    } catch {
+      return { ok: false, rows: lines.length, reason: "invalid-json" };
+    }
+    if (!row || typeof row !== "object" || row.previousHash !== previous) {
+      return { ok: false, rows: lines.length, reason: "chain" };
+    }
     const { hash, ...body } = row;
     const again = createHash("sha256").update(canon(body)).digest("hex");
-    if (again !== hash) return { ok: false, rows: lines.length };
+    if (again !== hash) return { ok: false, rows: lines.length, reason: "hash" };
     previous = hash || previous;
   }
-  return { ok: true, rows: lines.length };
+  return { ok: true, rows: lines.length, reason: "ok" };
+}
+
+/** Local alert outside the hash chain. A broken chain must not gain new rows. */
+export function recordAuditIntegrityAlert(
+  dir: string,
+  alert: { at: string; requestId: string; actor: string; rows: number; reason: string },
+): void {
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "audit-integrity-alert.json");
+  const body = JSON.stringify({ ...alert, execution: "refused" });
+  const temp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(temp, body);
+  fs.renameSync(temp, file);
 }
 
 export interface AuditSink {

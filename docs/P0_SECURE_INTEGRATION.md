@@ -81,6 +81,12 @@ EXECUTION_MODE=dry-run npm run start:linux
 
 Do not point `EXECUTION_MODE=real` at production hosts from this branch. No live MikroTik or server change was performed here.
 
+## Continuation
+
+GitHub Actions job `check` on this branch (run `38603558350`) finished in about three seconds with an empty step list. The check-run annotation is: recent account payments have failed or the spending limit needs to be increased. The tests themselves did not start. That is the same shape as the missing logs on PR #2 and #3. Re-running the workflow cannot pass until billing is restored. Local checks remain the evidence for this branch.
+
+A broken audit file now stops the command API and the registered read-only tool path before any executor call. The gateway does not append a new hash-chain row onto the damaged file. It writes `audit-integrity-alert.json` beside the state directory. `appendAudit` throws `audit integrity` if another caller tries to extend the chain. Component status reports `auditChain`, `sshLab`, and `routerosLab` from local files and environment only. Those fields do not open SSH or RouterOS sockets.
+
 ## Still open
 
 - GitHub Actions logs for the old PR #2 and #3 failures are gone, so the three-second job failure was not attributed to a specific step.

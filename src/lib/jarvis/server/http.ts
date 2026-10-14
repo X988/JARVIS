@@ -63,7 +63,7 @@ function httpStatus(code:string):number{
   if(code==="PLAN_INVALID" || code==="PLAN_REJECTED") return 422;
   if(code==="AGENT_DISABLED" || code==="LLM_UNAVAILABLE") return 503;
   if(code==="DRY_RUN" || code==="CLARIFY" || code==="AGENT_PARTIAL") return 200;
-  if(code==="EXECUTION_DISABLED" || code==="NOT_CONFIGURED" || code==="CREDENTIAL_UNAVAILABLE" || code==="ADAPTER_DISABLED" || code==="SECURITY_STATE_UNAVAILABLE") return 503;
+  if(code==="EXECUTION_DISABLED" || code==="NOT_CONFIGURED" || code==="CREDENTIAL_UNAVAILABLE" || code==="ADAPTER_DISABLED" || code==="SECURITY_STATE_UNAVAILABLE" || code==="AUDIT_INTEGRITY") return 503;
   if(code==="EXECUTION_TIMEOUT" || code==="VERIFICATION_FAILED") return 504;
   return 403;
 }
