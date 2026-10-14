@@ -42,6 +42,8 @@ function voiceDoesNotExecute(): ExecResult {
 }
 
 function bounded(raw: string | undefined, fallback: number, min: number, max: number): number {
+  // Blank keys from .env templates (`JARVIS_STT_MAX_MS=`) mean "unset", not 0.
+  if (raw === undefined || raw.trim() === "") return fallback;
   const value = Number(raw);
   return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 }
@@ -111,7 +113,7 @@ export function hearWav(
     mark("stt_failures");
     return { code: heard.code, text: null, raw: null, confidence: null, message: voiceLine(heard.code, null) };
   }
-  const minConfidenceRaw = Number(env.JARVIS_STT_MIN_CONFIDENCE ?? "0.55");
+  const minConfidenceRaw = Number(env.JARVIS_STT_MIN_CONFIDENCE?.trim() || "0.55");
   const minConfidence = Number.isFinite(minConfidenceRaw) ? Math.min(0.95, Math.max(0.1, minConfidenceRaw)) : 0.55;
   const normalized = normalizeTranscript(
     stripWake(heard.text, env.JARVIS_WAKE_WORD_ENABLED === "1"),

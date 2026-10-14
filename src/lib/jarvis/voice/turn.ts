@@ -59,7 +59,7 @@ export function runVoiceWav(
     mark("stt_failures");
     return { code: heard.code, voiceSummary: voiceLine(heard.code, null), technical: null, stt: null, originalAudioId: path.basename(wavPath) };
   }
-  const minConfidenceRaw = Number(env.JARVIS_STT_MIN_CONFIDENCE ?? "0.55");
+  const minConfidenceRaw = Number(env.JARVIS_STT_MIN_CONFIDENCE?.trim() || "0.55");
   const minConfidence = Number.isFinite(minConfidenceRaw) ? Math.min(0.95, Math.max(0.1, minConfidenceRaw)) : 0.55;
   const normalized = normalizeTranscript(
     stripWake(heard.text, env.JARVIS_WAKE_WORD_ENABLED === "1"),

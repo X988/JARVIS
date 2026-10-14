@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import { handleCommand, handleSession } from "../server/http.ts";
 import { processCommand } from "../server/pipeline.ts";
 import { testSession } from "../server/session.ts";
-import { runVoiceConversation } from "./call.ts";
+import { hearWav, runVoiceConversation } from "./call.ts";
 import { handleVoice } from "./web.ts";
 import {
   LISTEN_INITIAL,
@@ -272,5 +272,13 @@ describe("voice http", () => {
     } finally {
       restore(previous);
     }
+  });
+});
+
+describe("voice env blank keys", () => {
+  it("treats JARVIS_STT_MAX_MS= as unset instead of a 1s cap", () => {
+    const samples = new Int16Array(16_000 * 2);
+    const heard = hearWav("/nonexistent.wav", samples, { JARVIS_STT_MAX_MS: "" } as NodeJS.ProcessEnv);
+    assert.notEqual(heard.code, "AUDIO_TOO_LONG");
   });
 });
