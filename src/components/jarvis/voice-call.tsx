@@ -415,20 +415,25 @@ export function VoiceCall({
       attachProcessor();
     } else {
       const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
-      void context.audioWorklet.addModule(url).then(() => {
-        URL.revokeObjectURL(url);
-        if (stopped || closed) return;
-        worklet = new AudioWorkletNode(context, "jarvis-capture");
-        worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
-          if (event.data) pushNative(event.data);
-        };
-        source.connect(worklet);
-        worklet.connect(sink);
-        sink.connect(context.destination);
-      }).catch(() => {
+      try {
+        void context.audioWorklet.addModule(url).then(() => {
+          URL.revokeObjectURL(url);
+          if (stopped || closed) return;
+          worklet = new AudioWorkletNode(context, "jarvis-capture");
+          worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
+            if (event.data) pushNative(event.data);
+          };
+          source.connect(worklet);
+          worklet.connect(sink);
+          sink.connect(context.destination);
+        }).catch(() => {
+          URL.revokeObjectURL(url);
+          if (!stopped && !closed) attachProcessor();
+        });
+      } catch {
         URL.revokeObjectURL(url);
         if (!stopped && !closed) attachProcessor();
-      });
+      }
     }
 
     return () => {
