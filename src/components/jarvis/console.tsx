@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
 import { ArrowUp, KeyRound, MessageSquare, Mic, Phone, ScrollText, Server, Square, X } from "lucide-react";
 import { VoiceCall, beginVoiceCall, releaseVoiceCall, type VoiceCallHandle } from "@/components/jarvis/voice-call";
 import {
   ACCOUNTS,
   ONEC_DEV,
   ONEC_READER,
-  OPERATORS,
   RISK_LABEL,
   RUNBOOKS,
   SERVERS,
@@ -20,10 +18,6 @@ import {
 } from "@/lib/jarvis/model";
 import { alternativesFrom, interpretSpeech, type RawResult, type SpeechAlt, type SpeechReading } from "@/lib/jarvis/hearing";
 import { useJarvis, type Notice, type Phase, type Turn } from "@/lib/jarvis/store";
-import { canApprove } from "@/lib/jarvis/tools/actors";
-import { getToolStatus, listToolAudit } from "@/lib/jarvis/tools/api";
-import type { AuditRecord } from "@/lib/jarvis/tools/types";
-import { ToolRunCard } from "@/components/jarvis/tool-run";
 import { WATCH_ALERTS, WATCH_HOSTS, type WatchLevel } from "@/lib/jarvis/watch";
 import { authEnabled } from "@/lib/auth/client";
 import { UserButton } from "@/lib/auth/gates";
@@ -108,12 +102,6 @@ function dotClass(state: Finding["state"]): string {
 }
 
 function stamp(turn: Turn): string {
-  if (turn.toolRun) {
-    if (turn.phase === "awaiting") return "Ждёт Approve";
-    if (turn.toolRun.calls.every((call) => call.result === "denied")) return "Отказ";
-    if (turn.dryRun) return "DRY RUN · инструмент";
-    return "Инструмент";
-  }
   if (turn.phase === "running") return "Разбор";
   if (turn.phase === "awaiting") return "Ждёт фразу";
   if (turn.phase === "expired") return "Срок истёк";
@@ -231,10 +219,6 @@ function ApprovalBox({ turn, now }: { turn: Turn; now: number }) {
 function TurnCard({ turn, now }: { turn: Turn; now: number }) {
   const labels = turn.source === "voice" ? STEP_VOICE : STEP_TEXT;
   const book = RUNBOOKS.find((item) => item.id === turn.decision.runbook);
-  const resolveApproval = useJarvis((state) => state.resolveApproval);
-  const operatorId = useJarvis((state) => state.operatorId);
-  const actor = OPERATORS.find((item) => item.id === operatorId);
-  const mayApprove = Boolean(actor && actor.allowed && canApprove(actor.role));
   return (
     <article className="turn-in rounded-xl border border-line bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -259,6 +243,7 @@ function TurnCard({ turn, now }: { turn: Turn; now: number }) {
           <div>Audit: {turn.trace.audit}</div>
         </dl>
       ) : null}
+      {!turn.trace && turn.serverCode ? <p className="mt-3 font-mono text-xs text-muted">Code: {turn.serverCode}</p> : null}
       {turn.decision.reason ? <p className="mt-2 text-pretty text-sm text-fg">{turn.decision.reason}</p> : null}
       <ol className="mt-3 flex flex-wrap gap-x-3 gap-y-1">
         {labels.map((label, index) => (
@@ -270,23 +255,19 @@ function TurnCard({ turn, now }: { turn: Turn; now: number }) {
           </li>
         ))}
       </ol>
-      {turn.toolRun ? null : (
-        <p className="mt-4 font-mono text-sm break-all text-paper">{turn.decision.toolCall}</p>
-      )}
-      {!turn.toolRun && turn.decision.parameters.length > 0 ? (
+      <p className="mt-4 font-mono text-sm break-all text-paper">{turn.decision.toolCall}</p>
+      {turn.decision.parameters.length > 0 ? (
         <p className="mt-2 font-mono text-xs text-subtle">
           {turn.decision.parameters.map((item) => `${item.key}=${item.value}`).join(" · ")}
         </p>
       ) : null}
-      {turn.toolRun ? null : (
-        <ol className="mt-4 flex list-decimal flex-col gap-1 pl-4 text-sm text-muted">
-          {turn.decision.plan.map((line) => (
-            <li key={line} className="text-pretty">
-              {line}
-            </li>
-          ))}
-        </ol>
-      )}
+      <ol className="mt-4 flex list-decimal flex-col gap-1 pl-4 text-sm text-muted">
+        {turn.decision.plan.map((line) => (
+          <li key={line} className="text-pretty">
+            {line}
+          </li>
+        ))}
+      </ol>
       {turn.decision.mutation && !turn.executed && turn.decision.verdict === "allow" && turn.phase !== "awaiting" ? (
         <ul className="mt-4 flex flex-col gap-1 text-sm text-muted">
           {turn.decision.consequences.map((line) => (
@@ -298,15 +279,6 @@ function TurnCard({ turn, now }: { turn: Turn; now: number }) {
         <p className="mt-3 text-sm text-muted">
           Runbook {book.title}. Исполнитель: {book.executor}. Таймаут: {book.timeout}. Откат: {book.rollback}.
         </p>
-      ) : null}
-      {turn.toolRun ? (
-        <ToolRunCard
-          calls={turn.toolRun.calls}
-          assistant={turn.toolRun.assistant}
-          mode={turn.toolRun.mode}
-          canApprove={mayApprove}
-          onDecide={(approvalId, decision) => void resolveApproval(approvalId, decision)}
-        />
       ) : null}
       {turn.showFindings ? (
         <div className="mt-4 border-t border-line pt-3">
@@ -393,54 +365,11 @@ function SitePanel() {
 
 function AuditPanel() {
   const audit = useJarvis((state) => state.audit);
-  const operatorId = useJarvis((state) => state.operatorId);
-  const auditEpoch = useJarvis((state) => state.auditEpoch);
-  const [toolAudit, setToolAudit] = useState<AuditRecord[] | null>(null);
-  useEffect(() => {
-    let cancel = false;
-    void listToolAudit({ data: { operatorId } })
-      .then((result) => {
-        if (!cancel) setToolAudit(result.forbidden ? [] : result.records);
-      })
-      .catch(() => {
-        if (!cancel) setToolAudit([]);
-      });
-    return () => {
-      cancel = true;
-    };
-  }, [operatorId, auditEpoch]);
+  if (audit.length === 0) {
+    return <p className="text-sm text-muted">Журнал пуст. Каждая команда оставит след без секретов.</p>;
+  }
   return (
-    <div className="flex flex-col gap-6">
-      <section>
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-medium">Инструменты</h2>
-          <Link to="/admin/audit" className="inline-flex min-h-11 items-center text-sm text-moss">
-            Админ-журнал
-          </Link>
-        </div>
-        {toolAudit === null ? <p className="mt-2 text-sm text-muted">Читаю журнал…</p> : null}
-        {toolAudit && toolAudit.length === 0 ? (
-          <p className="mt-2 text-sm text-muted">Вызовов ещё нет. SSH и MikroTik появятся здесь.</p>
-        ) : null}
-        <ul className="mt-3 flex flex-col gap-3">
-          {toolAudit?.map((entry) => (
-            <li key={entry.id} className="rounded-lg border border-line bg-bg p-3">
-              <div className="flex items-baseline justify-between gap-3">
-                <p className="font-mono text-xs text-moss">{entry.result}</p>
-                <p className="font-mono text-xs text-subtle">{entry.at.slice(11, 19)}</p>
-              </div>
-              <p className="mt-2 font-mono text-sm break-all">{entry.command}</p>
-              <p className="mt-2 font-mono text-xs text-subtle">
-                {entry.actorName} · {entry.role} · {entry.tool} · {entry.risk}
-              </p>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section>
-        <h2 className="text-sm font-medium">Политика</h2>
-        {audit.length === 0 ? <p className="mt-2 text-sm text-muted">Журнал пуст. Каждая команда оставит след без секретов.</p> : null}
-        <ul className="mt-3 flex flex-col gap-3">
+    <ul className="flex flex-col gap-3">
       {audit.map((entry) => (
         <li key={entry.id} className="rounded-lg border border-line bg-bg p-3">
           <div className="flex items-baseline justify-between gap-3">
@@ -459,9 +388,7 @@ function AuditPanel() {
           {entry.error ? <p className="mt-1 text-sm text-danger">{entry.error}</p> : null}
         </li>
       ))}
-        </ul>
-      </section>
-    </div>
+    </ul>
   );
 }
 
@@ -476,10 +403,6 @@ function AccessPanel() {
           <li>L2 изменение — фраза CONFIRM и номер заявки, 5 минут.</li>
           <li>L3 критический — две фразы. Ребут DC, firewall, удаление.</li>
         </ul>
-        <p className="mt-3 text-pretty text-sm text-muted">
-          SSH и MikroTik: read-only выполняется само, change показывает точную команду. Approve и Reject доступны только
-          ролям operator и admin. Режим задаёт EXECUTION_MODE, по умолчанию dry-run.
-        </p>
       </section>
       <section>
         <h2 className="text-sm font-medium">Учётки</h2>
@@ -593,7 +516,6 @@ const SIDE: { id: SideTab; label: string }[] = [
 ];
 
 let started = false;
-let adminTicketQueued = false;
 
 export function Console() {
   const turns = useJarvis((state) => state.turns);
@@ -604,9 +526,7 @@ export function Console() {
   const watch = useJarvis((state) => state.watch);
   const notices = useJarvis((state) => state.notices);
   const actorId = useJarvis((state) => state.actorId);
-  const operatorId = useJarvis((state) => state.operatorId);
   const sessionReady = useJarvis((state) => state.sessionReady);
-  const setOperator = useJarvis((state) => state.setOperator);
   const setWatch = useJarvis((state) => state.setWatch);
   const pushNotice = useJarvis((state) => state.pushNotice);
   const ensureSession = useJarvis((state) => state.ensureSession);
@@ -634,8 +554,6 @@ export function Console() {
   const limitRef = useRef<number | null>(null);
   const candidatesRef = useRef<SpeechAlt[]>([]);
   const locked = !sessionReady || busy || hearing !== null || listening;
-  const [toolMode, setToolMode] = useState<"dry-run" | "live">("dry-run");
-  const stranger = OPERATORS.find((item) => item.id === operatorId)?.allowed === false;
 
   useEffect(() => {
     const id = window.setInterval(() => tick(Date.now()), 1000);
@@ -643,30 +561,10 @@ export function Console() {
   }, [tick]);
 
   useEffect(() => {
-    let cancel = false;
-    void getToolStatus()
-      .then((status) => {
-        if (!cancel) setToolMode(status.mode);
-      })
-      .catch(() => {
-        if (!cancel) setToolMode("dry-run");
-      });
-    return () => {
-      cancel = true;
-    };
-  }, []);
-
-  useEffect(() => {
     if (started) return;
     started = true;
     void ensureSession();
   }, [ensureSession]);
-
-  useEffect(() => {
-    if (adminTicketQueued) return;
-    adminTicketQueued = true;
-    void submit("Создай заявку на учётку jarvis-1c-admin", "text");
-  }, [submit]);
 
   useEffect(() => {
     if (!watch) return;
@@ -897,34 +795,13 @@ export function Console() {
             </span>
           </div>
         </div>
-        <div className="flex items-center justify-between gap-3 px-4 pt-3">
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
           <p className="font-mono text-xs text-subtle">Session actor: {actorId}</p>
+          <a href="/admin/audit" className="text-xs text-muted">Серверный журнал</a>
           <UserButton />
-        </div>
-        <div className="grid grid-cols-2 gap-2 px-4 py-3 sm:grid-cols-4">
-          {OPERATORS.map((operator) => {
-            const active = operator.id === operatorId;
-            return (
-              <button
-                key={operator.id}
-                type="button"
-                onClick={() => setOperator(operator.id)}
-                className={
-                  "min-h-11 rounded-md border px-1 text-xs " +
-                  (active ? "border-paper bg-paper text-ink" : "border-line text-muted")
-                }
-              >
-                {operator.allowed ? operator.role : "чужой"}
-              </button>
-            );
-          })}
         </div>
         <p className="px-4 font-mono text-xs text-subtle">
           {watch ? "MONITORING_NOT_CONFIGURED. Ниже только demo-фикстуры, не телеметрия." : "Слежение на паузе."}
-        </p>
-        <p className="px-4 pb-3 font-mono text-xs text-moss">
-          tools {toolMode}
-          {toolMode === "dry-run" ? " · команды на хосты не уходят" : " · чтение сразу, change после Approve"}
         </p>
         <ul className="flex gap-2 overflow-x-auto px-4 py-3">
           {WATCH_HOSTS.map((host) => (
@@ -936,11 +813,6 @@ export function Console() {
           ))}
         </ul>
       </header>
-      {stranger ? (
-        <p className="border-b border-line px-4 py-2 text-sm text-danger">
-          Этот Telegram ID не в allowlist. Команды будут отклонены.
-        </p>
-      ) : null}
       <ActorDeniedBanner />
       {!dryRun ? (
         <p className="border-b border-line bg-paper px-4 py-2 text-sm text-ink">
@@ -1317,3 +1189,4 @@ function NavButton({
     </button>
   );
 }
+

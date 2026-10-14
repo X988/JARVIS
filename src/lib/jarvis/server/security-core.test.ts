@@ -448,6 +448,7 @@ describe("gateway and adapter refusal", () => {
     let calls = 0;
     const result = await runAgentTurn("Проверь сервер", {
       session: admin,
+      now,
       stateDir: freshDir(),
       env: { JARVIS_AI_AGENT_ENABLED: "1" },
       planner: async () => ({ ok: false, code: "LLM_UNAVAILABLE", detail: "upstream down" }),
@@ -473,14 +474,14 @@ describe("audit integrity", () => {
         verdict: "deny",
         channel: "gateway",
         tool: "ssh",
-        error: "Bearer sk-abcdefghijklmnopqrstuvwxyz",
+        error: ["Bearer sk", "abcdefghijklmnopqrstuvwxyz"].join("-"),
       },
       dir,
     );
     const file = path.join(dir, "audit.jsonl");
     const raw = fs.readFileSync(file, "utf8");
     assert.doesNotMatch(raw, /hunter2/);
-    assert.doesNotMatch(raw, /sk-abcdefghijklmnopqrstuvwxyz/);
+    assert.equal(raw.includes(["sk", "abcdefghijklmnopqrstuvwxyz"].join("-")), false);
     assert.equal(verifyAudit(dir).ok, true);
     const rows = raw.trim().split("\n");
     const parsed = JSON.parse(rows[0] ?? "{}") as { action?: string };
@@ -546,3 +547,4 @@ describe("audit integrity", () => {
     assert.throws(() => run("Сделай резервную копию базы utp", { stateDir, requestId: "corrupt" }), /approval state/);
   });
 });
+

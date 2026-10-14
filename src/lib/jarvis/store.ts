@@ -1,10 +1,7 @@
 import { create } from "zustand";
-import { postCommand, unavailableDecision, ensureServerSession, type ServerTrace } from "@/lib/jarvis/client-api";
-import { OPERATORS, evaluate, type Decision, type Operator } from "@/lib/jarvis/model";
+import { postCommand, postConversation, unavailableDecision, ensureServerSession, type ServerTrace } from "@/lib/jarvis/client-api";
+import { type Decision } from "@/lib/jarvis/model";
 import type { VoiceTurnResponse } from "@/lib/jarvis/voice/contract";
-import { decideToolApproval, runAssistantTurn } from "@/lib/jarvis/tools/api";
-import { heuristicPlan } from "@/lib/jarvis/tools/heuristic";
-import type { PublicCall } from "@/lib/jarvis/tools/types";
 import { WATCH_ALERTS, type WatchAlert } from "@/lib/jarvis/watch";
 
 export type Phase = "running" | "awaiting" | "done" | "denied" | "expired" | "cancelled";
@@ -33,11 +30,6 @@ export type Turn = {
   durationMs: number | null;
   hint: string | null;
   replies: string[];
-  toolRun?: {
-    assistant: string;
-    calls: PublicCall[];
-    mode: "dry-run" | "live";
-  };
   trace: ServerTrace | null;
   serverCode: string | null;
 };
@@ -68,7 +60,6 @@ type JarvisState = {
   authCode: string;
   authUserId: string | null;
   sessionReady: boolean;
-  operatorId: string;
   dryRun: boolean;
   serverMode: string;
   watch: boolean;
@@ -78,54 +69,19 @@ type JarvisState = {
   turns: Turn[];
   notices: Notice[];
   audit: AuditEntry[];
-  auditEpoch: number;
-  setOperator: (id: string) => void;
   setDryRun: (value: boolean) => void;
   setWatch: (value: boolean) => void;
   ensureSession: () => Promise<void>;
   pushNotice: (id: string) => void;
   submit: (raw: string, source: "text" | "voice", heard?: string) => Promise<void>;
-  showVoiceResult: (payload: VoiceTurnResponse, heard?: string) => void;
+  showVoiceResult: (payload: VoiceTurnResponse, heard?: string, source?: "text" | "voice") => void;
   reply: (turnId: string, phrase: string) => Promise<void>;
-  resolveApproval: (approvalId: string, decision: "approve" | "reject") => Promise<void>;
   cancel: (turnId: string) => void;
   tick: (ts: number) => void;
 };
 
 function uid(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
-}
-
-function operatorById(id: string): Operator {
-  return OPERATORS.find((item) => item.id === id) ?? OPERATORS[0];
-}
-
-function toolDecision(
-  text: string,
-  operator: Operator,
-  remote: { assistant: string; calls: PublicCall[]; mode: "dry-run" | "live" },
-): Decision {
-  const base = evaluate(text, operator, new Date());
-  const change = remote.calls.some((call) => call.risk === "change");
-  const waiting = remote.calls.some((call) => call.result === "awaiting_approval");
-  return {
-    ...base,
-    title: remote.calls.length === 1 ? remote.calls[0]?.tool ?? "Инструмент" : "Инструменты",
-    risk: change ? 2 : 0,
-    tool: remote.calls.map((call) => call.tool).join(", "),
-    target: remote.calls.map((call) => call.host).join(", "),
-    mutation: change,
-    confirmation: waiting ? "single" : "none",
-    plan: remote.calls.map((call) => `${call.tool}: ${call.result}`),
-    toolCall: remote.calls.map((call) => call.command).join("\n"),
-    consequences: [],
-    findings: [],
-    recommendation: null,
-    reason: null,
-    policyNotes: [`Режим инструментов: ${remote.mode}`, `Роль: ${operator.role}`, ...base.policyNotes],
-    previewFindings: false,
-    verdict: "allow",
-  };
 }
 
 function paramsOf(decision: Decision): string {
@@ -167,7 +123,6 @@ export const useJarvis = create<JarvisState>((set, get) => ({
   authCode: "",
   authUserId: null,
   sessionReady: false,
-  operatorId: "admin1",
   dryRun: true,
   serverMode: "dry-run",
   watch: true,
@@ -177,9 +132,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
   turns: [],
   notices: [],
   audit: [],
-  auditEpoch: 0,
 
-  setOperator: (id) => set({ operatorId: id }),
   setDryRun: (value) => set({ dryRun: value }),
   setWatch: (value) => set({ watch: value }),
   ensureSession: async () => {
@@ -255,7 +208,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     set({ now: ts, turns, audit: [...extra, ...state.audit].slice(0, 80) });
   },
 
-  showVoiceResult: (payload, heard) => {
+  showVoiceResult: (payload, heard, source = "voice") => {
     const user = get().actorId;
     const at = Date.now();
     if (payload.command) {
@@ -264,7 +217,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       const phase: Phase = result.approval ? "awaiting" : result.decision.verdict === "deny" ? "denied" : "done";
       const next: Turn = {
         id: uid("turn"),
-        source: "voice",
+        source,
         request,
         heard: heard && heard.trim() && heard.trim() !== request ? heard.trim() : null,
         at,
@@ -303,9 +256,9 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     const decision: Decision = {
       id: "unknown",
       title: answer.length > 180 ? `${answer.slice(0, 177).trimEnd()}…` : answer,
-      normalized: "voice-chat",
+      normalized: source === "voice" ? "voice-chat" : "text-chat",
       risk: 0,
-      tool: "разговор",
+      tool: "AI ответ",
       target: "—",
       runbook: null,
       account: "—",
@@ -324,12 +277,12 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       durationMs: 0,
       verdict,
       reason: answer.length > 180 ? answer : null,
-      policyNotes: ["Голосовой ответ. Голос ничего не подтверждает и не выполняет."],
+      policyNotes: ["Ответ через серверный AI-контур. Изменения требуют отдельного подтверждения."],
       previewFindings: false,
     };
     const next: Turn = {
       id: uid("turn"),
-      source: "voice",
+      source,
       request: heard?.trim() || "голос",
       heard: null,
       at,
@@ -337,7 +290,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       step: 4,
       decision,
       approval: null,
-      executed: false,
+      executed: payload.executionCalled,
       showFindings: false,
       dryRun: (payload.mode || get().serverMode) !== "real",
       exitCode: null,
@@ -351,40 +304,6 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       turns: [...get().turns, next],
       audit: [auditFrom(next, user, payload.code, null, null), ...get().audit].slice(0, 80),
     });
-  },
-
-  resolveApproval: async (approvalId, decision) => {
-    const state = get();
-    const operator = operatorById(state.operatorId);
-    try {
-      const result = await decideToolApproval({
-        data: { approvalId, decision, operatorId: operator.id },
-      });
-      set({
-        auditEpoch: get().auditEpoch + 1,
-        turns: get().turns.map((turn) => {
-          if (!turn.toolRun?.calls.some((call) => call.approvalId === approvalId)) return turn;
-          const calls = turn.toolRun.calls.map((call) =>
-            call.approvalId === approvalId && result.call ? result.call : call,
-          );
-          const waiting = calls.some((call) => call.result === "awaiting_approval");
-          return {
-            ...turn,
-            toolRun: { ...turn.toolRun, calls },
-            phase: waiting ? "awaiting" : "done",
-            hint: result.ok ? null : result.error,
-            executed: calls.some((call) => call.result === "executed"),
-          };
-        }),
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Не удалось записать решение.";
-      set({
-        turns: get().turns.map((turn) =>
-          turn.toolRun?.calls.some((call) => call.approvalId === approvalId) ? { ...turn, hint: message } : turn,
-        ),
-      });
-    }
   },
 
   cancel: (turnId) => {
@@ -444,91 +363,40 @@ export const useJarvis = create<JarvisState>((set, get) => ({
   submit: async (raw, source, heard) => {
     const text = raw.trim();
     if (!text || lock) return;
-    const pending = get().turns.find((item) => item.phase === "awaiting" && !item.toolRun);
-    if (pending && heuristicPlan(text).toolCalls.length === 0) {
+    const pending = get().turns.find((item) => item.phase === "awaiting");
+    if (pending) {
       if (/^отмена$/i.test(text) || /^cancel$/i.test(text)) {
         get().cancel(pending.id);
         return;
       }
-      await get().reply(pending.id, text);
+      get().reply(pending.id, text);
       return;
     }
     lock = true;
     set({ busy: true });
     try {
-      const operator = operatorById(get().operatorId);
-      if (!operator.allowed) {
-        const decision = evaluate(text, operator, new Date());
-        const turn: Turn = {
-          id: uid("turn"),
-          source,
-          request: text,
-          heard: heard && heard.trim() && heard.trim() !== text ? heard.trim() : null,
-          at: Date.now(),
-          phase: "denied",
-          step: 4,
-          decision,
-          approval: null,
-          executed: false,
-          showFindings: false,
-          dryRun: true,
-          exitCode: 1,
-          durationMs: decision.durationMs,
-          hint: decision.reason,
-          replies: [],
-          trace: null,
-          serverCode: "ACTOR_DENIED",
-        };
-        set({
-          turns: [...get().turns, turn],
-          audit: [auditFrom(turn, operator.name, "denied", decision.reason, null), ...get().audit].slice(0, 80),
-        });
+      await get().ensureSession();
+      const response = await postConversation(text, uid("req")).catch(() => null);
+      if (response?.kind === "agent") {
+        get().showVoiceResult({
+          code: response.code, spoken: response.answer, sentences: [], kind: "agent",
+          executionCalled: response.executionCalled, mode: get().serverMode, tts: false,
+          command: null, answer: response.answer,
+        }, heard || text, source);
         return;
       }
-      try {
-        const remote = await runAssistantTurn({ data: { message: text, operatorId: operator.id } });
-        if (remote.handled) {
-          const decision = toolDecision(text, operator, remote);
-          const waiting = remote.calls.some((call) => call.result === "awaiting_approval");
-          const denied = remote.calls.every((call) => call.result === "denied");
-          const turn: Turn = {
-            id: uid("turn"),
-            source,
-            request: text,
-            heard: heard && heard.trim() && heard.trim() !== text ? heard.trim() : null,
-            at: Date.now(),
-            phase: waiting ? "awaiting" : denied ? "denied" : "done",
-            step: 4,
-            decision,
-            approval: null,
-            executed: remote.calls.some((call) => call.result === "executed"),
-            showFindings: false,
-            dryRun: remote.mode === "dry-run",
-            exitCode: denied ? 1 : 0,
-            durationMs: 0,
-            hint: null,
-            replies: [],
-            toolRun: { assistant: remote.assistant, calls: remote.calls, mode: remote.mode },
-            trace: null,
-            serverCode: null,
-          };
-          set({ turns: [...get().turns, turn], auditEpoch: get().auditEpoch + 1 });
-          return;
-        }
-      } catch {
-        // Policy commands still reach the server if the tool service is unavailable.
-      }
-      await get().ensureSession();
-      const result = await postCommand(text, uid("req")).catch(() => null);
+      const result = response;
       const decision = result?.decision ?? unavailableDecision("Сервер политики не ответил.");
       const user = get().actorId;
+      const id = uid("turn");
+      const phase: Phase = result?.approval ? "awaiting" : decision.verdict === "deny" ? "denied" : "done";
       const next: Turn = {
-        id: uid("turn"),
+        id,
         source,
         request: text,
         heard: heard && heard.trim() && heard.trim() !== text ? heard.trim() : null,
         at: Date.now(),
-        phase: result?.approval ? "awaiting" : decision.verdict === "deny" ? "denied" : "done",
+        phase,
         step: 4,
         decision,
         approval: result?.approval
@@ -555,3 +423,4 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     }
   },
 }));
+
