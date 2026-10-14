@@ -1,4 +1,5 @@
 import { pendingMigrations } from "../../scripts/migration-plan.mjs";
+import { pgliteDataDir } from "./jarvis/server/pglite-path.ts";
 
 /** Which database backend is active. */
 export type DbSource = "neon" | "pglite";
@@ -107,17 +108,18 @@ function createNeonSql(): Promise<Sql> {
 
 async function createPgliteSql(): Promise<Sql> {
   // Embedded Postgres, imported on demand so it never loads on the Neon path.
-  // One in-memory instance per process, shared across HMR module instances, so
-  // data survives source edits (it resets on dev-server restart).
+  // Without JARVIS_PGLITE_DIR the instance is in-memory: it survives HMR but
+  // resets on process restart. A LAN server sets the directory so email
+  // accounts and sessions persist next to the rest of JARVIS state.
+  const dataDir = pgliteDataDir();
   globalRef.__pgliteInstance__ ??= (async () => {
     const { PGlite } = await import("@electric-sql/pglite");
-    const pg = new PGlite({
-      parsers: {
-        [OID_INT8]: Number,
-        [OID_DATE]: identity,
-        [OID_INTERVAL]: identity,
-      },
-    });
+    const parsers = {
+      [OID_INT8]: Number,
+      [OID_DATE]: identity,
+      [OID_INTERVAL]: identity,
+    };
+    const pg = dataDir ? new PGlite(dataDir, { parsers }) : new PGlite({ parsers });
     await pg.waitReady;
     await pg.exec(
       "create table if not exists _migrations (name text primary key, applied_at timestamptz not null default now())",
@@ -212,7 +214,7 @@ export async function getPglite(): Promise<import("@electric-sql/pglite").PGlite
 /**
  * Finish DB bootstrap before the server handles traffic.
  *
- * - **PGLite** (preview / no `DATABASE_URL`): open the in-memory DB and apply
+ * - **PGLite** (preview / no `DATABASE_URL`): open the DB and apply
  *   `migrations/*.sql`. Idempotent — concurrent callers share one promise.
  * - **Neon**: no-op (pool is created lazily on first query).
  *

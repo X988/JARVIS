@@ -3,3 +3,10 @@ node_modules/
 .github_repo
 .env
 .env.*
+!.env.example
+data/
+secrets/*
+!secrets/jarvis.example.json
+/playwright-report/
+/test-results/
+/models/

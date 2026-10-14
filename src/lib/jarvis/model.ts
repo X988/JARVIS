@@ -1,4 +1,5 @@
-import { ONEC_DEV, classifyOnecDeveloper, onecDevAdapter, type DevPlan } from "@/lib/jarvis/onec-dev";
+import { ONEC_DEV, classifyOnecDeveloper, onecDevAdapter, type DevPlan } from "./onec-dev.ts";
+import { DEMO_ACTORS, type Actor, type Role } from "./tools/actors.ts";
 export type Risk = 0 | 1 | 2 | 3;
 export type Verdict = "allow" | "deny" | "clarify";
 export type FindingState = "ok" | "warn" | "bad" | "info";
@@ -9,12 +10,8 @@ export type Finding = {
   detail: string;
 };
 
-export type Operator = {
-  id: string;
-  name: string;
-  telegramId: number;
-  allowed: boolean;
-};
+export type OperatorRole = Role;
+export type Operator = Actor;
 
 export { ONEC_DEV };
 
@@ -90,12 +87,12 @@ export const RISK_LABEL: Record<Risk, string> = {
   3: "критический",
 };
 
-export const OPERATORS: Operator[] = [
-  { id: "admin1", name: "admin1", telegramId: 100842, allowed: true },
-  { id: "stranger", name: "чужой аккаунт", telegramId: 0, allowed: false },
-];
+export const OPERATORS: Operator[] = DEMO_ACTORS;
 
 export const SUGGESTIONS: { label: string; text: string }[] = [
+  { label: "SSH uptime", text: "ssh mail01 uptime" },
+  { label: "Интерфейсы", text: "Покажи интерфейсы MikroTik" },
+  { label: "Выключи ether2", text: "Выключи интерфейс ether2 на MikroTik" },
   { label: "Проверь сервер", text: "Проверь сервер" },
   { label: "Backup utp", text: "Сделай резервную копию базы utp" },
   { label: "Mailcow", text: "Проверь Mailcow" },

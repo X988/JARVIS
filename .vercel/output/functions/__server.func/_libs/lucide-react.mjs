@@ -1,5 +1,5 @@
-import { i as __toESM } from "../_runtime.mjs";
-import { K as require_react } from "./@tanstack/react-router+[...].mjs";
+import { o as __toESM } from "../_runtime.mjs";
+import { Y as require_react } from "./@tanstack/react-router+[...].mjs";
 //#region node_modules/lucide-react/dist/esm/shared/src/utils.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 /**
@@ -121,6 +121,44 @@ var MessageSquare = createLucideIcon("message-square", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var MicOff = createLucideIcon("mic-off", [
+	["line", {
+		x1: "2",
+		x2: "22",
+		y1: "2",
+		y2: "22",
+		key: "a6p6uj"
+	}],
+	["path", {
+		d: "M18.89 13.23A7.12 7.12 0 0 0 19 12v-2",
+		key: "80xlxr"
+	}],
+	["path", {
+		d: "M5 10v2a7 7 0 0 0 12 5",
+		key: "p2k8kg"
+	}],
+	["path", {
+		d: "M15 9.34V5a3 3 0 0 0-5.68-1.33",
+		key: "1gzdoj"
+	}],
+	["path", {
+		d: "M9 9v3a3 3 0 0 0 5.12 2.12",
+		key: "r2i35w"
+	}],
+	["line", {
+		x1: "12",
+		x2: "12",
+		y1: "19",
+		y2: "22",
+		key: "x3vr5v"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var Mic = createLucideIcon("mic", [
 	["path", {
 		d: "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z",
@@ -138,6 +176,36 @@ var Mic = createLucideIcon("mic", [
 		key: "x3vr5v"
 	}]
 ]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var PhoneOff = createLucideIcon("phone-off", [
+	["path", {
+		d: "M10.1 13.9a14 14 0 0 0 3.732 2.668 1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2 18 18 0 0 1-12.728-5.272",
+		key: "1wngk7"
+	}],
+	["path", {
+		d: "M22 2 2 22",
+		key: "y4kqgn"
+	}],
+	["path", {
+		d: "M4.76 13.582A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 .244.473",
+		key: "10hv5p"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var Phone = createLucideIcon("phone", [["path", {
+	d: "M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384",
+	key: "9njp5v"
+}]]);
 /**
 * @license lucide-react v0.510.0 - ISC
 *
@@ -250,4 +318,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { ScrollText as a, KeyRound as c, Server as i, ArrowUp as l, TriangleAlert as n, Mic as o, Square as r, MessageSquare as s, X as t };
+export { ScrollText as a, Mic as c, KeyRound as d, ArrowUp as f, Server as i, MicOff as l, TriangleAlert as n, Phone as o, Square as r, PhoneOff as s, X as t, MessageSquare as u };

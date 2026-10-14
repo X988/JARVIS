@@ -76,6 +76,45 @@
   animation: jarvis-rise 250ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+@keyframes jarvis-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.035);
+  }
+}
+
+@keyframes jarvis-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.call-orb {
+  animation: jarvis-pulse 1.8s ease-in-out infinite;
+}
+
+.call-orb[data-state="thinking"] {
+  animation-duration: 0.9s;
+}
+
+.call-orb[data-state="muted"] {
+  animation: none;
+}
+
+.call-progress {
+  animation: jarvis-indeterminate 1.4s ease-in-out infinite;
+}
+
+.call-pad {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
 .wave-bar {
   transform-origin: center;
   animation: jarvis-bar 700ms cubic-bezier(0.22, 1, 0.36, 1) infinite;
@@ -83,7 +122,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .turn-in,
-  .wave-bar {
+  .wave-bar,
+  .call-orb,
+  .call-progress {
     animation: none;
   }
 }

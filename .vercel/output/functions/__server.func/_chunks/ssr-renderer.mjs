@@ -8,7 +8,7 @@ function lazyService(loader) {
 		return promise.then((mod) => mod.fetch(req));
 	} };
 }
-var viteServices = { ["ssr"]: lazyService(() => import("../_ssr/ssr.mjs").then((n) => n.t)) };
+var viteServices = { ["ssr"]: lazyService(() => import("../_ssr/ssr.mjs").then((n) => n.s)) };
 //#endregion
 //#region node_modules/nitro/dist/runtime/vite.mjs
 function fetchViteEnv(viteEnvName, input, init) {
