@@ -7,6 +7,7 @@ import {
 import { targetById } from "../server/inventory.ts";
 import { callJsonModel, type FetchLike } from "./llm-client.ts";
 import { planAgentTurn, type AgentPlan } from "./agent-planner.ts";
+import { mergeOnecSkillHits, ONEC_SKILL_PROMPT_RULE } from "../knowledge/onec-skills.ts";
 import {
   confirmKnowledge,
   formatSources,
@@ -53,6 +54,7 @@ async function answerFromKnowledge(
   opts: { env: NodeJS.ProcessEnv; fetch?: FetchLike },
 ): Promise<{ answer: string; provider: string | null; model: string | null } | null> {
   const context = hits.map((hit) => ({ source: hit.source, section: hit.heading, text: redact(hit.text) }));
+  const skillContext = hits.some((hit) => hit.source.includes("vendor/cc-1c-skills/"));
   const result = await callJsonModel(
     "sensitive",
     {
@@ -60,8 +62,11 @@ async function answerFromKnowledge(
         "You are JARVIS, an infrastructure assistant. Answer in Russian, concisely.",
         "Answer ONLY from the supplied knowledge snippets. If they do not contain the answer, say you don't know.",
         "Never invent IPs, hosts, commands or credentials. Never output secrets.",
+        skillContext ? ONEC_SKILL_PROMPT_RULE : "",
         "End the answer with the source file name(s) in the form: Источник: <file>.",
-      ].join("\n"),
+      ]
+        .filter(Boolean)
+        .join("\n"),
       user: JSON.stringify({ question: request, knowledge: context, draftAnswer: draft }),
       schema: ANSWER_SCHEMA,
     },
@@ -216,7 +221,8 @@ export async function runAgentTurn(
     return { code: result.code, answer: result.answer, plan: null, observations: [], provider: null, model: null };
   }
 
-  const hits = await (opts.retriever ?? retrieveKnowledge)(text, { env, stateDir: opts.stateDir }).catch(() => [] as Hit[]);
+  const retrieved = await (opts.retriever ?? retrieveKnowledge)(text, { env, stateDir: opts.stateDir }).catch(() => [] as Hit[]);
+  const hits = mergeOnecSkillHits(text, retrieved, env);
   const sources = [...new Set(hits.map((hit) => hit.source))];
 
   // Informational "how/what/where" questions with a strong knowledge hit are answered

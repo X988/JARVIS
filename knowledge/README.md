@@ -9,3 +9,5 @@ Rules:
 - Operator notes added at runtime ("запомни: …" plus confirmation) go to
   `<state dir>/knowledge/learned.md` on the server, not into git, and every
   append is written to the hash-chained audit log.
+- `1c-skills.md` is only the index card for the vendored 1C pack. The skill
+  bodies live in `vendor/cc-1c-skills/` and are documentation, not runbooks.
