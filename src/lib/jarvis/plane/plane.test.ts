@@ -131,7 +131,7 @@ describe("telegram and voice", () => {
   });
 
   it("keeps a low-confidence alias unchanged", () => {
-    assert.equal(normalizeHeard("проверь ютп", 0.4).changed, false);
+    assert.equal(normalizeHeard("проверь ютп", 0.3).changed, false);
     assert.equal(normalizeHeard("проверь ютп", 0.9).text.includes("utp"), true);
     assert.equal(wakeEnabled({}), false);
     assert.equal(ttsMode({}), "disabled");

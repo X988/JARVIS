@@ -39,13 +39,14 @@ def main() -> None:
     except Exception as error:  # noqa: BLE001
         fail("NOT_CONFIGURED", str(error))
 
-    model_name = os.environ.get("JARVIS_STT_MODEL", "small")
-    language = os.environ.get("JARVIS_STT_LANGUAGE", "ru")
-    requested = os.environ.get("JARVIS_STT_DEVICE", "auto")
+    model_name = os.environ.get("JARVIS_STT_MODEL", "").strip() or "small"
+    language = os.environ.get("JARVIS_STT_LANGUAGE", "").strip() or "ru"
+    requested = os.environ.get("JARVIS_STT_DEVICE", "").strip() or "auto"
     root = os.environ.get("JARVIS_MODEL_DIR") or None
-    prompt = os.environ.get(
-        "JARVIS_STT_PROMPT",
-        "Джарвис. UTP. Mailcow. MikroTik. WireGuard. SQL. 1С. сервер. резервная копия. проверь состояние.",
+    # Blank keys copied from .env templates mean "unset": keep the domain prompt.
+    prompt = (
+        os.environ.get("JARVIS_STT_PROMPT", "").strip()
+        or "Джарвис. UTP. Mailcow. MikroTik. WireGuard. SQL. 1С. сервер. резервная копия. проверь состояние."
     )[:600]
     beam_size = env_int("JARVIS_STT_BEAM_SIZE", 5, 1, 10)
     vad_silence = env_int("JARVIS_STT_VAD_SILENCE_MS", 500, 200, 2000)

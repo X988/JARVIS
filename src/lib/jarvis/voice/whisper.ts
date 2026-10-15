@@ -58,6 +58,8 @@ export function sweepAudio(root: string, olderThanMs: number, now = Date.now()):
 }
 
 function bounded(raw: string | undefined, fallback: number, min: number, max: number): number {
+  // Blank keys from .env templates (`JARVIS_STT_MAX_MS=`) mean "unset", not 0.
+  if (raw === undefined || raw.trim() === "") return fallback;
   const value = Number(raw);
   return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 }
