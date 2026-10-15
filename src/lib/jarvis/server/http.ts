@@ -84,6 +84,25 @@ function newCsrf():string{
   return randomUUID().replace(/-/g,"");
 }
 
+/**
+ * GET /api/audit: the server audit for admins only. 401 without a session,
+ * 403 for a non-admin role (the reason names the role so a misconfigured
+ * JARVIS_WEB_ACTORS_JSON binding is visible), 200 with the newest rows.
+ */
+export async function handleAuditList(request:Request):Promise<Response>{
+  if(request.method!=="GET") return json({code:"SCHEMA_INVALID"},405);
+  const auth=await authenticateRequest(request);
+  if(!auth.session||auth.code!=="OK") return json({code:auth.code||"AUTH_REQUIRED",forbidden:true,records:[]},auth.code==="ACTOR_DENIED"?403:401);
+  if(auth.session.role!=="admin") return json({code:"ACTOR_DENIED",forbidden:true,role:auth.session.role,reason:`роль ${auth.session.role}: журнал доступен только роли admin`,records:[]},403);
+  const { readGatewayAudit } = await import("../tools/audit-reader.ts");
+  try{
+    const view=readGatewayAudit(auth.session,process.env.JARVIS_STATE_DIR||process.cwd()+"/data");
+    return json({code:"OK",role:auth.session.role,...view},200);
+  }catch(error){
+    return json({code:String((error as Error)?.message??"AUDIT_UNAVAILABLE").slice(0,60),forbidden:false,records:[]},503);
+  }
+}
+
 export async function handleSession(request:Request):Promise<Response>{
   if(request.method!=="GET") return json({code:"SCHEMA_INVALID"},405);
   const cookies=readCookies(request);
@@ -98,6 +117,7 @@ export async function handleSession(request:Request):Promise<Response>{
     role:auth.session.role,
     channel:auth.channel,
     executionMode:executionMode(),
+    profile:process.env.JARVIS_PROFILE==="production-infra"?"production-infra":"demo",
     adapters:adapterStatus(),
     monitoring: monitoringStatus(),
     ...identity,

@@ -4,7 +4,7 @@
 // is never printed. Output: one JSON line {code, detail?, text?, structured?, tools?}.
 const url = process.env.JARVIS_MIKROMCP_URL ?? "";
 const token = process.env.JARVIS_MIKROMCP_TOKEN ?? "";
-const timeout = Math.min(60000, Math.max(1000, Number(process.env.JARVIS_MIKROMCP_TIMEOUT_MS) || 8000));
+const timeout = Math.min(60000, Math.max(1000, Number(process.env.JARVIS_MIKROMCP_TIMEOUT_MS) || 20000));
 const mode = process.argv[2] ?? "";
 const tool = process.argv[3] ?? "";
 const allowed = new Set((process.env.JARVIS_MIKROMCP_ALLOWED ?? "").split(",").filter(Boolean));
@@ -69,4 +69,10 @@ async function main() {
   return out({ code: "OK", text: text.slice(0, 4000), structured });
 }
 
-main().catch((error) => out({ code: error?.code ?? (error?.name === "TimeoutError" ? "EXECUTION_TIMEOUT" : "CONNECT_FAILED"), detail: String(error?.message ?? error).slice(0, 200) }));
+// DOMException carries a numeric `code` (23 = TIMEOUT_ERR); always map by name first
+// and only ever emit string result codes.
+function codeOf(error) {
+  if (error?.name === "TimeoutError" || error?.name === "AbortError") return "EXECUTION_TIMEOUT";
+  return typeof error?.code === "string" && /^[A-Z_]+$/.test(error.code) ? error.code : "CONNECT_FAILED";
+}
+main().catch((error) => out({ code: codeOf(error), detail: String(error?.message ?? error).slice(0, 200) }));
