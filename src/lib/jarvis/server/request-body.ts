@@ -16,8 +16,9 @@ export async function readJsonBodyBounded(
 
   const contentLength = request.headers.get("content-length");
   if (contentLength !== null) {
-    if (!/^\d+$/.test(contentLength.trim())) return { ok: false, status: 400 };
-    const declared = Number(contentLength);
+    const trimmed = contentLength.trim();
+    if (!/^\d+$/.test(trimmed)) return { ok: false, status: 400 };
+    const declared = Number(trimmed);
     if (!Number.isSafeInteger(declared)) return { ok: false, status: 400 };
     if (declared > maxBytes) return { ok: false, status: 413 };
   }
@@ -27,10 +28,12 @@ export async function readJsonBodyBounded(
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
+
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+      if (!value) continue;
       total += value.byteLength;
       if (total > maxBytes) {
         void reader.cancel().catch(() => undefined);
@@ -44,9 +47,11 @@ export async function readJsonBodyBounded(
     try {
       reader.releaseLock();
     } catch {
-      // The reader may still be cancelling after an oversized chunk.
+      // Reader may still be cancelling after an oversized chunk.
     }
   }
+
+  if (total === 0) return { ok: false, status: 400 };
 
   const bytes = new Uint8Array(total);
   let offset = 0;
