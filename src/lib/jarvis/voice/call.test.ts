@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import { handleCommand, handleSession } from "../server/http.ts";
 import { processCommand } from "../server/pipeline.ts";
 import { testSession } from "../server/session.ts";
-import { hearWav, runVoiceConversation } from "./call.ts";
+import { hearWav, runVoiceConversation, voiceExecute } from "./call.ts";
 import { handleVoice } from "./web.ts";
 import {
   LISTEN_INITIAL,
@@ -91,24 +91,81 @@ describe("call endpoint", () => {
 });
 
 describe("voice conversation", () => {
-  it("keeps a live read on the voice channel and still explains dry-run", async () => {
+  it("runs a read-only runbook by voice in real mode and audits it with channel=voice", async () => {
     const session = testSession("admin1");
+    const stateDir = dir();
+    const seen: string[] = [];
     const live = await runVoiceConversation("Проверь сервер", {
       session,
-      stateDir: dir(),
+      stateDir,
       requestId: "voice-read",
       mode: "real",
+      realExecute: (call) => {
+        seen.push(call.runbook);
+        return { called: true, code: "OK", detail: "uptime=1d cpu=3%" };
+      },
     });
-    assert.equal(live.executionCalled, false);
-    assert.match(live.spoken, /не вызывает исполнителя/);
+    assert.deepEqual(seen, ["server.health"]);
+    assert.equal(live.executionCalled, true);
+    assert.equal(live.code, "OK");
+    const rows = fs.readFileSync(path.join(stateDir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    assert.ok(rows.some((r) => r.runbook === "server.health" && r.channel === "voice" && r.executor));
     const dry = await runVoiceConversation("Проверь сервер", {
       session,
       stateDir: dir(),
       requestId: "voice-dry",
       mode: "dry-run",
+      realExecute: () => assert.fail("dry-run must not execute"),
     });
     assert.equal(dry.executionCalled, false);
     assert.match(dry.spoken, /dry-run/);
+  });
+
+  it("explains an invalid plan instead of blaming the model", async () => {
+    const result = await runVoiceConversation("Отключи интерфейс ISO 6", {
+      session: testSession("admin1"),
+      stateDir: dir(),
+      requestId: "voice-invalid",
+      mode: "real",
+      agent: async () => ({ code: "PLAN_INVALID", answer: "", plan: null, observations: [], provider: null, model: null }),
+    });
+    assert.doesNotMatch(result.spoken, /Модель сейчас не отвечает/);
+    assert.match(result.spoken, /Ничего не запускал/);
+  });
+
+  it("JARVIS_VOICE_READ_EXECUTE=0 restores the no-execute voice channel", async () => {
+    const result = await runVoiceConversation("Проверь сервер", {
+      session: testSession("admin1"),
+      stateDir: dir(),
+      requestId: "voice-off",
+      mode: "real",
+      env: { ...process.env, JARVIS_VOICE_READ_EXECUTE: "0" },
+      realExecute: () => assert.fail("must not execute"),
+    });
+    assert.equal(result.executionCalled, false);
+  });
+
+  it("voice executor refuses every mutating or unknown runbook server-side", () => {
+    const run = voiceExecute({}, () => assert.fail("mutation reached the executor"));
+    for (const runbook of ["mikrotik.interface.set", "mikrotik.backup", "backup.sql", "onec.backup", "no.such.book"]) {
+      const result = run({ runbook, target: "rb5009", mode: "real", parameters: { voiceReadOk: "1" } });
+      assert.equal(result.called, false, runbook);
+      assert.equal(result.code, "POLICY_DENIED", runbook);
+    }
+    const read = voiceExecute({}, () => ({ called: true, code: "OK", detail: "ok" }));
+    assert.equal(read({ runbook: "mikrotik.status", target: "rb5009", mode: "real" }).code, "OK");
+  });
+
+  it("a voice mutation is refused even in real mode with a working executor", async () => {
+    const result = await runVoiceConversation("Сделай резервную копию базы utp", {
+      session: testSession("admin1"),
+      stateDir: dir(),
+      requestId: "voice-backup-real",
+      mode: "real",
+      realExecute: () => assert.fail("mutation reached the executor"),
+    });
+    assert.equal(result.executionCalled, false);
+    assert.notEqual(result.code, "OK");
   });
 
   it("does not execute a mutation and does not dictate the confirm phrase", async () => {
@@ -177,7 +234,7 @@ describe("voice conversation", () => {
     assert.equal(result.sentences[1], "Вторая фраза короткая.");
     const audit = fs.readFileSync(path.join(stateDir, "audit.jsonl"), "utf8");
     assert.match(audit, /voice-chat/);
-    assert.match(audit, /VOICE_NO_EXECUTE/);
+    assert.match(audit, /VOICE_READ_ONLY/);
     assert.equal(audit.includes('"executor":""') || audit.includes('"executor": ""'), true);
   });
 });

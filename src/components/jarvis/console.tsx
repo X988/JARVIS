@@ -18,7 +18,7 @@ import {
 } from "@/lib/jarvis/model";
 import { alternativesFrom, interpretSpeech, type RawResult, type SpeechAlt, type SpeechReading } from "@/lib/jarvis/hearing";
 import { useJarvis, type Notice, type Phase, type Turn } from "@/lib/jarvis/store";
-import { WATCH_ALERTS, WATCH_HOSTS, type WatchLevel } from "@/lib/jarvis/watch";
+import { WATCH_ALERTS, WATCH_HOSTS, demoWatchAllowed, type WatchLevel } from "@/lib/jarvis/watch";
 import { authEnabled } from "@/lib/auth/client";
 import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUser } from "@/lib/auth/use-current-user";
@@ -566,10 +566,11 @@ export function Console() {
     void ensureSession();
   }, [ensureSession]);
 
+  const demoWatch = demoWatchAllowed(serverMode);
   useEffect(() => {
-    if (!watch) return;
+    if (!watch || !demoWatch) return;
     for (const item of WATCH_ALERTS) pushNotice(item.id);
-  }, [watch, pushNotice]);
+  }, [watch, demoWatch, pushNotice]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
@@ -801,10 +802,10 @@ export function Console() {
           <UserButton />
         </div>
         <p className="px-4 font-mono text-xs text-subtle">
-          {watch ? "MONITORING_NOT_CONFIGURED. Ниже только demo-фикстуры, не телеметрия." : "Слежение на паузе."}
+          {!watch ? "Слежение на паузе." : demoWatch ? "MOCK: ниже только demo-фикстуры, не телеметрия." : "Мониторинг не подключён (MONITORING_NOT_CONFIGURED). Demo-события не показываются."}
         </p>
         <ul className="flex gap-2 overflow-x-auto px-4 py-3">
-          {WATCH_HOSTS.map((host) => (
+          {(demoWatch ? WATCH_HOSTS : []).map((host) => (
             <li key={host.id} className="flex shrink-0 items-center gap-2 rounded-full border border-line px-3 py-2">
               <span className={`size-2 rounded-full ${levelDot(host.level)}`} aria-hidden="true" />
               <span className="font-mono text-xs">{host.id}</span>

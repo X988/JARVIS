@@ -130,6 +130,22 @@ describe("agent uses knowledge", () => {
     assert.match(result.answer, /Источник: knowledge\/runbooks\/deploy-rollback\.md/);
   });
 
+  it("live-state questions skip the knowledge short-circuit and reach the planner", async () => {
+    let planned = false;
+    await runAgentTurn("Какая загрузка роутера?", {
+      session, stateDir: tmp(), env,
+      planner: (async () => { planned = true; return { ok: false, code: "X", detail: "" }; }) as never,
+      retriever: async () => [{ id: "r", source: "knowledge/infrastructure.md", heading: "Network", text: "router", score: 0.9 }],
+    });
+    assert.equal(planned, true);
+  });
+
+  it("user-facing text names the router, not the internal id", async () => {
+    const { humanizeTargets } = await import("../plane/agent-runtime.ts");
+    assert.equal(humanizeTargets("Загрузка роутера rb5009: CPU 0%", ["rb5009"]), "Загрузка роутера MikroTik CCR1009 (MikroTik-KP): CPU 0%");
+    assert.equal(humanizeTargets("rb5009x stays", ["rb5009"]), "rb5009x stays");
+  });
+
   it("knowledge append through the agent needs confirmation", async () => {
     const dir = tmp();
     const first = await runAgentTurn("запомни: камера на складе 192.168.0.77", { session, stateDir: dir, env, planner, retriever: async () => [] });
@@ -137,5 +153,13 @@ describe("agent uses knowledge", () => {
     const id = /знание ([a-f0-9]{6})/.exec(first.answer)![1];
     const second = await runAgentTurn(`подтверди знание ${id}`, { session, stateDir: dir, env, planner, retriever: async () => [] });
     assert.equal(second.code, "OK");
+  });
+});
+
+describe("demo watch", () => {
+  it("demo watch fixtures only in mock mode", async () => {
+    const { demoWatchAllowed } = await import("../watch.ts");
+    assert.equal(demoWatchAllowed("mock"), true);
+    for (const mode of ["real", "dry-run", "", undefined]) assert.equal(demoWatchAllowed(mode), false);
   });
 });

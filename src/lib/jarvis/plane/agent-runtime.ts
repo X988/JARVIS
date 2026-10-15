@@ -4,6 +4,7 @@ import {
   type Mode,
   type RegisteredToolResult,
 } from "../server/pipeline.ts";
+import { targetById } from "../server/inventory.ts";
 import { callJsonModel, type FetchLike } from "./llm-client.ts";
 import { planAgentTurn, type AgentPlan } from "./agent-planner.ts";
 import {
@@ -38,6 +39,10 @@ export type AgentTurnResult = {
 type Planner = typeof planAgentTurn;
 type ToolRunner = typeof processRegisteredReadOnlyTool;
 type Retriever = typeof retrieveKnowledge;
+
+// Questions about live state must reach the tools, not the static knowledge base.
+const LIVE_QUERY = /(загрузк|нагрузк|сейчас|текущ|аптайм|uptime|cpu|процессор|памят|аренд|lease|интерфейс|interface|лог[иа ]|журнал роутера|маршрут|статус|состояни|онлайн|работает ли|покажи|проверь)/iu;
+const NO_ANSWER = /(отсутству|нет (информац|данных|сведений)|не (знаю|указан|содержит))/iu;
 
 const INFO_QUESTION = /^(как|что|где|какой|какая|какое|какие|кто|зачем|почему|сколько|расскажи|объясни|how|what|where|which|who|why)(?=[\s,?!]|$)/iu;
 
@@ -86,12 +91,38 @@ function redact(text: string): string {
     .slice(0, 1500);
 }
 
+/** Human name for a target id in user-facing text (internal ids stay in policy/audit). */
+function targetLabel(id: string): string {
+  try {
+    return targetById(id)?.displayName ?? id;
+  } catch {
+    return id;
+  }
+}
+
+/** Data that came through MikroMCP must not be described with the REST runbook's verification text. */
+function verificationOf(detail: string, verification: string): string {
+  const via = /^mikromcp:([a-z_]+):/.exec(detail);
+  return via ? `MikroMCP ${via[1]} (read-only)` : verification;
+}
+
+/** Replace internal target ids (e.g. rb5009) with their display names in user-facing text. */
+export function humanizeTargets(text: string, ids: string[]): string {
+  let out = text;
+  for (const id of new Set(ids)) {
+    const label = targetLabel(id);
+    if (label === id || !/^[a-z0-9_.-]+$/i.test(id)) continue;
+    out = out.replace(new RegExp(`(?<![\\w-])${id.replace(/[.]/g, "\\.")}(?![\\w-])`, "gi"), label);
+  }
+  return out;
+}
+
 function fallbackAnswer(observations: AgentObservation[], message: string): string {
   if (observations.length === 0) return message || "Действия не выполнялись.";
   const lines = observations.map(
-    (item) => `${item.tool}@${item.target}: ${item.code} — ${redact(item.detail)}`,
+    (item) => `${item.tool}@${targetLabel(item.target)}: ${item.code} — ${redact(item.detail)}`,
   );
-  return [message, ...lines].filter(Boolean).join("\n");
+  return humanizeTargets([message, ...lines].filter(Boolean).join("\n"), observations.map((o) => o.target));
 }
 
 async function synthesize(
@@ -103,10 +134,10 @@ async function synthesize(
 ): Promise<{ answer: string; provider: string | null; model: string | null }> {
   const safeObservations = observations.map((item) => ({
     tool: item.tool,
-    target: item.target,
+    target: targetLabel(item.target),
     code: item.code,
     detail: redact(item.detail),
-    verification: redact(item.verification),
+    verification: redact(verificationOf(item.detail, item.verification)),
     executionCalled: item.executionCalled,
   }));
   const result = await callJsonModel(
@@ -119,7 +150,12 @@ async function synthesize(
         "If a step failed, state that it failed and do not infer a successful result.",
         "Do not output secrets. Keep the answer concise and technical.",
       ].join("\n"),
-      user: JSON.stringify({ request, objective, message, observations: safeObservations }),
+      user: JSON.stringify({
+        request,
+        objective: humanizeTargets(objective, observations.map((o) => o.target)),
+        message: humanizeTargets(message, observations.map((o) => o.target)),
+        observations: safeObservations,
+      }),
       schema: ANSWER_SCHEMA,
     },
     { env: opts.env, fetch: opts.fetch },
@@ -131,7 +167,7 @@ async function synthesize(
   if (typeof answer !== "string" || !answer.trim() || answer.length > 4000) {
     return { answer: fallbackAnswer(observations, message), provider: null, model: null };
   }
-  return { answer: answer.trim(), provider: result.provider, model: result.model };
+  return { answer: humanizeTargets(answer.trim(), observations.map((o) => o.target)), provider: result.provider, model: result.model };
 }
 
 export async function runAgentTurn(
@@ -186,9 +222,9 @@ export async function runAgentTurn(
   // Informational "how/what/where" questions with a strong knowledge hit are answered
   // from the knowledge base directly, without running tools.
   const directScore = Number(env.JARVIS_KNOWLEDGE_DIRECT_SCORE) || 0.55;
-  if (INFO_QUESTION.test(text.trim()) && hits.length > 0 && hits[0].score >= directScore) {
+  if (INFO_QUESTION.test(text.trim()) && !LIVE_QUERY.test(text) && hits.length > 0 && hits[0].score >= directScore) {
     const grounded = await answerFromKnowledge(text, hits, "", { env, fetch: opts.fetch });
-    if (grounded) {
+    if (grounded && !NO_ANSWER.test(grounded.answer)) {
       return { code: "OK", answer: grounded.answer, plan: null, observations: [], provider: grounded.provider, model: grounded.model, sources };
     }
   }

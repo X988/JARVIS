@@ -8,11 +8,14 @@ import type { FetchLike } from "../plane/llm-client.ts";
 import {
   processCommand,
   processRegisteredReadOnlyTool,
+  type ExecCall,
   type ExecResult,
   type Mode,
   type PipelineResult,
 } from "../server/pipeline.ts";
 import type { Session } from "../server/session.ts";
+import { defaultRealExecute } from "../server/adapters.ts";
+import { runbookById } from "../server/runbooks.ts";
 import type { VoiceCommand, VoiceHearResponse, VoiceTurnResponse } from "./contract.ts";
 import {
   encodeWavFromPcm16,
@@ -33,12 +36,29 @@ import { audioRoot, safeAudioFile, sweepAudio, transcribeWav } from "./whisper.t
 
 const SAMPLE_RATE = 16_000;
 
-/** Voice is an input channel. It must not reach the real executor, even for a read. */
+/** Refusal used for anything voice may not run. */
 function voiceDoesNotExecute(): ExecResult {
   return {
     called: false,
-    code: "EXECUTION_DISABLED",
-    detail: "Голосовой канал не вызывает исполнителя. Команду можно повторить текстом.",
+    code: "POLICY_DENIED",
+    detail: "Голос не выполняет изменения. Повторите текстом и подтвердите (CONFIRM).",
+  };
+}
+
+/**
+ * Voice may run strictly read-only runbooks. The decision is made here on the
+ * server from the runbook registry (risk 0, mutates=false, policy ALLOW); no
+ * client field reaches it. Anything else is refused before the executor.
+ * JARVIS_VOICE_READ_EXECUTE=0 turns voice back into a no-execute channel.
+ */
+export function voiceExecute(env: NodeJS.ProcessEnv = process.env, real: (call: ExecCall) => ExecResult = defaultRealExecute) {
+  return (call: ExecCall): ExecResult => {
+    if (env.JARVIS_VOICE_READ_EXECUTE?.trim() === "0") {
+      return { called: false, code: "EXECUTION_DISABLED", detail: "Голосовой канал не вызывает исполнителя (JARVIS_VOICE_READ_EXECUTE=0)." };
+    }
+    const book = runbookById(call.runbook);
+    if (!book || book.mutates || book.risk !== 0 || book.policy !== "ALLOW") return voiceDoesNotExecute();
+    return real({ ...call, channel: "voice" });
   };
 }
 
@@ -143,8 +163,14 @@ export function hearWav(
 function spokenAgent(result: AgentTurnResult): string {
   if (result.code === "AGENT_DISABLED") return "Модель на сервере выключена. Команды из списка всё равно разбираются.";
   if (result.code === "AUTH_REQUIRED" || result.code === "ACTOR_DENIED") return "Нужна сессия оператора. Ничего не запускал.";
-  if (result.code === "LLM_UNAVAILABLE" || result.code === "NOT_CONFIGURED" || result.code === "PLAN_INVALID") {
+  if (result.code === "LLM_UNAVAILABLE" || result.code === "NOT_CONFIGURED") {
     return "Модель сейчас не отвечает. Ничего не запускал.";
+  }
+  if (result.code === "PLAN_INVALID") {
+    return "Не смог составить допустимый план для этой команды: такого действия нет среди разрешённых. Ничего не запускал.";
+  }
+  if (result.code === "PLAN_REJECTED") {
+    return `Команда отклонена политикой. ${result.answer?.trim() || ""} Ничего не запускал.`.replace(/\s+/g, " ").trim();
   }
   if (result.code === "MUTATION_REQUIRES_APPROVAL") return voiceLine("APPROVAL_REQUIRED", null);
   const clean = result.answer?.trim();
@@ -183,18 +209,21 @@ export async function runVoiceConversation(
     fetch?: FetchLike;
     agent?: Parameters<typeof runHybridTurn>[1]["agent"];
     command?: Parameters<typeof runHybridTurn>[1]["command"];
+    /** Test seam for the real executor; never reachable from HTTP input. */
+    realExecute?: (call: ExecCall) => ExecResult;
   },
 ): Promise<VoiceTurnResponse> {
   const env = opts.env ?? process.env;
+  const execute = voiceExecute(env, opts.realExecute);
   const command = opts.command ?? ((input: Parameters<typeof processCommand>[0]) => {
-    const safe = { ...input, execute: voiceDoesNotExecute, channel: "voice" as const };
+    const safe = { ...input, execute, channel: "voice" as const };
     delete safe.approval;
     return processCommand(safe);
   });
   const agent = opts.agent ?? ((utterance: string, agentOpts: Parameters<typeof runAgentTurn>[1]) => {
     return runAgentTurn(utterance, {
       ...agentOpts,
-      toolRunner: (tool) => processRegisteredReadOnlyTool({ ...tool, execute: voiceDoesNotExecute }),
+      toolRunner: (tool) => processRegisteredReadOnlyTool({ ...tool, channel: "voice", execute }),
     });
   });
   const result: HybridTurnResult = await runHybridTurn(text, {
@@ -271,11 +300,12 @@ export async function runVoiceConversation(
       target: "—",
       runbook: "voice.conversation",
       risk: 0,
-      policy: "VOICE_NO_EXECUTE",
+      policy: "VOICE_READ_ONLY",
       approvalId: "",
       executor: "",
       result: result.code,
-      verification: "голос исполнителя не вызывает",
+      verification: "голос: только read-only runbooks, изменения запрещены",
+      channel: "voice",
     },
     opts.stateDir,
   );
@@ -284,7 +314,7 @@ export async function runVoiceConversation(
     spoken,
     sentences: chunkSpoken(spoken, env),
     kind: "agent",
-    executionCalled: false,
+    executionCalled: (result.observations ?? []).some((item) => item.executionCalled),
     mode: opts.mode ?? "dry-run",
     tts: ttsConfigured(env),
     command: null,

@@ -556,6 +556,9 @@ describe("plugins, incidents, models", () => {
     assert.equal(ids.includes("alertmanager"), true);
     assert.equal(ids.includes("linux"), true);
     assert.equal(ids.includes("mailcow"), true);
+    assert.equal(ids.includes("demo"), false);
+    assert.deepEqual(monitoringProvidersFromEnv({ EXECUTION_MODE: "mock" }).map((p) => p.id), ["demo"]);
+    assert.deepEqual(monitoringProvidersFromEnv({ EXECUTION_MODE: "real" }).map((p) => p.id), []);
   });
 
   it("collects live monitoring only through fixed provider adapters", () => {

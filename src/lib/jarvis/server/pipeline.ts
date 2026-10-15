@@ -24,6 +24,8 @@ export type ExecCall = {
    * into the approval hash before Gateway is reached.
    */
   parameters?: Readonly<Record<string, string>>;
+  /** Set server-side by the channel wrapper (e.g. voice); used for audit labels only. */
+  channel?: string;
 };
 
 export type ExecResult = { called: boolean; code: string; detail: string };
