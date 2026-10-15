@@ -30,6 +30,29 @@ function hasGlobbedMigrations(root: string): boolean {
  * migrations — no schema to apply — skips it entirely rather than paying for a
  * PGLite instance it never queries.
  */
+/**
+ * Warm the faster-whisper model when the JARVIS dev server starts (the
+ * production unit runs `vite dev`). Not awaited: startup is not delayed; /ready
+ * reports stt.warm = warming → warm/failed.
+ */
+function sttWarmupPlugin(): Plugin {
+  return {
+    name: "jarvis:stt-warmup",
+    apply: "serve",
+    async configureServer(server) {
+      if (process.env.JARVIS_STT_PROVIDER !== "faster-whisper" || process.env.JARVIS_STT_WARMUP === "0") return;
+      try {
+        const mod = (await server.ssrLoadModule("/src/lib/jarvis/voice/whisper.ts")) as {
+          startSttWarmup?: () => Promise<unknown>;
+        };
+        void mod.startSttWarmup?.();
+      } catch (err) {
+        console.error("[jarvis] STT warm-up could not start:", err);
+      }
+    },
+  };
+}
+
 function pgliteBootstrapPlugin(): Plugin {
   return {
     name: "app-builder:pglite-bootstrap",
@@ -190,6 +213,7 @@ export default defineConfig(({ command, isPreview }) => ({
   resolve: { tsconfigPaths: true },
   plugins: [
     pgliteBootstrapPlugin(),
+    sttWarmupPlugin(),
     // Before tanstackStart so /auth/popup never falls through to the SPA.
     authPopupPlugin(),
     // Dev-only /__app-env, read by scripts/check-auth-invariant.mjs.

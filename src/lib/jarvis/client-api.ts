@@ -70,6 +70,8 @@ export async function ensureServerSession(): Promise<{
   role?: string;
   actorId?: string;
   userId?: string;
+  profile?: string;
+  adapters?: Record<string, string>;
 }> {
   const response = await fetch("/api/session", { credentials: "include" });
   const body = (await response.json()) as {
@@ -78,6 +80,8 @@ export async function ensureServerSession(): Promise<{
     actorId?: string;
     code?: string;
     userId?: string;
+    profile?: string;
+    adapters?: Record<string, string>;
   };
   const code = body.code || (response.ok ? "OK" : "AUTH_REQUIRED");
   return {
@@ -87,6 +91,8 @@ export async function ensureServerSession(): Promise<{
     role: body.role,
     actorId: body.actorId,
     userId: body.userId,
+    profile: body.profile,
+    adapters: body.adapters,
   };
 }
 

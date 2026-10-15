@@ -93,33 +93,73 @@ export function summarize(runbook: string, structured: Row | null, text: string)
   return text.replace(MAC, "<mac>").slice(0, 400);
 }
 
-function timeoutMs(env: NodeJS.ProcessEnv): number {
-  const v = Number(env.JARVIS_MIKROMCP_TIMEOUT_MS);
-  return Number.isFinite(v) && v > 0 ? Math.min(60_000, Math.max(1_000, v)) : 8_000;
+/** A slow CCR1009 needs ~8-12 s for get_system_status (several REST sections). */
+export const MIKROMCP_DEFAULT_TIMEOUT_MS = 20_000;
+/** Extra time the parent gives the client process beyond its own request timeout. */
+export const MIKROMCP_PROCESS_MARGIN_MS = 3_000;
+
+export function mikroMcpTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  return timeoutMs(env);
 }
 
-function audit(env: NodeJS.ProcessEnv, call: ExecCall, tool: string, code: string, durationMs: number): void {
+function timeoutMs(env: NodeJS.ProcessEnv): number {
+  const v = Number(env.JARVIS_MIKROMCP_TIMEOUT_MS);
+  return Number.isFinite(v) && v > 0 ? Math.min(60_000, Math.max(1_000, v)) : MIKROMCP_DEFAULT_TIMEOUT_MS;
+}
+
+export type CallStatus = "ok" | "error" | "timeout" | "denied";
+
+export function statusOf(code: string): CallStatus {
+  if (code === "OK") return "ok";
+  if (code === "POLICY_DENIED") return "denied";
+  if (code === "EXECUTION_TIMEOUT") return "timeout";
+  return "error";
+}
+
+/** Normalizes whatever the client produced into a known string result code. */
+export function normalizeCode(raw: unknown): string {
+  const code = typeof raw === "string" ? raw : "";
+  return /^[A-Z][A-Z_]{1,40}$/.test(code) ? code : "MIKROMCP_ERROR";
+}
+
+/**
+ * One hash-chained audit row per router call, success or failure. `executor`
+ * is "mikromcp" or "routeros-rest". A failed audit write is reported on stderr
+ * rather than silently swallowed (the pipeline row still records the runbook).
+ */
+export function auditRouterCall(
+  env: NodeJS.ProcessEnv,
+  call: ExecCall,
+  executor: "mikromcp" | "routeros-rest",
+  tool: string,
+  code: string,
+  durationMs: number,
+  detail = "",
+): void {
+  const status = statusOf(code);
   try {
     appendAudit(
       {
         at: new Date().toISOString(),
-        executionId: `mikromcp-${Date.now()}`,
+        executionId: `${executor}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         actor: "jarvis",
-        action: `mikromcp.call:${tool}`,
-        verdict: code === "POLICY_DENIED" ? "deny" : "allow",
-        normalized: `mikromcp ${tool} router=${env.JARVIS_MIKROMCP_ROUTER_ID || "mikrotik-kp"}`,
+        action: `${executor === "mikromcp" ? "mikromcp.call" : "routeros.call"}:${tool}`,
+        verdict: status === "denied" ? "deny" : "allow",
+        normalized: `${executor} ${tool} router=${env.JARVIS_MIKROMCP_ROUTER_ID || "mikrotik-kp"} status=${status}`,
         target: call.target,
         runbook: call.runbook,
-        executor: "mikromcp",
+        executor,
         durationMs,
         result: code,
+        // status lives in hashed fields (normalized + error), not an unhashed extra key.
+        error: status === "ok" ? "" : `${status}: ` + String(detail).replace(/([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}/g, "<mac>").slice(0, 200),
         channel: call.channel ?? "agent",
         tool,
       },
       env.JARVIS_STATE_DIR?.trim() || undefined,
     );
-  } catch {
-    // The pipeline's own audit row still records the runbook result.
+  } catch (error) {
+    console.error(`[jarvis] audit write for ${executor}:${tool} failed: ${String((error as Error)?.message ?? error).slice(0, 200)}`);
   }
 }
 
@@ -132,7 +172,7 @@ export function runMikroMcp(call: ExecCall, env: NodeJS.ProcessEnv = process.env
   const started = Date.now();
   const run = spawnSync(process.execPath, [script, "call", mapping.tool], {
     encoding: "utf8",
-    timeout: timeoutMs(env) + 3_000,
+    timeout: timeoutMs(env) + MIKROMCP_PROCESS_MARGIN_MS,
     env: {
       PATH: process.env.PATH ?? "",
       JARVIS_MIKROMCP_URL: env.JARVIS_MIKROMCP_URL,
@@ -148,8 +188,8 @@ export function runMikroMcp(call: ExecCall, env: NodeJS.ProcessEnv = process.env
   } catch {
     body = { code: "VERIFICATION_FAILED" };
   }
-  const code = run.error ? "EXECUTION_TIMEOUT" : body.code || "VERIFICATION_FAILED";
-  audit(env, call, mapping.tool, code, Date.now() - started);
+  const code = run.error ? "EXECUTION_TIMEOUT" : normalizeCode(body.code || "VERIFICATION_FAILED");
+  auditRouterCall(env, call, "mikromcp", mapping.tool, code, Date.now() - started, run.error ? "client process timeout" : body.detail ?? "");
   if (code === "POLICY_DENIED") return { called: false, code, detail: `mikromcp: ${body.detail ?? "denied"}` };
   if (code !== "OK") return { fallback: `${code}${body.detail ? ": " + String(body.detail).slice(0, 120) : ""}` };
   return { called: true, code: "OK", detail: `mikromcp:${mapping.tool}: ${summarize(call.runbook, body.structured ?? null, body.text ?? "")}` };

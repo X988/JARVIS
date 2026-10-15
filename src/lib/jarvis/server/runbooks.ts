@@ -160,7 +160,7 @@ const BOOKS: Runbook[] = [
     executor: "routeros",
     targets: ["rb5009"],
     inputSchema: ["router inventory id"],
-    timeoutSec: 30,
+    timeoutSec: 45,
     verification: "interfaces/routes returned",
   }),
   readOnly({
@@ -169,7 +169,7 @@ const BOOKS: Runbook[] = [
     executor: "routeros",
     targets: ["rb5009"],
     inputSchema: ["router inventory id"],
-    timeoutSec: 30,
+    timeoutSec: 45,
     verification: "fixed /rest/interface GET summarized",
   }),
   readOnly({
@@ -178,7 +178,7 @@ const BOOKS: Runbook[] = [
     executor: "routeros",
     targets: ["rb5009"],
     inputSchema: ["router inventory id"],
-    timeoutSec: 30,
+    timeoutSec: 45,
     verification: "fixed /rest/ip/route GET summarized",
   }),
   readOnly({
@@ -187,7 +187,7 @@ const BOOKS: Runbook[] = [
     executor: "routeros",
     targets: ["rb5009"],
     inputSchema: ["router inventory id"],
-    timeoutSec: 30,
+    timeoutSec: 45,
     verification: "fixed DHCP lease GET summarized",
   }),
   readOnly({
@@ -196,7 +196,7 @@ const BOOKS: Runbook[] = [
     executor: "routeros",
     targets: ["rb5009"],
     inputSchema: ["router inventory id"],
-    timeoutSec: 30,
+    timeoutSec: 45,
     verification: "fixed firewall filter GET counters summarized",
   }),
   readOnly({
@@ -205,7 +205,7 @@ const BOOKS: Runbook[] = [
     executor: "routeros",
     targets: ["rb5009"],
     inputSchema: ["router inventory id"],
-    timeoutSec: 30,
+    timeoutSec: 45,
     verification: "active default route exists",
   }),
   readOnly({
@@ -214,7 +214,7 @@ const BOOKS: Runbook[] = [
     executor: "routeros",
     targets: ["wg"],
     inputSchema: ["vpn inventory id"],
-    timeoutSec: 30,
+    timeoutSec: 45,
     verification: "peer handshake/status returned",
   }),
   readOnly({
@@ -223,7 +223,7 @@ const BOOKS: Runbook[] = [
     executor: "routeros",
     targets: ["wg"],
     inputSchema: ["vpn inventory id"],
-    timeoutSec: 30,
+    timeoutSec: 45,
     verification: "fixed WireGuard peer GET summarized",
   }),
   readOnly({
@@ -232,7 +232,7 @@ const BOOKS: Runbook[] = [
     executor: "routeros",
     targets: ["rb5009"],
     inputSchema: ["router inventory id"],
-    timeoutSec: 30,
+    timeoutSec: 45,
     verification: "log entry count only; message text is not stored",
   }),
   {
@@ -437,7 +437,7 @@ const BOOKS: Runbook[] = [
     executor: "routeros",
     targets: ["rb5009"],
     inputSchema: ["router inventory id"],
-    timeoutSec: 30,
+    timeoutSec: 45,
     verification: "cpu-load and free-memory returned",
   }),
   readOnly({
@@ -446,7 +446,7 @@ const BOOKS: Runbook[] = [
     executor: "routeros",
     targets: ["rb5009"],
     inputSchema: ["router inventory id"],
-    timeoutSec: 30,
+    timeoutSec: 45,
     verification: "vlan interface count returned",
   }),
   readOnly({
@@ -455,7 +455,7 @@ const BOOKS: Runbook[] = [
     executor: "routeros",
     targets: ["rb5009"],
     inputSchema: ["router inventory id"],
-    timeoutSec: 30,
+    timeoutSec: 45,
     verification: "active default route and running interface counts returned",
   }),
 

@@ -9,7 +9,9 @@ import {
   RUNBOOKS,
   SERVERS,
   SERVICES,
-  SUGGESTIONS,
+  inventoryNote,
+  modeLabel,
+  visibleSuggestions,
   VOICE_PRESETS,
   formatClock,
   formatLeft,
@@ -318,11 +320,13 @@ function TurnCard({ turn, now }: { turn: Turn; now: number }) {
 }
 
 function SitePanel() {
+  const serverMode = useJarvis((state) => state.serverMode);
+  const adapters = useJarvis((state) => state.adapters);
   return (
     <div className="flex flex-col gap-6">
       <section>
         <h2 className="text-sm font-medium">Серверы</h2>
-        <p className="mt-1 text-sm text-muted">Не в коде агента, а в inventory. Демо-набор.</p>
+        <p className="mt-1 text-sm text-muted">{inventoryNote(serverMode, adapters)}</p>
         <ul className="mt-3 flex flex-col">
           {SERVERS.map((server) => (
             <li key={server.id} className="border-t border-line py-3">
@@ -523,6 +527,7 @@ export function Console() {
   const busy = useJarvis((state) => state.busy);
   const dryRun = useJarvis((state) => state.dryRun);
   const serverMode = useJarvis((state) => state.serverMode);
+  const profile = useJarvis((state) => state.profile);
   const watch = useJarvis((state) => state.watch);
   const notices = useJarvis((state) => state.notices);
   const actorId = useJarvis((state) => state.actorId);
@@ -776,7 +781,7 @@ export function Console() {
       <header className="border-b border-line">
         <div className="flex items-center justify-between gap-3 px-4 pt-3">
           <div>
-            <p className="font-mono text-xs text-moss">DEMO</p>
+            <p className="font-mono text-xs text-moss">{modeLabel(serverMode, profile)}</p>
             <h1 className="text-xl font-semibold tracking-tight">JARVIS</h1>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -868,7 +873,7 @@ export function Console() {
             }}
           >
             <div className="flex gap-2 overflow-x-auto pb-2">
-              {SUGGESTIONS.map((item) => (
+              {visibleSuggestions(serverMode).map((item) => (
                 <button
                   key={item.label}
                   type="button"

@@ -10,6 +10,7 @@ export const Route = createFileRoute("/admin/audit")({
 function AuditAdminPage() {
   const [records, setRecords] = useState<GatewayAuditRecord[] | null>(null);
   const [forbidden, setForbidden] = useState(false);
+  const [reason, setReason] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -19,6 +20,7 @@ function AuditAdminPage() {
       .then((result) => {
         if (cancel) return;
         setForbidden(result.forbidden);
+        setReason("reason" in result && typeof result.reason === "string" ? result.reason : null);
         setRecords(result.records);
       })
       .catch(() => {
@@ -43,7 +45,7 @@ function AuditAdminPage() {
       </header>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 py-4">
         {error ? <p className="text-sm text-danger">{error}</p> : null}
-        {forbidden ? <p className="text-sm text-danger">Нужна действительная сессия администратора.</p> : null}
+        {forbidden ? <p className="text-sm text-danger">Нужна действительная сессия администратора.{reason ? ` (${reason})` : ""}</p> : null}
         {records === null && !error ? <p className="text-sm text-muted">Читаю журнал…</p> : null}
         {records && records.length === 0 && !forbidden ? (
           <p className="text-sm text-muted">В серверном журнале пока нет записей.</p>

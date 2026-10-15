@@ -7,6 +7,7 @@ const log = process.argv[2];
 const tools = [
   { name: "get_system_status", annotations: { readOnlyHint: true } },
   { name: "list_dhcp_leases", annotations: { readOnlyHint: true } },
+  { name: "list_routes", annotations: { readOnlyHint: true } },
   { name: "list_interfaces", annotations: { readOnlyHint: false } },
   { name: "manage_route", annotations: { readOnlyHint: true } },
   { name: "run_command", annotations: { readOnlyHint: true } },
@@ -21,6 +22,9 @@ const server = http.createServer((req, res) => {
     let result = {};
     if (msg.method === "initialize") result = { protocolVersion: "2025-03-26", serverInfo: { name: "fake" }, capabilities: {} };
     if (msg.method === "tools/list") result = { tools };
+    if (msg.method === "tools/call" && msg.params.name === "list_routes") {
+      return; // never answers: simulates a router that hangs
+    }
     if (msg.method === "tools/call") {
       fs.appendFileSync(log, msg.params.name + "\n");
       if (msg.params.name === "get_system_status") result = { content: [{ type: "text", text: "ok" }], structuredContent: { sections: { resource: { "board-name": "CCR1009-7G-1C", version: "7.21.3", uptime: "1d", "cpu-load": 3, "free-memory": 536870912, "total-memory": 1073741824 } } } };

@@ -2,13 +2,21 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExecCall, ExecResult } from "./pipeline.ts";
-import { runMikroMcp } from "./mikromcp.ts";
+import { auditRouterCall, runMikroMcp } from "./mikromcp.ts";
 
 const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../scripts/jarvis_routeros.mjs");
 
+export const ROUTEROS_DEFAULT_TIMEOUT_MS = 15_000;
+export const ROUTEROS_PROCESS_MARGIN_MS = 5_000;
+
+export function routerOsTimeoutMs(raw: string | undefined): number {
+  return timeoutMs(raw);
+}
+
 function timeoutMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return ROUTEROS_DEFAULT_TIMEOUT_MS;
   const value = Number(raw);
-  if (!Number.isFinite(value)) return 10_000;
+  if (!Number.isFinite(value)) return ROUTEROS_DEFAULT_TIMEOUT_MS;
   return Math.min(60_000, Math.max(2_000, Math.trunc(value)));
 }
 
@@ -70,9 +78,10 @@ export function runRouterOs(call: ExecCall, env: NodeJS.ProcessEnv = process.env
     return { called: false, code: "CREDENTIAL_UNAVAILABLE", detail: "routeros: user/password не настроены." };
   }
   const timeout = timeoutMs(env.JARVIS_ROUTEROS_TIMEOUT_MS);
+  const started = Date.now();
   const run = spawnSync(process.execPath, [script, mode], {
     encoding: "utf8",
-    timeout: timeout + 5_000,
+    timeout: timeout + ROUTEROS_PROCESS_MARGIN_MS,
     env: {
       ...process.env,
       ...env,
@@ -81,11 +90,18 @@ export function runRouterOs(call: ExecCall, env: NodeJS.ProcessEnv = process.env
       JARVIS_MIKROTIK_DISABLED: call.parameters?.disabled ?? "",
     },
   });
+  const result = restResult(run, fallbackNote);
+  if (!CHANGE_RUNBOOKS.has(call.runbook)) auditRouterCall(env, call, "routeros-rest", mode, result.code, Date.now() - started, result.code === "OK" ? "" : result.detail);
+  return result;
+}
+
+function restResult(run: ReturnType<typeof spawnSync>, fallbackNote: string): ExecResult {
   const error = run.error as NodeJS.ErrnoException | undefined;
-  if (error?.code === "ETIMEDOUT") return { called: false, code: "EXECUTION_TIMEOUT", detail: "routeros: REST probe превысил timeout." };
-  if (run.error || !run.stdout?.trim()) return { called: false, code: "ADAPTER_DISABLED", detail: "routeros: REST client не запустился." };
+  if (error?.code === "ETIMEDOUT") return { called: false, code: "EXECUTION_TIMEOUT", detail: "routeros: REST probe превысил timeout." + fallbackNote };
+  const stdout = String(run.stdout ?? "");
+  if (run.error || !stdout.trim()) return { called: false, code: "ADAPTER_DISABLED", detail: "routeros: REST client не запустился." };
   try {
-    const body = JSON.parse(run.stdout) as { code?: string; detail?: string };
+    const body = JSON.parse(stdout) as { code?: string; detail?: string };
     const code = body.code || "VERIFICATION_FAILED";
     return { called: code === "OK", code, detail: `routeros: ${body.detail ?? "нет ответа"}${fallbackNote}` };
   } catch {

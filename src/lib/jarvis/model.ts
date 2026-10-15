@@ -89,26 +89,27 @@ export const RISK_LABEL: Record<Risk, string> = {
 
 export const OPERATORS: Operator[] = DEMO_ACTORS;
 
-export const SUGGESTIONS: { label: string; text: string }[] = [
-  { label: "SSH uptime", text: "ssh mail01 uptime" },
-  { label: "Интерфейсы", text: "Покажи интерфейсы MikroTik" },
-  { label: "Выключи ether2", text: "Выключи интерфейс ether2 на MikroTik" },
-  { label: "Проверь сервер", text: "Проверь сервер" },
-  { label: "Backup utp", text: "Сделай резервную копию базы utp" },
-  { label: "Mailcow", text: "Проверь Mailcow" },
-  { label: "План", text: "Проверь Mailcow и место на дисках, ничего не меняй" },
-  { label: "Место", text: "Проверь свободное место на всех серверах" },
-  { label: "Служба 1С", text: "Перезапусти службу 1С" },
-  { label: "Ребут DC", text: "Перезагрузи контроллер домена" },
-  { label: "Почисти сервер", text: "Почисти сервер" },
-  { label: "Push в main", text: "Запушь исправление в main" },
-  { label: "Удали базу", text: "Удали базу utp" },
-  { label: "1С не пускает", text: "Почему пользователи не заходят в 1С" },
-  { label: "Модуль 1С", text: "Посмотри модуль проведения в расширении" },
-  { label: "Запрос 1С", text: "Проверь запрос к регистру накопления" },
-  { label: "Правка 1С", text: "Исправь запрос в расширении и не загружай в рабочую" },
-  { label: "Форма 1С", text: "Создай управляемую форму в расширении" },
-  { label: "Анализ 1С", text: "Запусти статический анализ расширения" },
+export const SUGGESTIONS: { label: string; text: string; readOnly: boolean }[] = [
+  { label: "SSH uptime", text: "ssh mail01 uptime", readOnly: true },
+  { label: "Интерфейсы", text: "Покажи интерфейсы MikroTik", readOnly: true },
+  { label: "Загрузка роутера", text: "Какая загрузка роутера?", readOnly: true },
+  { label: "Выключи ether2", text: "Выключи интерфейс ether2 на MikroTik", readOnly: false },
+  { label: "Проверь сервер", text: "Проверь сервер", readOnly: true },
+  { label: "Backup utp", text: "Сделай резервную копию базы utp", readOnly: false },
+  { label: "Mailcow", text: "Проверь Mailcow", readOnly: true },
+  { label: "План", text: "Проверь Mailcow и место на дисках, ничего не меняй", readOnly: true },
+  { label: "Место", text: "Проверь свободное место на всех серверах", readOnly: true },
+  { label: "Служба 1С", text: "Перезапусти службу 1С", readOnly: false },
+  { label: "Ребут DC", text: "Перезагрузи контроллер домена", readOnly: false },
+  { label: "Почисти сервер", text: "Почисти сервер", readOnly: false },
+  { label: "Push в main", text: "Запушь исправление в main", readOnly: false },
+  { label: "Удали базу", text: "Удали базу utp", readOnly: false },
+  { label: "1С не пускает", text: "Почему пользователи не заходят в 1С", readOnly: true },
+  { label: "Модуль 1С", text: "Посмотри модуль проведения в расширении", readOnly: true },
+  { label: "Запрос 1С", text: "Проверь запрос к регистру накопления", readOnly: true },
+  { label: "Правка 1С", text: "Исправь запрос в расширении и не загружай в рабочую", readOnly: false },
+  { label: "Форма 1С", text: "Создай управляемую форму в расширении", readOnly: false },
+  { label: "Анализ 1С", text: "Запусти статический анализ расширения", readOnly: true },
 ];
 
 export const VOICE_PRESETS: { id: string; text: string; length: string }[] = [
@@ -1574,3 +1575,25 @@ export function formatLeft(ms: number): string {
 }
 
 export const APPROVAL_TTL_MS = 5 * 60 * 1000;
+
+/** Quick-action chips. Outside mock mode only read-only checks are offered. */
+export function visibleSuggestions(serverMode: string): typeof SUGGESTIONS {
+  return serverMode === "mock" ? SUGGESTIONS : SUGGESTIONS.filter((item) => item.readOnly);
+}
+
+/** Header label: DEMO only for mock mode or the demo profile, never a bare DEMO in real mode. */
+export function modeLabel(serverMode: string, profile: string): string {
+  if (serverMode === "mock") return "DEMO · mock";
+  const mode = serverMode === "real" ? "REAL" : "DRY RUN";
+  return profile === "production-infra" ? `${mode} · production` : `${mode} · профиль demo`;
+}
+
+/** Honest note for the Servers panel. */
+export function inventoryNote(serverMode: string, adapters: Record<string, string> | null): string {
+  if (serverMode === "mock") return "Не в коде агента, а в inventory. Демо-набор.";
+  const hostAdapters = ["ssh", "powershell"].map((key) => adapters?.[key] ?? "NOT_CONFIGURED");
+  if (hostAdapters.every((state) => state === "NOT_CONFIGURED" || state === "CREDENTIAL_UNAVAILABLE")) {
+    return "Инвентарь: шаблон, серверы не подключены (SSH/WinRM не настроены). Живые данные сейчас только с роутера.";
+  }
+  return "Инвентарь из config/jarvis/inventory.json; статус подключения — в /ready.";
+}

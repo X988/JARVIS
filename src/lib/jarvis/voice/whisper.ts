@@ -1,8 +1,9 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { hallucination, MAX_AUDIO_BYTES } from "./gate.ts";
+import { encodeWavFromPcm16 } from "./endpoint.ts";
 
 const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../scripts/jarvis_stt.py");
 
@@ -64,6 +65,109 @@ function bounded(raw: string | undefined, fallback: number, min: number, max: nu
   return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 }
 
+export type WarmState = {
+  state: "cold" | "warming" | "warm" | "failed";
+  at: number;
+  ms?: number;
+  detail?: string;
+  pid?: number;
+};
+
+function sttEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    ...env,
+    JARVIS_STT_MODEL: env.JARVIS_STT_MODEL || "small",
+    JARVIS_STT_LANGUAGE: env.JARVIS_STT_LANGUAGE || "ru",
+    JARVIS_STT_DEVICE: env.JARVIS_STT_DEVICE || "auto",
+    JARVIS_MODEL_DIR: env.JARVIS_MODEL_DIR || path.join(process.cwd(), "models"),
+  };
+}
+
+function warmFile(env: NodeJS.ProcessEnv): string {
+  return path.join(env.JARVIS_STATE_DIR?.trim() || path.join(process.cwd(), "data"), "stt-warm.json");
+}
+
+export function readWarmState(env: NodeJS.ProcessEnv = process.env): WarmState {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(warmFile(env), "utf8")) as WarmState;
+    return parsed && typeof parsed.state === "string" ? parsed : { state: "cold", at: 0 };
+  } catch {
+    return { state: "cold", at: 0 };
+  }
+}
+
+function writeWarmState(env: NodeJS.ProcessEnv, state: WarmState): void {
+  try {
+    fs.mkdirSync(path.dirname(warmFile(env)), { recursive: true });
+    fs.writeFileSync(warmFile(env), JSON.stringify({ ...state, pid: process.pid }));
+  } catch {
+    // Readiness falls back to "cold"; transcription itself is unaffected.
+  }
+}
+
+let warming: Promise<WarmState> | null = null;
+
+/**
+ * Load the faster-whisper model once at service start by transcribing 1 s of
+ * silence, so the first real voice turn does not pay model/CUDA load time.
+ * Non-blocking; the result is persisted for /ready. JARVIS_STT_WARMUP=0 disables.
+ */
+export function startSttWarmup(env: NodeJS.ProcessEnv = process.env): Promise<WarmState> {
+  if ((env.JARVIS_STT_PROVIDER || "faster-whisper") !== "faster-whisper" || env.JARVIS_STT_WARMUP === "0") {
+    return Promise.resolve(readWarmState(env));
+  }
+  if (warming) return warming;
+  const started = Date.now();
+  writeWarmState(env, { state: "warming", at: started });
+  const root = audioRoot(env);
+  fs.mkdirSync(root, { recursive: true });
+  const wav = path.join(root, `warmup-${process.pid}-${started}.wav`);
+  fs.writeFileSync(wav, encodeWavFromPcm16(new Int16Array(16_000), 16_000));
+  const timeout = bounded(env.JARVIS_STT_WARMUP_TIMEOUT_MS, 180_000, 10_000, 600_000);
+  const python = env.JARVIS_PYTHON_BIN?.trim() || "python3";
+  warming = new Promise<WarmState>((resolve) => {
+    let stdout = "";
+    let stderr = "";
+    const child = spawn(python, [script, wav], { env: sttEnv(env), stdio: ["ignore", "pipe", "pipe"] });
+    const timer = setTimeout(() => child.kill("SIGKILL"), timeout);
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr = (stderr + chunk).slice(-400)));
+    const finish = (state: WarmState) => {
+      clearTimeout(timer);
+      fs.rmSync(wav, { force: true });
+      writeWarmState(env, state);
+      warming = null;
+      resolve(state);
+    };
+    child.on("error", (error) => finish({ state: "failed", at: Date.now(), detail: String(error.message).slice(0, 200) }));
+    child.on("close", (code, signal) => {
+      let body: { code?: string; detail?: string } | null = null;
+      try {
+        body = JSON.parse(stdout.trim() || "null");
+      } catch {
+        body = null;
+      }
+      const ok = code === 0 && body !== null && body.code !== "NOT_CONFIGURED" && body.code !== "STT_FAILED";
+      finish(
+        ok
+          ? { state: "warm", at: Date.now(), ms: Date.now() - started }
+          : {
+              state: "failed",
+              at: Date.now(),
+              ms: Date.now() - started,
+              detail: (signal ? `signal ${signal}` : body?.detail || stderr.trim().split("\n").at(-1) || `exit ${code}`).slice(0, 200),
+            },
+      );
+    });
+  });
+  return warming;
+}
+
+function runStt(python: string, resolved: string, timeout: number, env: NodeJS.ProcessEnv) {
+  return spawnSync(python, [script, resolved], { encoding: "utf8", timeout, env: sttEnv(env) });
+}
+
 export function transcribeWav(wavPath: string, env: NodeJS.ProcessEnv = process.env): SttHit | SttFailure {
   if ((env.JARVIS_STT_PROVIDER || "faster-whisper") !== "faster-whisper") return { code: "NOT_CONFIGURED" };
   const root = audioRoot(env);
@@ -73,20 +177,18 @@ export function transcribeWav(wavPath: string, env: NodeJS.ProcessEnv = process.
   if (fs.statSync(resolved).size > MAX_AUDIO_BYTES) return { code: "AUDIO_TOO_LARGE" };
 
   const model = env.JARVIS_STT_MODEL || "small";
-  const timeout = bounded(env.JARVIS_STT_TIMEOUT_MS, 90_000, 5_000, 300_000);
+  const configured = bounded(env.JARVIS_STT_TIMEOUT_MS, 90_000, 5_000, 300_000);
+  // Until the model has been loaded once, allow for model/CUDA load time.
+  const cold = readWarmState(env).state !== "warm";
+  const timeout = cold ? Math.max(configured, 180_000) : configured;
   const python = env.JARVIS_PYTHON_BIN?.trim() || "python3";
-  const run = spawnSync(python, [script, resolved], {
-    encoding: "utf8",
-    timeout,
-    env: {
-      ...process.env,
-      ...env,
-      JARVIS_STT_MODEL: model,
-      JARVIS_STT_LANGUAGE: env.JARVIS_STT_LANGUAGE || "ru",
-      JARVIS_STT_DEVICE: env.JARVIS_STT_DEVICE || "auto",
-      JARVIS_MODEL_DIR: env.JARVIS_MODEL_DIR || path.join(process.cwd(), "models"),
-    },
-  });
+  let run = runStt(python, resolved, timeout, env);
+  // A crashed worker (empty stdout or killed by a signal) is retried once:
+  // the first CUDA initialisation after a restart is the usual cause.
+  // (A real timeout is not retried: that would double an already long wait.)
+  const transient = (r: typeof run) => !r.error && (Boolean(r.signal) || !r.stdout?.trim());
+  if (transient(run)) run = runStt(python, resolved, timeout, env);
+  if (!transient(run) && run.stdout?.trim() && cold) writeWarmState(env, { state: "warm", at: Date.now() });
   const error = run.error as NodeJS.ErrnoException | undefined;
   if (error?.code === "ETIMEDOUT") return { code: "STT_FAILED" };
   if (error?.code === "ENOENT" || !run.stdout?.trim()) return { code: "NOT_CONFIGURED" };
@@ -126,11 +228,22 @@ export function transcribeWav(wavPath: string, env: NodeJS.ProcessEnv = process.
   };
 }
 
+/** Any Hugging Face cache entry for the model, e.g. models--mobiuslabsgmbh--faster-whisper-large-v3-turbo. */
+export function modelCached(modelRoot: string, model: string): boolean {
+  try {
+    return fs.readdirSync(modelRoot).some((name) => name.startsWith("models--") && name.endsWith(`--faster-whisper-${model}`));
+  } catch {
+    return false;
+  }
+}
+
 export function sttProbe(env: NodeJS.ProcessEnv = process.env): {
   provider: string;
   model: string;
   device: string;
   ready: boolean;
+  installed?: boolean;
+  warm?: WarmState;
 } {
   const provider = env.JARVIS_STT_PROVIDER || "";
   const model = env.JARVIS_STT_MODEL || "small";
@@ -141,10 +254,19 @@ export function sttProbe(env: NodeJS.ProcessEnv = process.env): {
   const modelRoot = env.JARVIS_MODEL_DIR || path.join(process.cwd(), "models");
   const folder = path.join(modelRoot, "models--Systran--faster-whisper-" + model);
   const direct = path.resolve(modelRoot, model);
+  const installed = imported.status === 0 && (fs.existsSync(folder) || fs.existsSync(direct) || modelCached(modelRoot, model));
+  let warm = readWarmState(env);
+  // Nothing warmed this process yet (e.g. production build without the Vite hook): start now.
+  if (installed && (warm.state === "cold" || (warm.state !== "warming" && warm.pid !== process.pid))) {
+    void startSttWarmup(env);
+    warm = { state: "warming", at: Date.now() };
+  }
   return {
     provider,
     model,
     device,
-    ready: imported.status === 0 && (fs.existsSync(folder) || fs.existsSync(direct)),
+    ready: installed && warm.state === "warm",
+    installed,
+    warm,
   };
 }
