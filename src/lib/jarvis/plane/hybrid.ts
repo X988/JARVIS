@@ -10,6 +10,7 @@ import {
   runAgentTurn,
   humanizeAll,
   isKnowledgeQuestion,
+  NETWORK_DIAG,
   type AgentTurnResult,
 } from "./agent-runtime.ts";
 import type { FetchLike } from "./llm-client.ts";
@@ -38,7 +39,7 @@ export function routeDeterministic(text: string, mode: string | undefined): bool
   const clean = text.trim();
   if (!clean) return true;
   if (SHORT_CONFIRM.test(clean) || DYNAMIC_ONEC.test(clean)) return true;
-  if (isKnowledgeQuestion(clean)) return false;
+  if (isKnowledgeQuestion(clean) || NETWORK_DIAG.test(clean)) return false;
   const intent = matchIntent(clean);
   if (intent === "unknown") return false;
   if (mode === "real" && !runbookForIntent(intent)) return false;

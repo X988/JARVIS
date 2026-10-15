@@ -5,7 +5,8 @@ import {
 } from "../server/pipeline.ts";
 import { INVENTORY, targetById } from "../server/inventory.ts";
 import { callJsonModel, type FetchLike } from "./llm-client.ts";
-import { planAgentTurn, type AgentPlan, type AgentPlanStep } from "./agent-planner.ts";
+import { planAgentTurn, type AgentPlan, type AgentPlanResult, type AgentPlanStep } from "./agent-planner.ts";
+import { runbookById } from "../server/runbooks.ts";
 import { driveAgentLoop, type AgentRunState, type CauseStatus, type Understanding } from "./agent-loop.ts";
 import { searchMemory } from "./memory.ts";
 import {
@@ -57,6 +58,31 @@ const INFO_QUESTION = /^(как|что|где|какой|какая|какое|�
 export function isKnowledgeQuestion(text: string): boolean {
   const clean = text.trim();
   return INFO_QUESTION.test(clean) && !LIVE_QUERY.test(clean) && !RECALL_QUERY.test(clean);
+}
+
+/** "Проведи диагностику сети", "проверь сеть", "что с сетью" → fixed read-only router checks. */
+export const NETWORK_DIAG = /(диагност\S*\s+(?:\S+\s+)?сет|провер\S*\s+(?:\S+\s+)?сет[ьи]|что\s+с\s+сетью|сеть\s+(?:тормозит|не работает|глючит))/iu;
+
+export function networkDiagnosisPlan(): AgentPlanResult {
+  const router = runbookById("mikrotik.status")?.targets[0] ?? "rb5009";
+  const step = (tool: string, reason: string) => ({ tool, target: router, reason });
+  return {
+    ok: true,
+    provider: "rules",
+    model: "network-diagnosis",
+    requestId: null,
+    plan: {
+      objective: "Диагностика сети: роутер, интерфейсы, маршруты, журнал",
+      responseMode: "execute",
+      message: "",
+      steps: [
+        step("mikrotik.status", "загрузка и аптайм роутера"),
+        step("mikrotik.interfaces", "какие интерфейсы не подняты"),
+        step("mikrotik.routes", "есть ли активный маршрут по умолчанию"),
+        step("mikrotik.logs", "ошибки и предупреждения в журнале"),
+      ],
+    },
+  };
 }
 
 const RECALL_QUERY = /уже был|похож|раньше|инцидент|повторя/iu;
@@ -224,14 +250,15 @@ async function runAgentTurnInner(text: string, opts: AgentTurnOptions): Promise<
   // Informational "how/what/where" questions with a strong knowledge hit are answered
   // from the knowledge base directly, without running tools.
   const directScore = Number(env.JARVIS_KNOWLEDGE_DIRECT_SCORE) || 0.55;
-  if (INFO_QUESTION.test(text.trim()) && !LIVE_QUERY.test(text) && hits.length > 0 && hits[0].score >= directScore) {
+  if (!NETWORK_DIAG.test(text) && INFO_QUESTION.test(text.trim()) && !LIVE_QUERY.test(text) && hits.length > 0 && hits[0].score >= directScore) {
     const grounded = await answerFromKnowledge(text, hits, "", { env, fetch: opts.fetch });
     if (grounded && !NO_ANSWER.test(grounded.answer)) {
       return { code: "OK", answer: grounded.answer, plan: null, observations: [], provider: grounded.provider, model: grounded.model, sources };
     }
   }
 
-  const planner = opts.planner ?? planAgentTurn;
+  const network = NETWORK_DIAG.test(text);
+  const planner = network ? async () => networkDiagnosisPlan() : (opts.planner ?? planAgentTurn);
   const planned = await planner(text, { env, fetch: opts.fetch });
   if (!planned.ok) {
     return {
