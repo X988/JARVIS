@@ -1,24 +1,21 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { listToolAudit } from "@/lib/jarvis/tools/api";
-import type { AuditRecord } from "@/lib/jarvis/tools/types";
-import { useJarvis } from "@/lib/jarvis/store";
+import type { GatewayAuditRecord } from "@/lib/jarvis/tools/audit-reader";
 
 export const Route = createFileRoute("/admin/audit")({
   component: AuditAdminPage,
 });
 
 function AuditAdminPage() {
-  const operatorId = useJarvis((state) => state.operatorId);
-  const auditEpoch = useJarvis((state) => state.auditEpoch);
-  const [records, setRecords] = useState<AuditRecord[] | null>(null);
+  const [records, setRecords] = useState<GatewayAuditRecord[] | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancel = false;
     setError(null);
-    void listToolAudit({ data: { operatorId } })
+    void listToolAudit()
       .then((result) => {
         if (cancel) return;
         setForbidden(result.forbidden);
@@ -30,7 +27,7 @@ function AuditAdminPage() {
     return () => {
       cancel = true;
     };
-  }, [operatorId, auditEpoch]);
+  }, []);
 
   return (
     <main className="min-h-dvh bg-bg text-fg">
@@ -38,8 +35,7 @@ function AuditAdminPage() {
         <p className="font-mono text-xs text-moss">admin</p>
         <h1 className="text-xl font-semibold tracking-tight">Журнал инструментов</h1>
         <p className="mt-2 max-w-xl text-pretty text-sm text-muted">
-          Каждый вызов: кто, что, когда и чем закончилось. Пароли и ключи в журнал не пишутся. Approve доступен только
-          ролям operator и admin.
+          Каждый вызов: кто, что, когда и чем закончилось. Пароли и ключи в журнал не пишутся. Доступ к журналу есть только у администратора.
         </p>
         <Link to="/" className="mt-3 inline-flex min-h-11 items-center text-sm text-moss">
           К консоли
@@ -47,10 +43,10 @@ function AuditAdminPage() {
       </header>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 py-4">
         {error ? <p className="text-sm text-danger">{error}</p> : null}
-        {forbidden ? <p className="text-sm text-danger">Этот оператор не допущен к журналу.</p> : null}
+        {forbidden ? <p className="text-sm text-danger">Нужна действительная сессия администратора.</p> : null}
         {records === null && !error ? <p className="text-sm text-muted">Читаю журнал…</p> : null}
         {records && records.length === 0 && !forbidden ? (
-          <p className="text-sm text-muted">Пока нет вызовов. Команда в консоли оставит здесь строку.</p>
+          <p className="text-sm text-muted">В серверном журнале пока нет записей.</p>
         ) : null}
         {records?.map((record) => (
           <article key={record.id} className="rounded-xl border border-line bg-surface p-4">
@@ -74,3 +70,4 @@ function AuditAdminPage() {
     </main>
   );
 }
+

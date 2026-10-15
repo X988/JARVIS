@@ -184,7 +184,7 @@ export async function runVoiceConversation(
 ): Promise<VoiceTurnResponse> {
   const env = opts.env ?? process.env;
   const command = opts.command ?? ((input: Parameters<typeof processCommand>[0]) => {
-    const safe = { ...input, execute: voiceDoesNotExecute };
+    const safe = { ...input, execute: voiceDoesNotExecute, channel: "voice" as const };
     delete safe.approval;
     return processCommand(safe);
   });

@@ -3,7 +3,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { withStateLock } from "./state-lock.ts";
 
-export type ApprovalStatus = "pending" | "confirmed" | "expired" | "mismatch";
+export type ApprovalStatus =
+  | "pending"
+  | "confirmed"
+  | "expired"
+  | "mismatch"
+  | "rejected"
+  | "executing"
+  | "failed";
 
 export type ApprovalRecord = {
   id: string;
@@ -20,6 +27,8 @@ export type ApprovalRecord = {
   stage: 1 | 2;
   required: 1 | 2;
   status: ApprovalStatus;
+  /** Audit-chain hashes linked to this request. Not part of the parameter hash. */
+  auditIds?: string[];
 };
 
 function file(dir: string): string {
@@ -91,6 +100,15 @@ export function parameterHash(parts: {
     .digest("hex");
 }
 
+function validAuditIds(value: unknown): boolean {
+  if (value === undefined) return true;
+  return (
+    Array.isArray(value) &&
+    value.length <= 16 &&
+    value.every((item) => typeof item === "string" && /^[A-Za-z0-9-]{8,80}$/.test(item))
+  );
+}
+
 function validApproval(value: unknown): value is ApprovalRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const row = value as Partial<ApprovalRecord>;
@@ -122,7 +140,10 @@ function validApproval(value: unknown): value is ApprovalRecord {
     (row.stage !== 1 && row.stage !== 2) ||
     (row.required !== 1 && row.required !== 2) ||
     row.stage > row.required ||
-    !["pending", "confirmed", "expired", "mismatch"].includes(String(row.status))
+    !["pending", "confirmed", "expired", "mismatch", "rejected", "executing", "failed"].includes(
+      String(row.status),
+    ) ||
+    !validAuditIds(row.auditIds)
   ) {
     return false;
   }
@@ -154,6 +175,7 @@ function readAll(dir: string): ApprovalRecord[] {
   return parsed.map((row) => ({
     ...row,
     normalizedParameters: { ...row.normalizedParameters },
+    ...(row.auditIds ? { auditIds: [...row.auditIds] } : {}),
   }));
 }
 
@@ -224,6 +246,117 @@ export function saveApproval(dir: string, next: ApprovalRecord): void {
     const index = rows.findIndex((item) => item.id === next.id);
     if (index < 0) throw new Error("approval record not found");
     rows[index] = next;
+    writeAll(dir, rows);
+  });
+}
+
+export type ApprovalTake =
+  | { action: "missing" }
+  | {
+      action: "deny";
+      code: "ACTOR_DENIED" | "APPROVAL_EXPIRED" | "APPROVAL_MISMATCH" | "APPROVAL_CLOSED";
+      row: ApprovalRecord | null;
+    }
+  | { action: "rejected"; row: ApprovalRecord }
+  | { action: "advance"; row: ApprovalRecord }
+  | { action: "ready"; row: ApprovalRecord }
+  | { action: "policy"; row: ApprovalRecord };
+
+/**
+ * Single locked transition. Concurrent confirmations serialize on state.lock;
+ * the loser sees `executing` / `confirmed` and cannot run the gateway again.
+ */
+export function takeApproval(
+  dir: string,
+  input: {
+    id: string;
+    actorId: string;
+    now: number;
+    decision: "confirm" | "reject";
+    phrase: string;
+    expectedHash: string;
+    risk: number;
+    policyDeny: boolean;
+  },
+): ApprovalTake {
+  return withStateLock(dir, () => {
+    const rows = retainedApprovals(readAll(dir), input.now);
+    const index = rows.findIndex((item) => item.id === input.id);
+    if (index < 0) return { action: "missing" as const };
+    const row = rows[index];
+    if (!row) return { action: "missing" as const };
+    if (row.actorId !== input.actorId) return { action: "deny" as const, code: "ACTOR_DENIED" as const, row };
+    if (row.expiresAt <= input.now || row.status === "expired") {
+      const expired = { ...row, status: "expired" as const };
+      rows[index] = expired;
+      writeAll(dir, rows);
+      return { action: "deny" as const, code: "APPROVAL_EXPIRED" as const, row: expired };
+    }
+    if (row.status !== "pending") {
+      const code =
+        row.status === "mismatch"
+          ? ("APPROVAL_MISMATCH" as const)
+          : ("APPROVAL_CLOSED" as const);
+      return { action: "deny" as const, code, row };
+    }
+    if (input.decision === "reject") {
+      const rejected = { ...row, status: "rejected" as const };
+      rows[index] = rejected;
+      writeAll(dir, rows);
+      return { action: "rejected" as const, row: rejected };
+    }
+    const expected = row.required === 2 && row.stage === 2 ? "CONFIRM FINAL " + row.id : "CONFIRM " + row.id;
+    if (input.phrase.trim() !== expected) {
+      return { action: "deny" as const, code: "APPROVAL_MISMATCH" as const, row };
+    }
+    if (input.expectedHash !== row.parameterHash || input.risk !== row.risk) {
+      const mismatch = { ...row, status: "mismatch" as const };
+      rows[index] = mismatch;
+      writeAll(dir, rows);
+      return { action: "deny" as const, code: "APPROVAL_MISMATCH" as const, row: mismatch };
+    }
+    if (input.policyDeny) return { action: "policy" as const, row };
+    if (row.required === 2 && row.stage === 1) {
+      const next = { ...row, stage: 2 as const };
+      rows[index] = next;
+      writeAll(dir, rows);
+      return { action: "advance" as const, row: next };
+    }
+    const executing = { ...row, status: "executing" as const };
+    rows[index] = executing;
+    writeAll(dir, rows);
+    return { action: "ready" as const, row: executing };
+  });
+}
+
+export function settleApproval(
+  dir: string,
+  id: string,
+  status: "confirmed" | "failed",
+): ApprovalRecord {
+  return withStateLock(dir, () => {
+    const rows = readAll(dir);
+    const index = rows.findIndex((item) => item.id === id);
+    const current = index >= 0 ? rows[index] : undefined;
+    if (!current) throw new Error("approval record not found");
+    if (current.status !== "executing") throw new Error("approval is not executing");
+    const next = { ...current, status };
+    rows[index] = next;
+    writeAll(dir, rows);
+    return next;
+  });
+}
+
+export function attachApprovalAudit(dir: string, id: string, auditId: string): void {
+  if (!/^[A-Za-z0-9-]{8,80}$/.test(auditId)) return;
+  withStateLock(dir, () => {
+    const rows = readAll(dir);
+    const index = rows.findIndex((item) => item.id === id);
+    const current = index >= 0 ? rows[index] : undefined;
+    if (!current) return;
+    const ids = current.auditIds ?? [];
+    if (ids.includes(auditId)) return;
+    rows[index] = { ...current, auditIds: [...ids, auditId].slice(-16) };
     writeAll(dir, rows);
   });
 }

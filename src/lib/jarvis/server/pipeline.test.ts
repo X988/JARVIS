@@ -9,8 +9,8 @@ import { evaluateRuntimePolicy, maintenanceWindowOpen } from "./policy.ts";
 import type { Session } from "./session.ts";
 
 const now = new Date("2026-10-07T08:00:00Z");
-const admin: Session = { id: "sess-admin", accountId: "admin1", role: "operator", expiresAt: now.getTime() + 60_000 };
-const stranger: Session = { id: "sess-stranger", accountId: "stranger", role: "none", expiresAt: now.getTime() + 60_000 };
+const admin: Session = { id: "sess-admin", accountId: "admin1", role: "operator", expiresAt: now.getTime() + 60 * 60_000 };
+const stranger: Session = { id: "sess-stranger", accountId: "stranger", role: "none", expiresAt: now.getTime() + 60 * 60_000 };
 
 function freshDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-pipe-"));

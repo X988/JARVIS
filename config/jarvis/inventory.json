@@ -169,7 +169,8 @@
         "mikrotik.routes",
         "mikrotik.dhcp",
         "mikrotik.firewall.counters",
-        "mikrotik.wan.status"
+        "mikrotik.wan.status",
+        "mikrotik.logs"
       ]
     },
     {
