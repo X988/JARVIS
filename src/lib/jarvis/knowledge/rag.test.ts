@@ -155,3 +155,11 @@ describe("agent uses knowledge", () => {
     assert.equal(second.code, "OK");
   });
 });
+
+describe("demo watch", () => {
+  it("demo watch fixtures only in mock mode", async () => {
+    const { demoWatchAllowed } = await import("../watch.ts");
+    assert.equal(demoWatchAllowed("mock"), true);
+    for (const mode of ["real", "dry-run", "", undefined]) assert.equal(demoWatchAllowed(mode), false);
+  });
+});

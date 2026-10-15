@@ -121,6 +121,18 @@ describe("voice conversation", () => {
     assert.match(dry.spoken, /dry-run/);
   });
 
+  it("explains an invalid plan instead of blaming the model", async () => {
+    const result = await runVoiceConversation("Отключи интерфейс ISO 6", {
+      session: testSession("admin1"),
+      stateDir: dir(),
+      requestId: "voice-invalid",
+      mode: "real",
+      agent: async () => ({ code: "PLAN_INVALID", answer: "", plan: null, observations: [], provider: null, model: null }),
+    });
+    assert.doesNotMatch(result.spoken, /Модель сейчас не отвечает/);
+    assert.match(result.spoken, /Ничего не запускал/);
+  });
+
   it("JARVIS_VOICE_READ_EXECUTE=0 restores the no-execute voice channel", async () => {
     const result = await runVoiceConversation("Проверь сервер", {
       session: testSession("admin1"),

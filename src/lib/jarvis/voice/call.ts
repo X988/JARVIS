@@ -163,8 +163,14 @@ export function hearWav(
 function spokenAgent(result: AgentTurnResult): string {
   if (result.code === "AGENT_DISABLED") return "Модель на сервере выключена. Команды из списка всё равно разбираются.";
   if (result.code === "AUTH_REQUIRED" || result.code === "ACTOR_DENIED") return "Нужна сессия оператора. Ничего не запускал.";
-  if (result.code === "LLM_UNAVAILABLE" || result.code === "NOT_CONFIGURED" || result.code === "PLAN_INVALID") {
+  if (result.code === "LLM_UNAVAILABLE" || result.code === "NOT_CONFIGURED") {
     return "Модель сейчас не отвечает. Ничего не запускал.";
+  }
+  if (result.code === "PLAN_INVALID") {
+    return "Не смог составить допустимый план для этой команды: такого действия нет среди разрешённых. Ничего не запускал.";
+  }
+  if (result.code === "PLAN_REJECTED") {
+    return `Команда отклонена политикой. ${result.answer?.trim() || ""} Ничего не запускал.`.replace(/\s+/g, " ").trim();
   }
   if (result.code === "MUTATION_REQUIRES_APPROVAL") return voiceLine("APPROVAL_REQUIRED", null);
   const clean = result.answer?.trim();

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { postCommand, postConversation, unavailableDecision, ensureServerSession, type ServerTrace } from "@/lib/jarvis/client-api";
 import { type Decision } from "@/lib/jarvis/model";
 import type { VoiceTurnResponse } from "@/lib/jarvis/voice/contract";
-import { WATCH_ALERTS, type WatchAlert } from "@/lib/jarvis/watch";
+import { WATCH_ALERTS, demoWatchAllowed, type WatchAlert } from "@/lib/jarvis/watch";
 
 export type Phase = "running" | "awaiting" | "done" | "denied" | "expired" | "cancelled";
 
@@ -160,6 +160,8 @@ export const useJarvis = create<JarvisState>((set, get) => ({
 
   pushNotice: (id) => {
     const state = get();
+    // Demo watch fixtures are shown only when the server runs EXECUTION_MODE=mock.
+    if (!demoWatchAllowed(state.serverMode)) return;
     if (!state.watch || state.notices.some((item) => item.id === id)) return;
     const alert = WATCH_ALERTS.find((item) => item.id === id);
     if (!alert) return;
@@ -170,7 +172,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       at: notice.at,
       user,
       source: "demo",
-      request: notice.title,
+      request: `[DEMO] ${notice.title}`,
       intent: "watch",
       tool: "watch_hosts",
       target: notice.host,
@@ -178,7 +180,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       risk: 0,
       approvalId: null,
       template: "—",
-      result: "watch_report",
+      result: "demo_watch_report",
       exitCode: null,
       durationMs: null,
       error: null,
