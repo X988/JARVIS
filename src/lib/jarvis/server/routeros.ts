@@ -49,6 +49,9 @@ export function runRouterOs(call: ExecCall, env: NodeJS.ProcessEnv = process.env
     "mikrotik.firewall.counters": "firewall-counters",
     "mikrotik.wan.status": "wan-status",
     "mikrotik.logs": "logs",
+    "mikrotik.resources": "resources",
+    "mikrotik.vlan": "vlan",
+    "mikrotik.reachability": "reachability",
     "mikrotik.backup": "backup",
     "mikrotik.interface.set": "interface-set",
   }[call.runbook] ?? "";

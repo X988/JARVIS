@@ -19,7 +19,7 @@ export function sqlDatabase(targetId: string): string | null {
   return leaf;
 }
 
-export type SqlMode = "health" | "backup" | "database-size" | "sessions" | "blocking" | "backup-status";
+export type SqlMode = "health" | "backup" | "database-size" | "sessions" | "blocking" | "backup-status" | "agent" | "errors" | "space";
 
 export function runSql(mode: SqlMode, database: string, env: NodeJS.ProcessEnv = process.env): ExecResult {
   const requestTimeout =
