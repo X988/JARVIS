@@ -228,6 +228,15 @@ export function transcribeWav(wavPath: string, env: NodeJS.ProcessEnv = process.
   };
 }
 
+/** Any Hugging Face cache entry for the model, e.g. models--mobiuslabsgmbh--faster-whisper-large-v3-turbo. */
+export function modelCached(modelRoot: string, model: string): boolean {
+  try {
+    return fs.readdirSync(modelRoot).some((name) => name.startsWith("models--") && name.endsWith(`--faster-whisper-${model}`));
+  } catch {
+    return false;
+  }
+}
+
 export function sttProbe(env: NodeJS.ProcessEnv = process.env): {
   provider: string;
   model: string;
@@ -245,7 +254,7 @@ export function sttProbe(env: NodeJS.ProcessEnv = process.env): {
   const modelRoot = env.JARVIS_MODEL_DIR || path.join(process.cwd(), "models");
   const folder = path.join(modelRoot, "models--Systran--faster-whisper-" + model);
   const direct = path.resolve(modelRoot, model);
-  const installed = imported.status === 0 && (fs.existsSync(folder) || fs.existsSync(direct));
+  const installed = imported.status === 0 && (fs.existsSync(folder) || fs.existsSync(direct) || modelCached(modelRoot, model));
   let warm = readWarmState(env);
   // Nothing warmed this process yet (e.g. production build without the Vite hook): start now.
   if (installed && (warm.state === "cold" || (warm.state !== "warming" && warm.pid !== process.pid))) {

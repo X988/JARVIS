@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { encodeWavFromPcm16 } from "./endpoint.ts";
-import { readWarmState, startSttWarmup, transcribeWav } from "./whisper.ts";
+import { modelCached, readWarmState, startSttWarmup, transcribeWav } from "./whisper.ts";
 
 const fake = path.join(path.dirname(fileURLToPath(import.meta.url)), "testdata/fake-stt.sh");
 
@@ -55,5 +55,14 @@ describe("stt warm-up", () => {
     assert.ok(!("code" in hit), JSON.stringify(hit));
     assert.equal(hit.text, "проверь сервер");
     assert.equal(readWarmState(env).state, "warm");
+  });
+});
+
+describe("stt model detection", () => {
+  it("finds non-Systran HF cache folders (large-v3-turbo)", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-models-"));
+    fs.mkdirSync(path.join(root, "models--mobiuslabsgmbh--faster-whisper-large-v3-turbo"));
+    assert.equal(modelCached(root, "large-v3-turbo"), true);
+    assert.equal(modelCached(root, "small"), false);
   });
 });
