@@ -11,7 +11,7 @@ const host = process.env.JARVIS_MIKROTIK_HOST ?? "";
 const user = process.env.JARVIS_MIKROTIK_USER ?? "";
 const password = process.env.JARVIS_MIKROTIK_PASSWORD ?? "";
 const port = Number(process.env.JARVIS_MIKROTIK_PORT || 443);
-const timeout = Number(process.env.JARVIS_ROUTEROS_TIMEOUT_MS || 10000);
+const timeout = Number(process.env.JARVIS_ROUTEROS_TIMEOUT_MS || 15000);
 
 const READ_MODES = ["status", "interfaces", "routes", "dhcp", "wireguard", "firewall-counters", "wan-status", "logs"];
 const CHANGE_MODES = ["backup", "interface-set"];

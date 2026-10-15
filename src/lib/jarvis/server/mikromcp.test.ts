@@ -6,8 +6,9 @@ import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { verifyAudit } from "../audit-log.ts";
-import { exposedTools, isAllowedMikroMcpTool, mikroMcpConfigured, runMikroMcp, summarize } from "./mikromcp.ts";
-import { runRouterOs } from "./routeros.ts";
+import { MIKROMCP_DEFAULT_TIMEOUT_MS, MIKROMCP_PROCESS_MARGIN_MS, normalizeCode, exposedTools, isAllowedMikroMcpTool, mikroMcpConfigured, runMikroMcp, summarize } from "./mikromcp.ts";
+import { ROUTEROS_PROCESS_MARGIN_MS, routerOsTimeoutMs, runRouterOs } from "./routeros.ts";
+import { listRunbooks } from "./runbooks.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const script = path.join(here, "../../../../scripts/jarvis_mikromcp.mjs");
@@ -91,5 +92,58 @@ describe("mikromcp calls", () => {
 
   it("logs and summarize helpers stay MAC-free", () => {
     assert.doesNotMatch(summarize("mikrotik.logs", { entries: [{ time: "t", topics: "dhcp", message: "assigned 1.2.3.4 for 11:22:33:44:55:66" }], total: 1 }, ""), /11:22/);
+  });
+});
+
+describe("router timeouts and failure audit", () => {
+  const rows = () => fs.readFileSync(path.join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+
+  it("defaults: MikroMCP 20 s, REST 15 s, and both fit inside every routeros read runbook budget", () => {
+    assert.equal(MIKROMCP_DEFAULT_TIMEOUT_MS, 20_000);
+    assert.equal(routerOsTimeoutMs(""), 15_000);
+    const worst = MIKROMCP_DEFAULT_TIMEOUT_MS + MIKROMCP_PROCESS_MARGIN_MS + routerOsTimeoutMs(undefined) + ROUTEROS_PROCESS_MARGIN_MS;
+    for (const book of listRunbooks().filter((b) => b.executor === "routeros" && !b.mutates)) {
+      assert.ok(book.timeoutSec * 1000 >= worst, `${book.id} timeoutSec=${book.timeoutSec} < ${worst} ms`);
+    }
+  });
+
+  it("a hanging MikroMCP call is audited as a timeout row (string code, hash-chained)", () => {
+    const before = rows().length;
+    const result = runMikroMcp(call("mikrotik.routes"), { ...env(), JARVIS_MIKROMCP_TIMEOUT_MS: "1000" } as NodeJS.ProcessEnv);
+    assert.ok("fallback" in result && /EXECUTION_TIMEOUT/.test(result.fallback));
+    const row = rows().at(-1);
+    assert.equal(rows().length, before + 1);
+    assert.equal(row.action, "mikromcp.call:list_routes");
+    assert.equal(row.result, "EXECUTION_TIMEOUT");
+    assert.match(row.normalized, /status=timeout/);
+    assert.match(row.error, /^timeout: /);
+    assert.equal(verifyAudit(dir).ok, true);
+  });
+
+  it("an unreachable MikroMCP and a failing REST fallback both leave error rows", () => {
+    const before = rows().length;
+    runRouterOs(call("mikrotik.status"), {
+      JARVIS_MIKROMCP_URL: "http://127.0.0.1:1/mcp",
+      JARVIS_MIKROMCP_TOKEN: "x",
+      JARVIS_MIKROMCP_TIMEOUT_MS: "1000",
+      JARVIS_STATE_DIR: dir,
+      JARVIS_MIKROTIK_HOST: "127.0.0.1",
+      JARVIS_MIKROTIK_PORT: "1",
+      JARVIS_MIKROTIK_USER: "u",
+      JARVIS_MIKROTIK_PASSWORD: "p",
+      JARVIS_ROUTEROS_TIMEOUT_MS: "2000",
+    } as NodeJS.ProcessEnv);
+    const added = rows().slice(before);
+    assert.deepEqual(added.map((r) => [r.action, /status=(\w+)/.exec(r.normalized)?.[1]]), [
+      ["mikromcp.call:get_system_status", "error"],
+      ["routeros.call:status", "error"],
+    ]);
+    assert.equal(verifyAudit(dir).ok, true);
+  });
+
+  it("numeric or odd client codes never reach the audit as non-strings", () => {
+    assert.equal(normalizeCode(23), "MIKROMCP_ERROR");
+    assert.equal(normalizeCode("EXECUTION_TIMEOUT"), "EXECUTION_TIMEOUT");
+    assert.equal(normalizeCode("x y"), "MIKROMCP_ERROR");
   });
 });
