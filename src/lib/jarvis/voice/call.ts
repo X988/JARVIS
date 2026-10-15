@@ -58,7 +58,7 @@ export function voiceExecute(env: NodeJS.ProcessEnv = process.env, real: (call: 
     }
     const book = runbookById(call.runbook);
     if (!book || book.mutates || book.risk !== 0 || book.policy !== "ALLOW") return voiceDoesNotExecute();
-    return real(call);
+    return real({ ...call, channel: "voice" });
   };
 }
 
@@ -299,6 +299,7 @@ export async function runVoiceConversation(
       executor: "",
       result: result.code,
       verification: "голос: только read-only runbooks, изменения запрещены",
+      channel: "voice",
     },
     opts.stateDir,
   );
@@ -307,7 +308,7 @@ export async function runVoiceConversation(
     spoken,
     sentences: chunkSpoken(spoken, env),
     kind: "agent",
-    executionCalled: false,
+    executionCalled: (result.observations ?? []).some((item) => item.executionCalled),
     mode: opts.mode ?? "dry-run",
     tts: ttsConfigured(env),
     command: null,

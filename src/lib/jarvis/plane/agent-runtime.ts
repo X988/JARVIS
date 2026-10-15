@@ -106,12 +106,23 @@ function verificationOf(detail: string, verification: string): string {
   return via ? `MikroMCP ${via[1]} (read-only)` : verification;
 }
 
+/** Replace internal target ids (e.g. rb5009) with their display names in user-facing text. */
+export function humanizeTargets(text: string, ids: string[]): string {
+  let out = text;
+  for (const id of new Set(ids)) {
+    const label = targetLabel(id);
+    if (label === id || !/^[a-z0-9_.-]+$/i.test(id)) continue;
+    out = out.replace(new RegExp(`(?<![\\w-])${id.replace(/[.]/g, "\\.")}(?![\\w-])`, "gi"), label);
+  }
+  return out;
+}
+
 function fallbackAnswer(observations: AgentObservation[], message: string): string {
   if (observations.length === 0) return message || "Действия не выполнялись.";
   const lines = observations.map(
     (item) => `${item.tool}@${targetLabel(item.target)}: ${item.code} — ${redact(item.detail)}`,
   );
-  return [message, ...lines].filter(Boolean).join("\n");
+  return humanizeTargets([message, ...lines].filter(Boolean).join("\n"), observations.map((o) => o.target));
 }
 
 async function synthesize(
@@ -139,7 +150,12 @@ async function synthesize(
         "If a step failed, state that it failed and do not infer a successful result.",
         "Do not output secrets. Keep the answer concise and technical.",
       ].join("\n"),
-      user: JSON.stringify({ request, objective, message, observations: safeObservations }),
+      user: JSON.stringify({
+        request,
+        objective: humanizeTargets(objective, observations.map((o) => o.target)),
+        message: humanizeTargets(message, observations.map((o) => o.target)),
+        observations: safeObservations,
+      }),
       schema: ANSWER_SCHEMA,
     },
     { env: opts.env, fetch: opts.fetch },
@@ -151,7 +167,7 @@ async function synthesize(
   if (typeof answer !== "string" || !answer.trim() || answer.length > 4000) {
     return { answer: fallbackAnswer(observations, message), provider: null, model: null };
   }
-  return { answer: answer.trim(), provider: result.provider, model: result.model };
+  return { answer: humanizeTargets(answer.trim(), observations.map((o) => o.target)), provider: result.provider, model: result.model };
 }
 
 export async function runAgentTurn(

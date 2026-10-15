@@ -140,6 +140,12 @@ describe("agent uses knowledge", () => {
     assert.equal(planned, true);
   });
 
+  it("user-facing text names the router, not the internal id", async () => {
+    const { humanizeTargets } = await import("../plane/agent-runtime.ts");
+    assert.equal(humanizeTargets("Загрузка роутера rb5009: CPU 0%", ["rb5009"]), "Загрузка роутера MikroTik CCR1009 (MikroTik-KP): CPU 0%");
+    assert.equal(humanizeTargets("rb5009x stays", ["rb5009"]), "rb5009x stays");
+  });
+
   it("knowledge append through the agent needs confirmation", async () => {
     const dir = tmp();
     const first = await runAgentTurn("запомни: камера на складе 192.168.0.77", { session, stateDir: dir, env, planner, retriever: async () => [] });

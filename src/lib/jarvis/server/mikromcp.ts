@@ -113,7 +113,7 @@ function audit(env: NodeJS.ProcessEnv, call: ExecCall, tool: string, code: strin
         executor: "mikromcp",
         durationMs,
         result: code,
-        channel: "agent",
+        channel: call.channel ?? "agent",
         tool,
       },
       env.JARVIS_STATE_DIR?.trim() || undefined,
