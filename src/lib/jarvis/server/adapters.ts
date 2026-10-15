@@ -3,6 +3,7 @@ import { runbookById, type Runbook } from "./runbooks.ts";
 import { INVENTORY, targetById } from "./inventory.ts";
 import { FileOnecExecutor } from "../onec/executor.ts";
 import { sqlDatabase, runSql } from "./sql.ts";
+import { runPostgres } from "./postgres.ts";
 import { runSshProbe, runWindowsProbe } from "./host-probes.ts";
 import { runRouterOs } from "./routeros.ts";
 import { runMailcow } from "./mailcow.ts";
@@ -59,6 +60,24 @@ export class SQLExecutor implements Executor {
     }[call.runbook] as import("./sql.ts").SqlMode | undefined;
     if (!mode) return missing("sql","NOT_CONFIGURED","Для этой цели нет фиксированного SQL-запроса.");
     return runSql(mode, database);
+  }
+}
+export class PostgresExecutor implements Executor {
+  readonly type = "postgres" as const;
+  execute(call: ExecCall): ExecResult {
+    const blocked = configured("JARVIS_POSTGRES_HOST", "JARVIS_POSTGRES_USER", "postgres", "База берётся только из inventory.");
+    if (blocked) return blocked;
+    if (!process.env.JARVIS_POSTGRES_PASSWORD) return missing("postgres", "CREDENTIAL_UNAVAILABLE", "JARVIS_POSTGRES_PASSWORD не задан.");
+    const mode = {
+      "postgres.health": "health",
+      "postgres.sessions": "sessions",
+      "postgres.locks": "locks",
+      "postgres.size": "size",
+      "postgres.status": "status",
+    }[call.runbook] as import("./postgres.ts").PostgresMode | undefined;
+    if (!mode) return missing("postgres", "NOT_CONFIGURED", "Для этой цели нет фиксированного PostgreSQL-запроса.");
+    const database = call.target === "postgres01" ? (process.env.JARVIS_POSTGRES_DATABASE || "") : "";
+    return runPostgres(mode, database);
   }
 }
 export class RouterOSExecutor implements Executor { readonly type = "routeros" as const; execute(call: ExecCall): ExecResult { return runRouterOs(call); } }
@@ -145,9 +164,6 @@ export class ServerProbeExecutor implements Executor {
   execute(call: ExecCall): ExecResult {
     const route = probeRoute(call.target);
     if (route === "fleet") {
-      // The current execution contract is synchronous, so fan-out is deliberately
-      // bounded to concurrency=1. This avoids unbounded child-process creation
-      // while still returning an honest per-host aggregate.
       const members = INVENTORY.filter(
         (target) =>
           target.enabled &&
@@ -203,6 +219,7 @@ export function executorFor(kind: ExecutorKind, call: ExecCall): Executor {
   if (kind === "powershell") return new PowerShellExecutor();
   if (kind === "ssh") return new SSHExecutor();
   if (kind === "sql") return new SQLExecutor();
+  if (kind === "postgres") return new PostgresExecutor();
   if (kind === "routeros") return new RouterOSExecutor();
   if (kind === "docker") return new DockerExecutor();
   if (kind === "github") return new GithubExecutor();
@@ -227,7 +244,6 @@ export function defaultRealExecute(call: ExecCall): ExecResult {
       recordAdapterProbe(dir, adapter, result);
     } catch {
       // Probe-state persistence must never convert an executor failure into success.
-      // /ready fails closed when this state is missing or corrupted.
     }
   }
   return result;
@@ -241,7 +257,6 @@ function targetMapHas(env: NodeJS.ProcessEnv, name: string): boolean {
   catch { return false; }
 }
 
-/** Passive capability report. It never opens sockets, starts ssh/pwsh, or touches 1C files. */
 export function adapterStatus(env: NodeJS.ProcessEnv = process.env): Record<string,string> {
   const windowsTarget = targetMapHas(env,"JARVIS_WINDOWS_TARGETS_JSON") || has(env,"JARVIS_WINDOWS_HOST");
   const sshTarget = targetMapHas(env,"JARVIS_SSH_TARGETS_JSON") || has(env,"JARVIS_SSH_HOST");
@@ -250,6 +265,7 @@ export function adapterStatus(env: NodeJS.ProcessEnv = process.env): Record<stri
     powershell: !windowsTarget ? "NOT_CONFIGURED" : !has(env,"JARVIS_WINDOWS_USER") || !has(env,"JARVIS_WINDOWS_PASSWORD") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
     ssh: !sshTarget ? "NOT_CONFIGURED" : !has(env,"JARVIS_SSH_USER") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
     sql: !has(env,"JARVIS_SQL_HOST") ? "NOT_CONFIGURED" : !has(env,"JARVIS_SQL_USER") || !has(env,"JARVIS_SQL_PASSWORD") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
+    postgres: !has(env,"JARVIS_POSTGRES_HOST") ? "NOT_CONFIGURED" : !has(env,"JARVIS_POSTGRES_USER") || !has(env,"JARVIS_POSTGRES_PASSWORD") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
     routeros: !has(env,"JARVIS_MIKROTIK_HOST") ? "NOT_CONFIGURED" : !has(env,"JARVIS_MIKROTIK_USER") || !has(env,"JARVIS_MIKROTIK_PASSWORD") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
     docker: !has(env,"JARVIS_DOCKER_HOST") || !has(env,"JARVIS_MAILCOW_COMPOSE") ? "NOT_CONFIGURED" : !has(env,"JARVIS_DOCKER_USER") && !has(env,"JARVIS_SSH_USER") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
     github: !has(env,"JARVIS_GITHUB_TOKEN") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
