@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { appendAudit } from "../audit-log.ts";
 import { mark } from "../metrics.ts";
-import { runAgentTurn, type AgentTurnResult } from "../plane/agent-runtime.ts";
+import { humanizeAll, runAgentTurn, type AgentTurnResult } from "../plane/agent-runtime.ts";
 import { runHybridTurn, type HybridTurnResult } from "../plane/hybrid.ts";
 import type { FetchLike } from "../plane/llm-client.ts";
 import {
@@ -266,13 +266,13 @@ export async function runVoiceConversation(
   }
 
   if (result.kind === "command") {
-    const spoken = voiceLine(result.code, result.decision.reason, result.approval?.id, {
+    const spoken = humanizeAll(voiceLine(result.code, result.decision.reason, result.approval?.id, {
       mode: result.mode,
       executionCalled: result.executionCalled,
       target: result.trace.target,
       runbook: result.trace.runbook,
       execution: result.trace.execution,
-    });
+    }));
     return {
       code: result.code,
       spoken,
@@ -286,7 +286,7 @@ export async function runVoiceConversation(
     };
   }
 
-  const spoken = spokenAgent(result);
+  const spoken = humanizeAll(spokenAgent(result));
   appendAudit(
     {
       at: (opts.now ?? new Date()).toISOString(),

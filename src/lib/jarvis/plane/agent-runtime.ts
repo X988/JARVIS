@@ -3,7 +3,7 @@ import {
   processRegisteredReadOnlyTool,
   type Mode,
 } from "../server/pipeline.ts";
-import { targetById } from "../server/inventory.ts";
+import { INVENTORY, targetById } from "../server/inventory.ts";
 import { callJsonModel, type FetchLike } from "./llm-client.ts";
 import { planAgentTurn, type AgentPlan, type AgentPlanStep } from "./agent-planner.ts";
 import { driveAgentLoop, type AgentRunState, type CauseStatus, type Understanding } from "./agent-loop.ts";
@@ -52,6 +52,26 @@ const LIVE_QUERY = /(загрузк|нагрузк|сейчас|текущ|ап�
 const NO_ANSWER = /(отсутству|нет (информац|данных|сведений)|не (знаю|указан|содержит))/iu;
 
 const INFO_QUESTION = /^(как|что|где|какой|какая|какое|какие|кто|зачем|почему|сколько|расскажи|объясни|how|what|where|which|who|why)(?=[\s,?!]|$)/iu;
+
+/** Question-form informational turn that should be answered from knowledge, not tools/commands. */
+export function isKnowledgeQuestion(text: string): boolean {
+  const clean = text.trim();
+  return INFO_QUESTION.test(clean) && !LIVE_QUERY.test(clean) && !RECALL_QUERY.test(clean);
+}
+
+const RECALL_QUERY = /уже был|похож|раньше|инцидент|повторя/iu;
+const CHECK_NOW = /(проверь|покажи|диагност|посмотри)/iu;
+export const NO_INCIDENTS_ANSWER =
+  "Записей о похожих инцидентах пока нет. Могу проверить текущее состояние — скажите, например, «проверь роутер».";
+
+/** Every inventory id replaced by its display name; used on all user-facing agent text. */
+export function humanizeAll(text: string): string {
+  try {
+    return humanizeTargets(text, INVENTORY.map((t) => t.id));
+  } catch {
+    return text;
+  }
+}
 
 async function answerFromKnowledge(
   request: string,
@@ -118,9 +138,25 @@ export function humanizeTargets(text: string, ids: string[]): string {
   return out;
 }
 
-export async function runAgentTurn(
-  text: string,
-  opts: {
+export async function runAgentTurn(text: string, opts: AgentTurnOptions): Promise<AgentTurnResult> {
+  const result = await runAgentTurnInner(text, opts);
+  return { ...result, answer: humanizeAll(result.answer) };
+}
+
+function memoryRecallAnswer(hits: { at: string; source: string; snippet: string }[]): string {
+  return hits.length
+    ? [
+        "1. Что обнаружено.",
+        ...hits.map((hit) => `${hit.at} ${hit.source}: ${hit.snippet}`),
+        "2. Чем подтверждается.",
+        "Запись памяти с источником и временем. Это не новая диагностика.",
+        "3. Причина и предположения.",
+        "Повторная причина не подтверждается, пока нет нового наблюдения.",
+      ].join("\n")
+    : NO_INCIDENTS_ANSWER;
+}
+
+type AgentTurnOptions = {
     session: Session | null;
     stateDir: string;
     env?: NodeJS.ProcessEnv;
@@ -132,8 +168,9 @@ export async function runAgentTurn(
     retriever?: Retriever;
     requestId?: string;
     replan?: (input: { request: string; observations: AgentObservation[]; target: string }) => AgentPlanStep | null;
-  },
-): Promise<AgentTurnResult> {
+};
+
+async function runAgentTurnInner(text: string, opts: AgentTurnOptions): Promise<AgentTurnResult> {
   const env = opts.env ?? process.env;
   if (env.JARVIS_AI_AGENT_ENABLED !== "1") {
     return {
@@ -164,6 +201,21 @@ export async function runAgentTurn(
         ? proposeKnowledge(knowledgeCommand.text, actor, opts.stateDir, opts.now?.getTime() ?? Date.now())
         : confirmKnowledge(knowledgeCommand.id, actor, opts.stateDir, opts.now ?? new Date());
     return { code: result.code, answer: result.answer, plan: null, observations: [], provider: null, model: null };
+  }
+
+  // "Такое уже было раньше?" without a request to check now: answer from incident
+  // memory only, plainly, and never with a clarifying question.
+  if (RECALL_QUERY.test(text) && !CHECK_NOW.test(text)) {
+    const remembered = searchMemory(opts.stateDir, text, { kinds: ["incident"], limit: 3, readerRole: opts.session.role });
+    return {
+      code: "OK",
+      answer: memoryRecallAnswer(remembered),
+      plan: null,
+      observations: [],
+      provider: null,
+      model: null,
+      cause: remembered.length ? "hypothesis" : "unestablished",
+    };
   }
 
   const hits = await (opts.retriever ?? retrieveKnowledge)(text, { env, stateDir: opts.stateDir }).catch(() => [] as Hit[]);
@@ -232,7 +284,7 @@ export async function runAgentTurn(
             "3. Причина и предположения.",
             "Повторная причина не подтверждается, пока нет нового наблюдения.",
           ].join("\n")
-        : "В памяти нет подтверждённого похожего инцидента. Причина не установлена."
+        : NO_INCIDENTS_ANSWER
       : planned.plan.message;
     return {
       code: "OK",

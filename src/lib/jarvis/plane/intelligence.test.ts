@@ -584,3 +584,53 @@ describe("task engine", () => {
     assert.deepEqual(second, []);
   });
 });
+
+describe("p1 leftovers: recall, display names, knowledge routing", () => {
+  const operator: Session = { id: "s", accountId: "admin1", role: "operator", expiresAt: Date.now() + 60_000, channel: "web" };
+  const env = { JARVIS_AI_AGENT_ENABLED: "1" } as NodeJS.ProcessEnv;
+  const noPlanner = async () => {
+    throw new Error("planner must not be called");
+  };
+
+  it("memory recall with no stored incidents answers plainly, no clarifying question", async () => {
+    const result = await runAgentTurn("Такое с роутером уже было раньше? Похожие инциденты?", {
+      session: operator, stateDir: dir(), env, planner: noPlanner as never, retriever: async () => [],
+    });
+    assert.equal(result.code, "OK");
+    assert.match(result.answer, /^Записей о похожих инцидентах пока нет/);
+    assert.doesNotMatch(result.answer, /уточните/i);
+  });
+
+  it("memory recall returns stored incidents when present", async () => {
+    const stateDir = dir();
+    remember(stateDir, { kind: "incident", text: "Роутер: ether6 упал после грозы", source: "ops", actor: "admin1" } as never);
+    const result = await runAgentTurn("Такое уже было раньше с ether6?", {
+      session: operator, stateDir, env, planner: noPlanner as never, retriever: async () => [],
+    });
+    assert.equal(result.code, "OK");
+  });
+
+  it("refusal and clarify text never shows internal target ids", async () => {
+    const rejected = await runAgentTurn("Отключи ether6", {
+      session: operator, stateDir: dir(), env, retriever: async () => [],
+      planner: async () => ({ ok: false, code: "PLAN_REJECTED", detail: "mikrotik.interface.set@rb5009: Inventory не разрешает этот runbook" }) as never,
+    });
+    assert.doesNotMatch(rejected.answer, /rb5009/);
+    assert.match(rejected.answer, /CCR1009/);
+    const clarify = await runAgentTurn("Что-то с rb5009", {
+      session: operator, stateDir: dir(), env, retriever: async () => [],
+      planner: async () => ({ ok: true, provider: "t", model: "t", requestId: "r", plan: { objective: "x", responseMode: "clarify", message: "Уточните, что проверить на rb5009?", steps: [] } }) as never,
+    });
+    assert.equal(clarify.code, "CLARIFY");
+    assert.doesNotMatch(clarify.answer, /rb5009/);
+  });
+
+  it("question-form knowledge turns go to the agent; demo-only commands do not exist in real mode", async () => {
+    const { routeDeterministic } = await import("./hybrid.ts");
+    assert.equal(routeDeterministic("Как откатить деплой JARVIS?", "real"), false);
+    assert.equal(routeDeterministic("Где работает MikroMCP?", "real"), false);
+    assert.equal(routeDeterministic("Откати billing", "real"), false);
+    assert.equal(routeDeterministic("Откати billing", "mock"), true);
+    assert.equal(routeDeterministic("да", "real"), true);
+  });
+});
