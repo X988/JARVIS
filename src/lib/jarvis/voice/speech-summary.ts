@@ -71,10 +71,8 @@ function kv(detail: string, key: string): string | null {
 }
 
 /** Rule-based short summary; used when the model is unavailable or returns junk. */
-export function fallbackSpoken(result: AgentTurnResult): string {
+export function detectedProblems(result: AgentTurnResult): string[] {
   const obs = result.observations ?? [];
-  if (obs.length === 0) return sanitizeSpeakable(result.answer || "Ответа нет.");
-  const failed = obs.filter((o) => !(o.code === "OK" || o.code === "MOCK"));
   const problems: string[] = [];
   for (const o of obs) {
     const down = kv(o.detail, "down");
@@ -84,6 +82,14 @@ export function fallbackSpoken(result: AgentTurnResult): string {
     const defActive = kv(o.detail, "default_active");
     if (defActive === "0") problems.push("нет активного маршрута по умолчанию");
   }
+  return problems;
+}
+
+export function fallbackSpoken(result: AgentTurnResult): string {
+  const obs = result.observations ?? [];
+  if (obs.length === 0) return sanitizeSpeakable(result.answer || "Ответа нет.");
+  const failed = obs.filter((o) => !(o.code === "OK" || o.code === "MOCK"));
+  const problems = detectedProblems(result);
   const verdict = problems.length
     ? `Проверка выполнена. Обратите внимание: ${problems.join("; ")}.`
     : failed.length === obs.length
@@ -122,12 +128,12 @@ export async function spokenSummary(
         system: [
           "Ты JARVIS, голосовой помощник администратора. Ответ будет прочитан вслух синтезатором речи.",
           "Сформулируй по-русски 2–3 коротких предложения, не длиннее 350 символов: общий вывод, главная проблема (если есть), что делать.",
-          "Используй только переданные факты. Не придумывай. Не перечисляй сырые строки журнала.",
+          "Используй только переданные факты. Не придумывай. Обязательно назови проблемы из detected_problems (например, какие интерфейсы не подняты). Не перечисляй сырые строки журнала.",
           "Запрещено: markdown, списки, MAC-адреса, хеши, идентификаторы, пути к файлам, имена инструментов, записи вида key=value, английские технические ключи.",
           "Числа пиши словами или цифрами, единицы по-русски (процентов, мегабайт). Неуспешные проверки упомяни одной фразой без технических кодов.",
           "Закончи фразой, что подробный отчёт на экране.",
         ].join("\n"),
-        user: JSON.stringify({ request: opts.request ?? "", outcome: result.code, checks: factsOf(result) }),
+        user: JSON.stringify({ request: opts.request ?? "", outcome: result.code, detected_problems: detectedProblems(result), checks: factsOf(result) }),
         schema: SPOKEN_SCHEMA,
       },
       { env: opts.env, fetch: opts.fetch },
