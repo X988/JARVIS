@@ -9,6 +9,7 @@ import { canExecute, type Session } from "./session.ts";
 import { processCommand } from "./pipeline.ts";
 import { validRequestId } from "./idempotency.ts";
 import { runHybridTurn } from "../plane/hybrid.ts";
+import { readJsonBodyBounded } from "./request-body.ts";
 
 function stateDir(): string {
   return process.env.JARVIS_STATE_DIR || process.cwd()+"/data";
@@ -143,13 +144,9 @@ export async function handleCommand(request:Request):Promise<Response>{
     increment("jarvis_rate_limit_denied_total");
     return json({code:"RATE_LIMIT",verdict:"deny"},429);
   }
-  const contentLength=Number(request.headers.get("content-length") ?? "0");
-  if(Number.isFinite(contentLength) && contentLength>64*1024){
-    return json({code:"SCHEMA_INVALID",verdict:"deny"},413);
-  }
-  let parsedBody:unknown;
-  try{ parsedBody=await request.json(); }
-  catch{ return json({code:"SCHEMA_INVALID",verdict:"deny"},400); }
+  const bodyRead = await readJsonBodyBounded(request);
+  if (!bodyRead.ok) return json({code:"SCHEMA_INVALID",verdict:"deny"},bodyRead.status);
+  const parsedBody = bodyRead.value;
   if(!parsedBody || typeof parsedBody!=="object" || Array.isArray(parsedBody)){
     return json({code:"SCHEMA_INVALID",verdict:"deny"},400);
   }
@@ -220,17 +217,9 @@ export async function handleAgentCommand(request: Request): Promise<Response> {
     return json({ code: "RATE_LIMIT" }, 429);
   }
 
-  const contentLength = Number(request.headers.get("content-length") ?? "0");
-  if (Number.isFinite(contentLength) && contentLength > 64 * 1024) {
-    return json({ code: "SCHEMA_INVALID" }, 413);
-  }
-
-  let parsedBody: unknown;
-  try {
-    parsedBody = await request.json();
-  } catch {
-    return json({ code: "SCHEMA_INVALID" }, 400);
-  }
+  const bodyRead = await readJsonBodyBounded(request);
+  if (!bodyRead.ok) return json({ code: "SCHEMA_INVALID" }, bodyRead.status);
+  const parsedBody = bodyRead.value;
   if (!parsedBody || typeof parsedBody !== "object" || Array.isArray(parsedBody)) {
     return json({ code: "SCHEMA_INVALID" }, 400);
   }
