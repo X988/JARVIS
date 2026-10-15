@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExecCall, ExecResult } from "./pipeline.ts";
+import { runMikroMcp } from "./mikromcp.ts";
 
 const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../scripts/jarvis_routeros.mjs");
 
@@ -56,7 +57,15 @@ export function runRouterOs(call: ExecCall, env: NodeJS.ProcessEnv = process.env
     "mikrotik.interface.set": "interface-set",
   }[call.runbook] ?? "";
   if (!mode) return { called: false, code: "NOT_CONFIGURED", detail: "routeros: для runbook нет фиксированного read-only REST запроса." };
-  if (!env.JARVIS_MIKROTIK_HOST?.trim()) return { called: false, code: "NOT_CONFIGURED", detail: "routeros: JARVIS_MIKROTIK_HOST не задан." };
+  // Read-only runbooks go through MikroMCP first when it is configured; any
+  // MikroMCP failure falls back to the fixed REST client below.
+  let fallbackNote = "";
+  if (!CHANGE_RUNBOOKS.has(call.runbook)) {
+    const viaMcp = runMikroMcp(call, env);
+    if (!("fallback" in viaMcp)) return viaMcp;
+    if (viaMcp.fallback !== "not configured" && viaMcp.fallback !== "no read-only mapping") fallbackNote = ` (MikroMCP недоступен: ${viaMcp.fallback}; ответ через REST)`;
+  }
+  if (!env.JARVIS_MIKROTIK_HOST?.trim()) return { called: false, code: "NOT_CONFIGURED", detail: "routeros: JARVIS_MIKROTIK_HOST не задан." + fallbackNote };
   if (!env.JARVIS_MIKROTIK_USER?.trim() || !env.JARVIS_MIKROTIK_PASSWORD) {
     return { called: false, code: "CREDENTIAL_UNAVAILABLE", detail: "routeros: user/password не настроены." };
   }
@@ -78,7 +87,7 @@ export function runRouterOs(call: ExecCall, env: NodeJS.ProcessEnv = process.env
   try {
     const body = JSON.parse(run.stdout) as { code?: string; detail?: string };
     const code = body.code || "VERIFICATION_FAILED";
-    return { called: code === "OK", code, detail: `routeros: ${body.detail ?? "нет ответа"}` };
+    return { called: code === "OK", code, detail: `routeros: ${body.detail ?? "нет ответа"}${fallbackNote}` };
   } catch {
     return { called: false, code: "VERIFICATION_FAILED", detail: "routeros: ответ клиента не разобран." };
   }

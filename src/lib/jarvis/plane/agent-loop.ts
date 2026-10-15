@@ -328,7 +328,10 @@ export async function driveAgentLoop(opts: LoopDriverOptions): Promise<AgentRunS
       target: step.target,
       code: result.code,
       detail: quarantined.text,
-      verification: result.verification,
+      // Data that came through MikroMCP must not be described with the REST runbook's verification text.
+      verification: /^mikromcp:([a-z_]+):/.test(result.detail)
+        ? `MikroMCP ${/^mikromcp:([a-z_]+):/.exec(result.detail)![1]} (read-only)`
+        : result.verification,
       executionCalled: result.executionCalled,
       auditId: result.auditId || null,
       injection: quarantined.injection,

@@ -16,6 +16,7 @@ import { Route as MetricsRouteImport } from './routes/metrics'
 import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as StatusRouteImport } from './routes/status'
 import { Route as TasksRouteImport } from './routes/tasks'
+import { Route as AdminAuditRouteImport } from './routes/admin.audit'
 import { Route as ApiAgentRouteImport } from './routes/api/agent'
 import { Route as ApiCommandsRouteImport } from './routes/api/commands'
 import { Route as ApiLocalAuthRouteImport } from './routes/api/local-auth'
@@ -58,6 +59,11 @@ const StatusRoute = StatusRouteImport.update({
 const TasksRoute = TasksRouteImport.update({
   id: '/tasks',
   path: '/tasks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminAuditRoute = AdminAuditRouteImport.update({
+  id: '/admin/audit',
+  path: '/admin/audit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAgentRoute = ApiAgentRouteImport.update({
@@ -109,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/ready': typeof ReadyRoute
   '/status': typeof StatusRoute
   '/tasks': typeof TasksRoute
+  '/admin/audit': typeof AdminAuditRoute
   '/api/agent': typeof ApiAgentRoute
   '/api/commands': typeof ApiCommandsRoute
   '/api/local-auth': typeof ApiLocalAuthRoute
@@ -126,6 +133,7 @@ export interface FileRoutesByTo {
   '/ready': typeof ReadyRoute
   '/status': typeof StatusRoute
   '/tasks': typeof TasksRoute
+  '/admin/audit': typeof AdminAuditRoute
   '/api/agent': typeof ApiAgentRoute
   '/api/commands': typeof ApiCommandsRoute
   '/api/local-auth': typeof ApiLocalAuthRoute
@@ -144,6 +152,7 @@ export interface FileRoutesById {
   '/ready': typeof ReadyRoute
   '/status': typeof StatusRoute
   '/tasks': typeof TasksRoute
+  '/admin/audit': typeof AdminAuditRoute
   '/api/agent': typeof ApiAgentRoute
   '/api/commands': typeof ApiCommandsRoute
   '/api/local-auth': typeof ApiLocalAuthRoute
@@ -163,6 +172,7 @@ export interface FileRouteTypes {
     | '/ready'
     | '/status'
     | '/tasks'
+    | '/admin/audit'
     | '/api/agent'
     | '/api/commands'
     | '/api/local-auth'
@@ -180,6 +190,7 @@ export interface FileRouteTypes {
     | '/ready'
     | '/status'
     | '/tasks'
+    | '/admin/audit'
     | '/api/agent'
     | '/api/commands'
     | '/api/local-auth'
@@ -197,6 +208,7 @@ export interface FileRouteTypes {
     | '/ready'
     | '/status'
     | '/tasks'
+    | '/admin/audit'
     | '/api/agent'
     | '/api/commands'
     | '/api/local-auth'
@@ -215,6 +227,7 @@ export interface RootRouteChildren {
   ReadyRoute: typeof ReadyRoute
   StatusRoute: typeof StatusRoute
   TasksRoute: typeof TasksRoute
+  AdminAuditRoute: typeof AdminAuditRoute
   ApiAgentRoute: typeof ApiAgentRoute
   ApiCommandsRoute: typeof ApiCommandsRoute
   ApiLocalAuthRoute: typeof ApiLocalAuthRoute
@@ -274,6 +287,13 @@ declare module '@tanstack/react-router' {
       path: '/tasks'
       fullPath: '/tasks'
       preLoaderRoute: typeof TasksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/audit': {
+      id: '/admin/audit'
+      path: '/admin/audit'
+      fullPath: '/admin/audit'
+      preLoaderRoute: typeof AdminAuditRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/agent': {
@@ -343,6 +363,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReadyRoute: ReadyRoute,
   StatusRoute: StatusRoute,
   TasksRoute: TasksRoute,
+  AdminAuditRoute: AdminAuditRoute,
   ApiAgentRoute: ApiAgentRoute,
   ApiCommandsRoute: ApiCommandsRoute,
   ApiLocalAuthRoute: ApiLocalAuthRoute,

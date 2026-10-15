@@ -200,6 +200,17 @@ Backup target не берётся из произвольного client input.
 
 Client-supplied security fields считаются недоверенными.
 
+## Единый серверный контур
+
+Текст консоли, браузерный голос и Telegram используют серверные маршруты
+`/api/agent` и `/api/commands`. Выбор demo-оператора не даёт полномочий.
+Legacy SSH/MikroTik ToolEngine не подключён к web API: отдельное `live`
+исполнение отключено. Для адаптеров действует только `EXECUTION_MODE=real`,
+после server-side policy и approval. `/admin/audit` читает проверенную цепочку
+аудита и доступен только роли `admin` из серверной карты пользователей.
+
+Результаты проверки всех веток: [аудит 2026-10-14](docs/BRANCH_AUDIT_2026-10-14.md).
+
 ## AI agent runtime
 
 В ветке `jarvis/prod-contour` добавлен отдельный bounded AI-agent контур:
@@ -273,7 +284,7 @@ LLM не является источником полномочий: tool, targe
 
 ```bash
 git clone <repository>
-cd honey-granite-fair-hazel
+cd JARVIS
 npm ci
 cp .env.example .env
 npm run dev
@@ -518,3 +529,4 @@ Inventory
 ```
 
 **Policy важнее LLM. Runbook важнее shell. Verification важнее exit code. Human approval важнее автономности для критических действий.**
+

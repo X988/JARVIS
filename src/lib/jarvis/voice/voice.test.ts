@@ -182,3 +182,11 @@ describe("voice gate", () => {
     assert.equal(second.accepted && second.result.code, "OK");
   });
 });
+
+describe("voice confidence gate", () => {
+  it("accepts clean speech scored 0.5-0.65 by whisper and rejects only very low confidence", async () => {
+    const { normalizeTranscript, MIN_CONFIDENCE } = await import("./gate.ts");
+    assert.equal(normalizeTranscript("Джарвис, ты на связи?", 0.518, [], MIN_CONFIDENCE).code, "OK");
+    assert.equal(normalizeTranscript("шум", 0.2, [], MIN_CONFIDENCE).code, "CLARIFY");
+  });
+});

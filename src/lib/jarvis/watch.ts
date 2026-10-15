@@ -84,3 +84,8 @@ export const WATCH_ALERTS: WatchAlert[] = [
     command: "Проверь базу utp",
   },
 ];
+
+/** Demo watch fixtures may appear only when the server reports EXECUTION_MODE=mock. */
+export function demoWatchAllowed(serverMode: string | null | undefined): boolean {
+  return serverMode === "mock";
+}

@@ -3,7 +3,9 @@ export const ENDPOINT_SILENCE_MS = 800;
 export const MAX_UTTERANCE_MS = 30_000;
 export const PRE_ROLL_MS = 240;
 export const MIN_SPEECH_MS = 200;
-export const MIN_CONFIDENCE = 0.55;
+// exp(avg_logprob) * (1 - no_speech_prob): clean Russian speech scores only
+// 0.5-0.65 on whisper small, 0.68-0.86 on large-v3-turbo. Reject only clearly bad audio.
+export const MIN_CONFIDENCE = 0.35;
 export const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 
 export type VoiceKind = "silence" | "noise" | "speech";

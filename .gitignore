@@ -5,6 +5,14 @@ node_modules/
 .env.*
 !.env.example
 data/
+secrets/*
+!secrets/jarvis.example.json
 /playwright-report/
 /test-results/
 /models/
+
+
+# Generated deployment bundles must be rebuilt from reviewed sources.
+.vercel/output/
+.output/
+dist/

@@ -131,7 +131,7 @@ describe("telegram and voice", () => {
   });
 
   it("keeps a low-confidence alias unchanged", () => {
-    assert.equal(normalizeHeard("проверь ютп", 0.4).changed, false);
+    assert.equal(normalizeHeard("проверь ютп", 0.3).changed, false);
     assert.equal(normalizeHeard("проверь ютп", 0.9).text.includes("utp"), true);
     assert.equal(wakeEnabled({}), false);
     assert.equal(ttsMode({}), "disabled");
@@ -556,6 +556,9 @@ describe("plugins, incidents, models", () => {
     assert.equal(ids.includes("alertmanager"), true);
     assert.equal(ids.includes("linux"), true);
     assert.equal(ids.includes("mailcow"), true);
+    assert.equal(ids.includes("demo"), false);
+    assert.deepEqual(monitoringProvidersFromEnv({ EXECUTION_MODE: "mock" }).map((p) => p.id), ["demo"]);
+    assert.deepEqual(monitoringProvidersFromEnv({ EXECUTION_MODE: "real" }).map((p) => p.id), []);
   });
 
   it("collects live monitoring only through fixed provider adapters", () => {

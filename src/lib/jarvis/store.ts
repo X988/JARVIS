@@ -1,8 +1,8 @@
 import { create } from "zustand";
-import { postCommand, unavailableDecision, ensureServerSession, type ServerTrace } from "@/lib/jarvis/client-api";
+import { postCommand, postConversation, unavailableDecision, ensureServerSession, type ServerTrace } from "@/lib/jarvis/client-api";
 import { type Decision } from "@/lib/jarvis/model";
 import type { VoiceTurnResponse } from "@/lib/jarvis/voice/contract";
-import { WATCH_ALERTS, type WatchAlert } from "@/lib/jarvis/watch";
+import { WATCH_ALERTS, demoWatchAllowed, type WatchAlert } from "@/lib/jarvis/watch";
 
 export type Phase = "running" | "awaiting" | "done" | "denied" | "expired" | "cancelled";
 
@@ -74,7 +74,7 @@ type JarvisState = {
   ensureSession: () => Promise<void>;
   pushNotice: (id: string) => void;
   submit: (raw: string, source: "text" | "voice", heard?: string) => Promise<void>;
-  showVoiceResult: (payload: VoiceTurnResponse, heard?: string) => void;
+  showVoiceResult: (payload: VoiceTurnResponse, heard?: string, source?: "text" | "voice") => void;
   reply: (turnId: string, phrase: string) => Promise<void>;
   cancel: (turnId: string) => void;
   tick: (ts: number) => void;
@@ -160,6 +160,8 @@ export const useJarvis = create<JarvisState>((set, get) => ({
 
   pushNotice: (id) => {
     const state = get();
+    // Demo watch fixtures are shown only when the server runs EXECUTION_MODE=mock.
+    if (!demoWatchAllowed(state.serverMode)) return;
     if (!state.watch || state.notices.some((item) => item.id === id)) return;
     const alert = WATCH_ALERTS.find((item) => item.id === id);
     if (!alert) return;
@@ -170,7 +172,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       at: notice.at,
       user,
       source: "demo",
-      request: notice.title,
+      request: `[DEMO] ${notice.title}`,
       intent: "watch",
       tool: "watch_hosts",
       target: notice.host,
@@ -178,7 +180,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       risk: 0,
       approvalId: null,
       template: "—",
-      result: "watch_report",
+      result: "demo_watch_report",
       exitCode: null,
       durationMs: null,
       error: null,
@@ -208,7 +210,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     set({ now: ts, turns, audit: [...extra, ...state.audit].slice(0, 80) });
   },
 
-  showVoiceResult: (payload, heard) => {
+  showVoiceResult: (payload, heard, source = "voice") => {
     const user = get().actorId;
     const at = Date.now();
     if (payload.command) {
@@ -217,7 +219,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       const phase: Phase = result.approval ? "awaiting" : result.decision.verdict === "deny" ? "denied" : "done";
       const next: Turn = {
         id: uid("turn"),
-        source: "voice",
+        source,
         request,
         heard: heard && heard.trim() && heard.trim() !== request ? heard.trim() : null,
         at,
@@ -256,9 +258,9 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     const decision: Decision = {
       id: "unknown",
       title: answer.length > 180 ? `${answer.slice(0, 177).trimEnd()}…` : answer,
-      normalized: "voice-chat",
+      normalized: source === "voice" ? "voice-chat" : "text-chat",
       risk: 0,
-      tool: "разговор",
+      tool: "AI ответ",
       target: "—",
       runbook: null,
       account: "—",
@@ -277,12 +279,12 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       durationMs: 0,
       verdict,
       reason: answer.length > 180 ? answer : null,
-      policyNotes: ["Голосовой ответ. Голос ничего не подтверждает и не выполняет."],
+      policyNotes: ["Ответ через серверный AI-контур. Изменения требуют отдельного подтверждения."],
       previewFindings: false,
     };
     const next: Turn = {
       id: uid("turn"),
-      source: "voice",
+      source,
       request: heard?.trim() || "голос",
       heard: null,
       at,
@@ -290,7 +292,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       step: 4,
       decision,
       approval: null,
-      executed: false,
+      executed: payload.executionCalled,
       showFindings: false,
       dryRun: (payload.mode || get().serverMode) !== "real",
       exitCode: null,
@@ -376,7 +378,16 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     set({ busy: true });
     try {
       await get().ensureSession();
-      const result = await postCommand(text, uid("req")).catch(() => null);
+      const response = await postConversation(text, uid("req")).catch(() => null);
+      if (response?.kind === "agent") {
+        get().showVoiceResult({
+          code: response.code, spoken: response.answer, sentences: [], kind: "agent",
+          executionCalled: response.executionCalled, mode: get().serverMode, tts: false,
+          command: null, answer: response.answer,
+        }, heard || text, source);
+        return;
+      }
+      const result = response;
       const decision = result?.decision ?? unavailableDecision("Сервер политики не ответил.");
       const user = get().actorId;
       const id = uid("turn");
@@ -414,3 +425,4 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     }
   },
 }));
+

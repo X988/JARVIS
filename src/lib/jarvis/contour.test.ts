@@ -25,7 +25,10 @@ describe("policy", () => {
   });
 
   it("denies a stranger", () => {
-    const decision = evaluate("Проверь сервер", OPERATORS[1], now);
+    const stranger = OPERATORS.find((operator) => operator.id === "stranger");
+    assert.ok(stranger);
+    assert.equal(stranger.allowed, false);
+    const decision = evaluate("Проверь сервер", stranger, now);
     assert.equal(decision.verdict, "deny");
   });
 

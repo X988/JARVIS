@@ -181,7 +181,7 @@
     },
     {
       "id": "rb5009",
-      "displayName": "MikroTik RB5009",
+      "displayName": "MikroTik CCR1009 (MikroTik-KP)",
       "type": "router",
       "environment": "production",
       "roles": [
@@ -193,7 +193,10 @@
         "mikrotik",
         "микротик",
         "микрот",
-        "router"
+        "router",
+        "ccr1009",
+        "mikrotik-kp",
+        "роутер"
       ],
       "voiceCanonical": "mikrotik",
       "enabled": true,

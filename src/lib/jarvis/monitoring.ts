@@ -210,7 +210,8 @@ export function providersFromEnv(env: NodeJS.ProcessEnv = process.env): Monitori
   if (env.JARVIS_SQL_HOST) live.push(new UnconfiguredProvider("sql"));
   if (env.JARVIS_MIKROTIK_HOST) live.push(new UnconfiguredProvider("mikrotik"));
   if (env.JARVIS_DOCKER_HOST) live.push(new UnconfiguredProvider("mailcow"));
-  return [new DemoMonitoringProvider(), ...live];
+  // Demo fixtures exist only for EXECUTION_MODE=mock; never alongside real/dry-run state.
+  return env.EXECUTION_MODE === "mock" ? [new DemoMonitoringProvider(), ...live] : live;
 }
 
 export function demoHosts() {
