@@ -45,7 +45,16 @@
       "enabled": true,
       "allowedRunbooks": [
         "server.health",
-        "disk.check"
+        "disk.check",
+        "windows.reachability",
+        "windows.services",
+        "windows.events",
+        "windows.dns",
+        "windows.memory",
+        "windows.time",
+        "windows.tasks",
+        "ad.replication",
+        "ad.accounts"
       ]
     },
     {
@@ -69,7 +78,14 @@
       "enabled": true,
       "allowedRunbooks": [
         "server.health",
-        "disk.check"
+        "disk.check",
+        "windows.reachability",
+        "windows.services",
+        "windows.events",
+        "windows.dns",
+        "windows.memory",
+        "windows.time",
+        "windows.tasks"
       ]
     },
     {
@@ -92,7 +108,14 @@
       "enabled": true,
       "allowedRunbooks": [
         "server.health",
-        "disk.check"
+        "disk.check",
+        "windows.reachability",
+        "windows.services",
+        "windows.events",
+        "windows.dns",
+        "windows.memory",
+        "windows.time",
+        "windows.tasks"
       ]
     },
     {
@@ -114,7 +137,14 @@
       "enabled": true,
       "allowedRunbooks": [
         "server.health",
-        "disk.check"
+        "disk.check",
+        "windows.reachability",
+        "windows.services",
+        "windows.events",
+        "windows.dns",
+        "windows.memory",
+        "windows.time",
+        "windows.tasks"
       ]
     },
     {
@@ -142,7 +172,11 @@
       "allowedRunbooks": [
         "server.health",
         "disk.check",
-        "mailcow.health"
+        "mailcow.health",
+        "linux.systemd",
+        "linux.docker",
+        "linux.filesystem",
+        "linux.http"
       ]
     },
     {
@@ -170,7 +204,10 @@
         "mikrotik.dhcp",
         "mikrotik.firewall.counters",
         "mikrotik.wan.status",
-        "mikrotik.logs"
+        "mikrotik.logs",
+        "mikrotik.resources",
+        "mikrotik.vlan",
+        "mikrotik.reachability"
       ]
     },
     {
@@ -220,7 +257,10 @@
         "sql.database.size",
         "sql.sessions",
         "sql.blocking",
-        "sql.backup.status"
+        "sql.backup.status",
+        "sql.agent",
+        "sql.errors",
+        "sql.space"
       ]
     },
     {
