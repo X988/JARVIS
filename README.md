@@ -474,6 +474,8 @@ docs/
 
 ## Документация
 
+- [Руководство по установке и эксплуатации (RU)](docs/INSTALLATION_GUIDE_RU.md)
+
 - [Architecture](docs/ARCHITECTURE.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Release checklist](docs/RELEASE_CHECKLIST.md)
