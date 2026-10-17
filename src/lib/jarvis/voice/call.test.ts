@@ -10,13 +10,15 @@ import { hearWav, runVoiceConversation, voiceExecute } from "./call.ts";
 import { handleVoice } from "./web.ts";
 import {
   LISTEN_INITIAL,
+  MAX_CLIENT_UTTERANCE_MS,
   downsampleAverage,
+  limitVoiceSamples,
   encodeWavPcm16,
   parsePcmWav,
   stepListen,
 } from "./endpoint.ts";
 import { speechChunks } from "./gate.ts";
-import { MAX_AUDIO_BYTES } from "./gate.ts";
+import { MAX_AUDIO_BYTES, MAX_UTTERANCE_MS, PRE_ROLL_MS } from "./gate.ts";
 
 function dir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-call-"));
@@ -67,6 +69,31 @@ describe("call endpoint", () => {
     assert.equal(event, "start");
     ({ state, event } = stepListen(state, 0.05, 100, { maxUtteranceMs: 300 }));
     assert.equal(event, "max");
+  });
+
+  it("ends long continuous sound before the server STT limit including pre-roll", () => {
+    // Reproduces AUDIO_TOO_LONG when a 30 s utterance was sent with pre-roll.
+    assert.ok(MAX_CLIENT_UTTERANCE_MS + PRE_ROLL_MS + 30 < MAX_UTTERANCE_MS);
+    let state = LISTEN_INITIAL;
+    let event = "none" as string;
+    for (let i = 0; i < Math.ceil(MAX_UTTERANCE_MS / 30) + 20; i += 1) {
+      ({ state, event } = stepListen(state, 0.05, 30, {
+        maxUtteranceMs: MAX_CLIENT_UTTERANCE_MS,
+      }));
+      if (event === "max") break;
+    }
+    assert.equal(event, "max");
+    assert.ok(state.utteranceMs + PRE_ROLL_MS < MAX_UTTERANCE_MS);
+  });
+
+  it("caps unexpectedly oversized frontend audio without increasing server limits", () => {
+    const samples = new Float32Array(Math.floor(16_000 * (MAX_UTTERANCE_MS + 500) / 1000));
+    const capped = limitVoiceSamples(samples, 16_000);
+    const wav = encodeWavPcm16(capped, 16_000);
+    const parsed = parsePcmWav(wav);
+    assert.ok(parsed);
+    assert.ok((parsed?.samples.length ?? Infinity) < 16_000 * MAX_UTTERANCE_MS / 1000);
+    assert.equal(limitVoiceSamples(new Float32Array(160), 16_000).length, 160);
   });
 
   it("downsamples and round-trips a mono wav", () => {

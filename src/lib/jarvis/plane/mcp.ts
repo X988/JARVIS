@@ -5,12 +5,13 @@ export type McpDiscovery =
   | { code: "DISCOVERED"; name: string };
 
 /**
- * Discovery is not execution authority. A known MCP capability still needs
- * a server-owned runbook and inventory target before it may reach Gateway.
+ * Discovery is not execution authority.
+ * Deny-by-default: only explicitly published MCP tools are discoverable.
+ * Even then, a server-owned runbook + inventory target + Gateway is required.
  */
 export function admitMcp(name: string, known: string[]): McpDiscovery {
   if (!known.includes(name)) {
-    return { code: "DENY", name, reason: "MCP tool не опубликован" };
+    return { code: "DENY", name, reason: "MCP tool не опубликован (deny-by-default)" };
   }
   return { code: "DISCOVERED", name };
 }
@@ -21,7 +22,7 @@ export function admitMcpRunbook(
   exposedRunbooks: string[],
 ): { code: "DENY" | "GATEWAY"; runbook: string; target: string; reason?: string } {
   if (!exposedRunbooks.includes(runbook)) {
-    return { code: "DENY", runbook, target, reason: "MCP capability не опубликована" };
+    return { code: "DENY", runbook, target, reason: "MCP capability не опубликована (deny-by-default)" };
   }
   const admission = admitRegisteredTool(runbook, target);
   if (admission.code === "DENY") {

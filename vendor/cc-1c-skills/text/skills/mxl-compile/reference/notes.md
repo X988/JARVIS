@@ -1,0 +1,29 @@
+> JARVIS_ONEC_SKILL_DOCS_ONLY: scripts are not installed and must not be run. Mutations stay on the JARVIS policy pipeline and require approval.
+> Source: cc-1c-skills `24429b462509` (skill `mxl-compile`). Copyright (c) 2025-2026 Nick Shirokov. MIT — see vendor/cc-1c-skills/LICENSE.
+> Adapted for JARVIS: command blocks and credential examples removed. This file is prompt context only.
+# Примечания к ячейкам
+
+Всплывающая подсказка, которую платформа показывает при наведении. Задаётся ключом `note` —
+строкой, объектом «язык → текст» или полной формой:
+
+```json
+{ "col": 1, "text": "Итого", "note": "Сумма без НДС" }
+{ "col": 2, "note": { "ru": "на дату документа", "en": "as of the document date" } }
+{ "col": 3, "note": { "text": "не более 20%", "style": "жёлтая-подсказка" } }
+{ "col": 4, "note": { "text": "…", "autoSize": false,
+                      "box": { "top": 58, "left": -175, "bottom": 362, "right": 478 } } }
+```
+
+Объект трактуется по ключам — так же, как текст ячейки в короткой форме строки: есть ключ
+примечания (`text`, `style`, `box`, `autoSize`) → это описание примечания, иначе ключи
+считаются идентификаторами языков.
+
+| Поле | По умолч. | Описание |
+|------|-----------|----------|
+| `text` | — | Текст подсказки: строка или объект «язык → текст» |
+| `style` | стиль подсказки | Имя стиля из `styles`; без него — оформление, которое даёт Конфигуратор |
+| `autoSize` | `true` | Подгонять ли размер окошка под текст |
+| `box` | — | Смещения окошка: `top`, `left` — положение, `bottom`, `right` — размер. Без ключа окошко встаёт стандартно |
+
+Координаты ячейки в примечании не задаются. `autoSize` и `box` независимы: при автоподгоне
+размера положение окошка всё равно хранится.

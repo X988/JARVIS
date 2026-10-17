@@ -4,6 +4,7 @@ All notable changes are documented here. This project follows Semantic Versionin
 
 ## [Unreleased]
 
+- 1C skill pack from cc-1c-skills (MIT, pinned commit) is loaded as documentation context. PowerShell, Python, hooks and web-test runners are not installed and are not tools.
 - Hands-free browser voice conversation: microphone VAD, server faster-whisper, hybrid agent/command reply, sentence-sized Piper playback. Voice cannot confirm or execute mutations.
 - Live infrastructure verification is still required for WinRM, SSH, SQL restore, RouterOS, Mailcow, Telegram, external audit delivery, STT/TTS and 1С external validators.
 - Production deployment remains human-gated and is not performed by workers or the LLM.

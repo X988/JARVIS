@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUp, KeyRound, MessageSquare, Mic, Phone, ScrollText, Server, Square, X } from "lucide-react";
-import { VoiceCall, beginVoiceCall, releaseVoiceCall, type VoiceCallHandle } from "@/components/jarvis/voice-call";
+import { VoiceCall, type VoiceCallHandle } from "@/components/jarvis/voice-call";
+import { Hud } from "@/components/jarvis/hud";
+import { captureScreen } from "@/lib/jarvis/screen/capture";
+import { beginVoiceCall, releaseVoiceCall } from "@/lib/jarvis/voice/call-handle";
 import {
   ACCOUNTS,
   ONEC_DEV,
@@ -321,6 +324,7 @@ function TurnCard({ turn, now }: { turn: Turn; now: number }) {
 
 function SitePanel() {
   const serverMode = useJarvis((state) => state.serverMode);
+  const effectiveMode = useJarvis((state) => state.effectiveMode);
   const adapters = useJarvis((state) => state.adapters);
   return (
     <div className="flex flex-col gap-6">
@@ -522,6 +526,7 @@ const SIDE: { id: SideTab; label: string }[] = [
 let started = false;
 
 export function Console() {
+  const effectiveMode = useJarvis((state) => state.effectiveMode);
   const turns = useJarvis((state) => state.turns);
   const now = useJarvis((state) => state.now);
   const busy = useJarvis((state) => state.busy);
@@ -534,6 +539,7 @@ export function Console() {
   const sessionReady = useJarvis((state) => state.sessionReady);
   const setWatch = useJarvis((state) => state.setWatch);
   const pushNotice = useJarvis((state) => state.pushNotice);
+  const setPreferredMode = useJarvis((state) => state.setPreferredMode);
   const ensureSession = useJarvis((state) => state.ensureSession);
   const submit = useJarvis((state) => state.submit);
   const tick = useJarvis((state) => state.tick);
@@ -781,7 +787,7 @@ export function Console() {
       <header className="border-b border-line">
         <div className="flex items-center justify-between gap-3 px-4 pt-3">
           <div>
-            <p className="font-mono text-xs text-moss">{modeLabel(serverMode, profile)}</p>
+            <p className="font-mono text-xs text-moss">{modeLabel(serverMode, profile)}{serverMode !== "real" ? " (эффективный)" : ""}</p>
             <h1 className="text-xl font-semibold tracking-tight">JARVIS</h1>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -1081,11 +1087,39 @@ export function Console() {
         </div>
       ) : null}
       {callHandle ? (
-        <VoiceCall
-          handle={callHandle}
-          approval={awaiting ? <ApprovalBox turn={awaiting} now={now} /> : null}
-          onClose={closeCall}
-        />
+        <>
+          <Hud
+            phase={listening ? "listening" : voiceOpen ? "thinking" : "idle"}
+            modeInfo={effectiveMode ? {
+              mode: (effectiveMode.mode === "real" || effectiveMode.mode === "mock" || effectiveMode.mode === "dry-run") ? effectiveMode.mode : "dry-run",
+              requested: (effectiveMode.requested === "real" || effectiveMode.requested === "mock" || effectiveMode.requested === "dry-run") ? effectiveMode.requested : "dry-run",
+              degraded: effectiveMode.degraded,
+              reasons: effectiveMode.reasons,
+            } : {
+              mode: serverMode === "real" ? "real" : serverMode === "mock" ? "mock" : "dry-run",
+              requested: serverMode === "real" ? "real" : "dry-run",
+              degraded: false,
+              reasons: [],
+            }}
+            transcript={live || hearing || null}
+            onScreenCapture={async () => {
+              const result = await captureScreen();
+              console.info("[hud] screen capture:", result.ok ? "ok" : result.error);
+              pushNotice("screen-capture");
+            }}
+            onModeRequest={(requested) => {
+              // Preference only. Server clamps via modeOf / effectiveExecutionMode.
+              setPreferredMode(requested);
+              console.info("[hud] preferred mode:", requested);
+              pushNotice("mode-request");
+            }}
+          />
+          <VoiceCall
+            handle={callHandle}
+            approval={awaiting ? <ApprovalBox turn={awaiting} now={now} /> : null}
+            onClose={closeCall}
+          />
+        </>
       ) : null}
     </main>
   );

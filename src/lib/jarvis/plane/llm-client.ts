@@ -1,5 +1,6 @@
 import { routeModel, type LLMProviderId, type ModelJob } from "./llm.ts";
 import { sanitizeLlmText } from "./llm-safety.ts";
+import { circuitAllow, circuitFailure, circuitKey, circuitSuccess } from "./llm-circuit.ts";
 import {
   cloudContextAllowed,
   contextLimit,

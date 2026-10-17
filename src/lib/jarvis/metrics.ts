@@ -17,7 +17,9 @@ export type CounterMetric =
   | "jarvis_voice_turns_total"
   | "jarvis_stt_failures_total"
   | "jarvis_tts_failures_total"
-  | "jarvis_telegram_updates_total";
+  | "jarvis_telegram_updates_total"
+  | "jarvis_llm_circuit_open_total"
+  | "jarvis_llm_circuit_reject_total";
 
 export type DurationMetric =
   | "jarvis_command_duration_seconds"
@@ -60,6 +62,8 @@ const counters: Record<CounterMetric, number> = {
   jarvis_stt_failures_total: 0,
   jarvis_tts_failures_total: 0,
   jarvis_telegram_updates_total: 0,
+  jarvis_llm_circuit_open_total: 0,
+  jarvis_llm_circuit_reject_total: 0,
 };
 
 const durations: Record<DurationMetric, DurationState> = {

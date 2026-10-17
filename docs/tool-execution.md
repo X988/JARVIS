@@ -36,5 +36,9 @@ engine остаются для изучения и изолированных т
 
 `npm test` проверяет отсутствие импортов legacy engine из web runtime, защищённый
 просмотр аудита, отказ по просроченной сессии и основной policy/approval pipeline.
+
+## Навыки 1С
+
+Тексты [cc-1c-skills](https://github.com/Nikolay-Shirokov/cc-1c-skills) (MIT, закреплённый commit в `vendor/cc-1c-skills/UPSTREAM.json`) попадают в ответ агента как фрагменты документации. Скрипты конфигуратора, PowerShell, Python, хуки и Playwright в реестр runbook не добавляются и shell не получают. Подробности и список исключений: `docs/ONEC_SKILLS.md`.
 Live SSH, RouterOS, SQL backup и восстановление требуют отдельных проверок на тестовой
 инфраструктуре. Сборка не заменяет эти испытания.

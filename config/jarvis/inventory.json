@@ -6,21 +6,11 @@
       "displayName": "Infrastructure fleet",
       "type": "fleet",
       "environment": "production",
-      "roles": [
-        "read"
-      ],
+      "roles": ["read"],
       "reference": "inventory",
-      "aliases": [
-        "площадка",
-        "сервер",
-        "серверы",
-        "серверах"
-      ],
+      "aliases": ["площадка", "сервер", "серверы", "серверах"],
       "enabled": true,
-      "allowedRunbooks": [
-        "server.health",
-        "disk.check"
-      ]
+      "allowedRunbooks": ["server.health", "disk.check"]
     },
     {
       "id": "dc01",
@@ -29,19 +19,9 @@
       "platform": "windows",
       "executor": "winrm",
       "environment": "production",
-      "roles": [
-        "domain-controller",
-        "dns",
-        "dhcp"
-      ],
+      "roles": ["domain-controller", "dns", "dhcp"],
       "reference": "dc01",
-      "aliases": [
-        "dc01",
-        "dc",
-        "контроллер домена",
-        "контроллер",
-        "домен"
-      ],
+      "aliases": ["dc01", "dc", "контроллер домена", "контроллер", "домен"],
       "enabled": true,
       "allowedRunbooks": [
         "server.health",
@@ -64,17 +44,9 @@
       "platform": "windows",
       "executor": "winrm",
       "environment": "production",
-      "roles": [
-        "1c"
-      ],
+      "roles": ["1c"],
       "reference": "srv1c01",
-      "aliases": [
-        "srv1c01",
-        "сервер 1с",
-        "1с сервер",
-        "1с",
-        "1c"
-      ],
+      "aliases": ["srv1c01", "сервер 1с", "1с сервер", "1с", "1c"],
       "enabled": true,
       "allowedRunbooks": [
         "server.health",
@@ -95,16 +67,9 @@
       "platform": "windows",
       "executor": "winrm",
       "environment": "production",
-      "roles": [
-        "sql-server"
-      ],
+      "roles": ["sql-server"],
       "reference": "sql01",
-      "aliases": [
-        "sql01",
-        "sql сервер",
-        "sql server",
-        "sql"
-      ],
+      "aliases": ["sql01", "sql сервер", "sql server", "sql"],
       "enabled": true,
       "allowedRunbooks": [
         "server.health",
@@ -125,15 +90,9 @@
       "platform": "windows",
       "executor": "winrm",
       "environment": "production",
-      "roles": [
-        "file-server",
-        "smb"
-      ],
+      "roles": ["file-server", "smb"],
       "reference": "fs01",
-      "aliases": [
-        "fs01",
-        "файловый сервер"
-      ],
+      "aliases": ["fs01", "файловый сервер"],
       "enabled": true,
       "allowedRunbooks": [
         "server.health",
@@ -154,22 +113,12 @@
       "platform": "linux",
       "executor": "ssh",
       "environment": "production",
-      "roles": [
-        "mailcow",
-        "docker"
-      ],
+      "roles": ["mailcow", "docker"],
       "reference": "mail01",
-      "aliases": [
-        "mail01",
-        "mailcow",
-        "мейлкау",
-        "майлков",
-        "почта",
-        "почтовый сервер"
-      ],
+      "aliases": ["mail01", "mailcow", "мейлкау", "майлков", "почта", "почтовый сервер"],
       "voiceCanonical": "mailcow",
       "enabled": true,
-      "allowedRunbooks": [
+            "allowedRunbooks": [
         "server.health",
         "disk.check",
         "mailcow.health",
@@ -184,23 +133,12 @@
       "displayName": "MikroTik CCR1009 (MikroTik-KP)",
       "type": "router",
       "environment": "production",
-      "roles": [
-        "gateway"
-      ],
+      "roles": ["gateway"],
       "reference": "rb5009",
-      "aliases": [
-        "rb5009",
-        "mikrotik",
-        "микротик",
-        "микрот",
-        "router",
-        "ccr1009",
-        "mikrotik-kp",
-        "роутер"
-      ],
+      "aliases": ["rb5009", "mikrotik", "микротик", "микрот", "router", "ccr1009", "mikrotik-kp", "роутер"],
       "voiceCanonical": "mikrotik",
       "enabled": true,
-      "allowedRunbooks": [
+            "allowedRunbooks": [
         "mikrotik.status",
         "mikrotik.interfaces",
         "mikrotik.routes",
@@ -218,43 +156,48 @@
       "displayName": "WireGuard on RB5009",
       "type": "vpn",
       "environment": "production",
-      "roles": [
-        "wireguard"
-      ],
+      "roles": ["wireguard"],
       "reference": "rb5009/wireguard",
-      "aliases": [
-        "wireguard",
-        "вайргард",
-        "вайр гард",
-        "wg"
-      ],
+      "aliases": ["wireguard", "вайргард", "вайр гард", "wg"],
       "voiceCanonical": "wireguard",
       "enabled": true,
-      "allowedRunbooks": [
-        "wireguard.status",
-        "mikrotik.wireguard"
-      ]
+      "allowedRunbooks": ["wireguard.status", "mikrotik.wireguard"]
     },
     {
       "id": "utp",
       "displayName": "SQL database utp",
       "type": "database",
       "environment": "production",
-      "roles": [
-        "sql-database"
-      ],
+      "roles": ["sql-database"],
       "reference": "sql01/utp",
-      "aliases": [
-        "utp",
-        "утп",
-        "ютп",
-        "утепе",
-        "база utp",
-        "база ютп"
-      ],
+      "aliases": ["utp", "утп", "ютп", "утепе", "база utp", "база ютп"],
       "voiceCanonical": "utp",
       "enabled": true,
-      "allowedRunbooks": [
+      "allowedRunbooks": ["sql.health", "sql.backup", "sql.database.size", "sql.sessions", "sql.blocking", "sql.backup.status"]
+    },
+    {
+      "id": "mysql01",
+      "displayName": "MySQL database",
+      "type": "database",
+      "environment": "production",
+      "roles": ["mysql-database"],
+      "reference": "mysql01",
+      "aliases": ["mysql", "mysql01", "майэскюэл"],
+      "voiceCanonical": "mysql",
+      "enabled": true,
+      "allowedRunbooks": ["mysql.health", "mysql.sessions", "mysql.locks", "mysql.size", "mysql.status"]
+    },
+    {
+      "id": "postgres01",
+      "displayName": "PostgreSQL database",
+      "type": "database",
+      "environment": "production",
+      "roles": ["postgres-database"],
+      "reference": "postgres01",
+      "aliases": ["postgres", "postgres01", "постгрес"],
+      "voiceCanonical": "postgres",
+      "enabled": true,
+            "allowedRunbooks": [
         "sql.health",
         "sql.backup",
         "sql.database.size",
@@ -271,41 +214,22 @@
       "displayName": "JarvisDev 1C export",
       "type": "repo",
       "environment": "development",
-      "roles": [
-        "1c-source-export"
-      ],
+      "roles": ["1c-source-export"],
       "reference": "extensions/JarvisDev",
-      "aliases": [
-        "jarvisdev",
-        "расширение",
-        "расширение utp",
-        "выгрузка 1с"
-      ],
+      "aliases": ["jarvisdev", "расширение", "расширение utp", "выгрузка 1с"],
       "enabled": true,
-      "allowedRunbooks": [
-        "onec.read",
-        "onec.patch",
-        "onec.form"
-      ]
+      "allowedRunbooks": ["onec.read", "onec.patch", "onec.form"]
     },
     {
       "id": "repo-honey",
       "displayName": "honey-granite-fair-hazel",
       "type": "repo",
       "environment": "development",
-      "roles": [
-        "github-repository"
-      ],
+      "roles": ["github-repository"],
       "reference": "X988/honey-granite-fair-hazel",
-      "aliases": [
-        "honey-granite-fair-hazel",
-        "репозиторий jarvis",
-        "jarvis repo"
-      ],
+      "aliases": ["honey-granite-fair-hazel", "репозиторий jarvis", "jarvis repo"],
       "enabled": true,
-      "allowedRunbooks": [
-        "github.ci"
-      ]
+      "allowedRunbooks": ["github.ci"]
     }
   ]
 }

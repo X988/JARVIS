@@ -194,6 +194,7 @@ type AgentTurnOptions = {
     retriever?: Retriever;
     requestId?: string;
     replan?: (input: { request: string; observations: AgentObservation[]; target: string }) => AgentPlanStep | null;
+    team?: unknown;
 };
 
 async function runAgentTurnInner(text: string, opts: AgentTurnOptions): Promise<AgentTurnResult> {

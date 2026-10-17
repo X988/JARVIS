@@ -1,0 +1,1333 @@
+{
+  "name": "cc-1c-skills",
+  "upstream": "https://github.com/Nikolay-Shirokov/cc-1c-skills",
+  "commit": "24429b462509d0ae92e45bc22a7ccae159f7b904",
+  "license": "MIT",
+  "copyright": "Copyright (c) 2025-2026 Nick Shirokov",
+  "retrieved": "2026-10-15",
+  "adaptation": "Markdown skill and guide texts only, modified to drop shell/Designer/browser command blocks and credential examples. JARVIS loads them as prompt and lexical RAG context. No script, hook, or installer is vendored or executable.",
+  "execution": "docs-only",
+  "skills": [
+    {
+      "id": "cf-edit",
+      "description": "Точечное редактирование конфигурации 1С. Используй когда нужно изменить свойства конфигурации, добавить или удалить объект из состава, настроить роли по умолчанию, поменять раскладку панелей, настроить начальную страницу",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/cf-edit.ps1",
+        "scripts/cf-edit.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "cf-info",
+      "description": "Анализ структуры конфигурации 1С — свойства, состав, счётчики объектов. Используй для обзора конфигурации — какие объекты есть, сколько их, какие настройки",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/cf-info.ps1",
+        "scripts/cf-info.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "cf-init",
+      "description": "Создать пустую конфигурацию 1С (scaffold XML-исходников). Используй когда нужно начать новую конфигурацию с нуля",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/cf-init.ps1",
+        "scripts/cf-init.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "cf-validate",
+      "description": "Валидация конфигурации 1С. Используй после создания или модификации конфигурации для проверки корректности",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/cf-validate.ps1",
+        "scripts/cf-validate.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "cfe-borrow",
+      "description": "Заимствование объектов из конфигурации 1С в расширение (CFE). Используй когда нужно перехватить метод, изменить форму или добавить реквизит к существующему объекту конфигурации",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/cfe-borrow.ps1",
+        "scripts/cfe-borrow.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "cfe-diff",
+      "description": "Анализ расширения конфигурации 1С (CFE) — состав, заимствованные объекты, перехватчики, проверка переноса. Используй когда нужно понять что содержит расширение или проверить перенесены ли вставки в конфигурацию",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/cfe-diff.ps1",
+        "scripts/cfe-diff.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "cfe-init",
+      "description": "Создать расширение конфигурации 1С (CFE) — scaffold XML-исходников. Используй когда нужно создать новое расширение для исправления, доработки или дополнения конфигурации",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/cfe-init.ps1",
+        "scripts/cfe-init.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "cfe-patch-method",
+      "description": "Генерация и актуализация перехватчика метода в расширении 1С (CFE). Используй когда нужно перехватить метод заимствованного объекта — вставить код до, после, вместо оригинала, изменить его тело (ИзменениеИКонтроль) — или актуализировать перехватчик после изменения оригинала",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/cfe-patch-method.ps1",
+        "scripts/cfe-patch-method.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "cfe-validate",
+      "description": "Валидация расширения конфигурации 1С (CFE). Используй после создания или модификации расширения для проверки корректности",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/cfe-validate.ps1",
+        "scripts/cfe-validate.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "db-cfe-admin",
+      "description": "Управление расширениями конфигурации в информационной базе 1С. Используй когда нужно узнать какие расширения подключены к базе, выполнить проверку применимости или синтаксическую проверку, изменить безопасный режим или активность, удалить расширение из базы",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/db-cfe-admin.ps1",
+        "scripts/db-cfe-admin.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "db-create",
+      "description": "Создание информационной базы 1С. Используй когда нужно создать базу, новую ИБ, пустую базу",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/db-create.ps1",
+        "scripts/db-create.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "db-dump-cf",
+      "description": "Выгрузка конфигурации 1С в CF-файл. Используй когда нужно выгрузить конфигурацию в CF, сохранить конфигурацию, сделать бэкап CF",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/db-dump-cf.ps1",
+        "scripts/db-dump-cf.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "db-dump-dt",
+      "description": "Выгрузка информационной базы 1С в DT-файл (вся база — конфигурация + данные). Используй когда нужно выгрузить информационную базу, выгрузить архив базы, сделать бэкап, выгрузить dt",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/db-dump-dt.ps1",
+        "scripts/db-dump-dt.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "db-dump-xml",
+      "description": "Выгрузка конфигурации 1С в XML-файлы. Используй когда нужно выгрузить конфигурацию в файлы, XML, исходники, DumpConfigToFiles",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/db-dump-xml.ps1",
+        "scripts/db-dump-xml.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "db-list",
+      "description": "Управление реестром баз данных 1С (.v8-project.json). Используй когда нужно работать с реестром баз — список баз, зарегистрировать базу в реестре, какие базы есть",
+      "execution": "docs-only",
+      "upstreamScripts": [],
+      "declaredTools": [
+        "Read",
+        "Write",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "No upstream script file, but the skill declares write or shell tools. JARVIS does not grant those tools."
+    },
+    {
+      "id": "db-load-cf",
+      "description": "Загрузка конфигурации 1С из CF-файла. Используй когда нужно загрузить конфигурацию из CF, восстановить из бэкапа CF",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/db-load-cf.ps1",
+        "scripts/db-load-cf.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "db-load-dt",
+      "description": "Загрузка информационной базы 1С из DT-файла — полная перезапись базы (конфигурация + данные). Используй когда нужно загрузить архив информационной базы, восстановить базу, загрузить dt",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/db-load-dt.ps1",
+        "scripts/db-load-dt.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "db-load-git",
+      "description": "Загрузка изменений из Git в базу 1С. Используй когда нужно загрузить изменения из гита, обновить базу из репозитория, partial load из коммита",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/db-load-git.ps1",
+        "scripts/db-load-git.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "db-load-xml",
+      "description": "Загрузка конфигурации 1С из XML-файлов. Используй когда нужно загрузить конфигурацию из файлов, XML, исходников, LoadConfigFromFiles",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/db-load-xml.ps1",
+        "scripts/db-load-xml.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "db-repo",
+      "description": "Работа с хранилищем конфигурации 1С. Используй когда нужно захватить объекты, поместить изменения в хранилище конфигурации, получить изменения из него, подключить базу к хранилищу",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/db-repo.ps1",
+        "scripts/db-repo.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "db-run",
+      "description": "Запуск 1С:Предприятие. Используй когда нужно запустить 1С, открыть базу, запустить предприятие",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/db-run.ps1",
+        "scripts/db-run.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "db-update",
+      "description": "Обновление конфигурации базы данных 1С. Используй когда нужно обновить БД, применить конфигурацию, UpdateDBCfg",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/db-update.ps1",
+        "scripts/db-update.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "epf-bsp-add-command",
+      "description": "Определить команду в БСП‑описании обработки (`СведенияОВнешнейОбработке`) — открытие формы, вызов клиентского/серверного метода, заполнение объекта и т.п. Используй когда нужно зарегистрировать команду в дополнительной обработке БСП",
+      "execution": "docs-only",
+      "upstreamScripts": [],
+      "declaredTools": [
+        "Read",
+        "Edit",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "No upstream script file, but the skill declares write or shell tools. JARVIS does not grant those tools."
+    },
+    {
+      "id": "epf-bsp-init",
+      "description": "Сформировать функцию `СведенияОВнешнейОбработке` в модуле объекта обработки — описание для подключения через подсистему БСП «Дополнительные отчёты и обработки». Используй когда нужно сделать обработку совместимой с БСП, подключаемой через «Дополнительные отчёты и обработки»",
+      "execution": "docs-only",
+      "upstreamScripts": [],
+      "declaredTools": [
+        "Read",
+        "Edit",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "No upstream script file, but the skill declares write or shell tools. JARVIS does not grant those tools."
+    },
+    {
+      "id": "epf-build",
+      "description": "Собрать внешнюю обработку 1С (EPF/ERF) из XML-исходников. Используй когда пользователь просит собрать, скомпилировать обработку или получить EPF/ERF файл из исходников",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/epf-build.ps1",
+        "scripts/epf-build.py",
+        "scripts/stub-db-create.ps1",
+        "scripts/stub-db-create.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "epf-dump",
+      "description": "Разобрать EPF-файл обработки 1С (EPF/ERF) в XML-исходники. Используй когда пользователь просит разобрать, декомпилировать обработку, получить исходники из EPF/ERF файла",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/epf-dump.ps1",
+        "scripts/epf-dump.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "epf-init",
+      "description": "Создать пустую внешнюю обработку 1С (scaffold XML-исходников). Используй когда нужно создать новую внешнюю обработку с нуля",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/init.ps1",
+        "scripts/init.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Edit",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "epf-validate",
+      "description": "Валидация внешней обработки 1С (EPF). Используй после создания или модификации обработки для проверки корректности",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/epf-validate.ps1",
+        "scripts/epf-validate.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "erf-build",
+      "description": "Собрать внешний отчёт 1С (ERF) из XML-исходников. Используй когда пользователь просит собрать, скомпилировать отчёт или получить ERF файл из исходников",
+      "execution": "docs-only",
+      "upstreamScripts": [],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "No upstream script file, but the skill declares write or shell tools. JARVIS does not grant those tools."
+    },
+    {
+      "id": "erf-dump",
+      "description": "Разобрать ERF-файл отчёта 1С в XML-исходники. Используй когда пользователь просит разобрать, декомпилировать отчёт, получить исходники из ERF файла",
+      "execution": "docs-only",
+      "upstreamScripts": [],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "No upstream script file, but the skill declares write or shell tools. JARVIS does not grant those tools."
+    },
+    {
+      "id": "erf-init",
+      "description": "Создать пустой внешний отчёт 1С (scaffold XML-исходников). Используй когда нужно создать новый внешний отчёт с нуля",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/init.ps1",
+        "scripts/init.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Edit",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "erf-validate",
+      "description": "Валидация внешнего отчёта 1С (ERF). Используй после создания или модификации отчёта для проверки корректности",
+      "execution": "docs-only",
+      "upstreamScripts": [],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "No upstream script file, but the skill declares write or shell tools. JARVIS does not grant those tools."
+    },
+    {
+      "id": "form-add",
+      "description": "Добавить пустую управляемую форму к объекту 1С. Используй когда нужно создать у объекта новую форму",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/form-add.ps1",
+        "scripts/form-add.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Edit",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "form-compile",
+      "description": "Компиляция управляемой формы 1С из JSON-определения или из метаданных объекта. Используй когда нужно создать форму с нуля по описанию элементов или сгенерировать типовую форму",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/form-compile.ps1",
+        "scripts/form-compile.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "form-decompile",
+      "description": "Декомпиляция управляемой формы 1С (Form.xml) в JSON-черновик в формате form-compile. Используй для scaffold новой формы по образцу или структурного рефакторинга. Не для точечных правок",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/form-decompile.ps1",
+        "scripts/form-decompile.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "form-edit",
+      "description": "Правка существующей управляемой формы 1С — элементы, реквизиты, команды и свойства самой формы. Используй, когда нужно точечно изменить готовую форму",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/form-edit.ps1",
+        "scripts/form-edit.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "form-info",
+      "description": "Анализ структуры управляемой формы 1С (Form.xml) — элементы, реквизиты, команды, события. Используй для понимания формы — при написании модуля формы, анализе обработчиков и элементов",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/form-info.ps1",
+        "scripts/form-info.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "form-patterns",
+      "description": "Справочник паттернов компоновки управляемых форм 1С. Используй как справочник при проектировании форм — архетипы, конвенции, продвинутые приёмы",
+      "execution": "docs-only",
+      "upstreamScripts": [],
+      "declaredTools": [],
+      "reason": "Documentation skill. JARVIS loads the text as prompt context and does not add a tool."
+    },
+    {
+      "id": "form-remove",
+      "description": "Удалить форму из объекта 1С (обработка, отчёт, справочник, документ и др.)",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/remove-form.ps1",
+        "scripts/remove-form.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Edit",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "form-validate",
+      "description": "Валидация управляемой формы 1С. Используй после создания или модификации формы для проверки корректности",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/form-validate.ps1",
+        "scripts/form-validate.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "help-add",
+      "description": "Добавить встроенную справку к объекту 1С (обработка, отчёт, справочник, документ и др.). Используй когда пользователь просит добавить справку, help, встроенную помощь к объекту",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/add-help.ps1",
+        "scripts/add-help.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Edit",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "img-grid",
+      "description": "Наложить пронумерованную сетку на изображение. Используй при анализе скриншота макета или печатной формы — измерить пропорции колонок перед генерацией табличного документа",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/overlay-grid.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "interface-edit",
+      "description": "Настройка командного интерфейса подсистемы 1С. Используй когда нужно скрыть или показать команды, разместить в группах, настроить порядок",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/interface-edit.ps1",
+        "scripts/interface-edit.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "interface-validate",
+      "description": "Валидация командного интерфейса 1С. Используй после настройки командного интерфейса подсистемы для проверки корректности",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/interface-validate.ps1",
+        "scripts/interface-validate.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "meta-compile",
+      "description": "Создать объект метаданных 1С. Используй когда нужно создать или добавить справочник, документ, регистр, перечисление, константу, общий модуль, обработку, отчёт и др.",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/meta-compile.ps1",
+        "scripts/meta-compile.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "meta-decompile",
+      "description": "Декомпиляция объекта метаданных 1С в JSON-заготовку формата meta-compile. Используй когда нужно получить черновик DSL-описания нового объекта по образцу другого. Не сохраняет UUID/модули/формы.",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/meta-decompile.ps1",
+        "scripts/meta-decompile.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "meta-edit",
+      "description": "Точечное редактирование объекта метаданных 1С. Используй когда нужно добавить, удалить или изменить реквизиты, табличные части, измерения, ресурсы или свойства существующего объекта конфигурации",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/meta-edit.ps1",
+        "scripts/meta-edit.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "meta-info",
+      "description": "Анализ структуры объекта метаданных 1С из XML-выгрузки — реквизиты, табличные части, формы, движения, типы. Используй для изучения структуры объектов (вместо чтения XML-файлов напрямую) и как подготовительный шаг при написании запросов и кода, работающего с объектами",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/meta-info.ps1",
+        "scripts/meta-info.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "meta-remove",
+      "description": "Удалить объект метаданных из конфигурации 1С. Используй когда нужно удалить, убрать объект из конфигурации",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/meta-remove.ps1",
+        "scripts/meta-remove.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "meta-validate",
+      "description": "Валидация объекта метаданных 1С. Используй после создания или модификации объекта конфигурации для проверки корректности",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/meta-validate.ps1",
+        "scripts/meta-validate.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "mxl-compile",
+      "description": "Компиляция табличного документа (MXL) из JSON-определения. Используй когда нужно создать макет печатной формы",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/mxl-compile.ps1",
+        "scripts/mxl-compile.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "mxl-decompile",
+      "description": "Декомпиляция табличного документа (MXL) в JSON-определение. Используй когда нужно получить редактируемое описание существующего макета",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/mxl-decompile.ps1",
+        "scripts/mxl-decompile.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "mxl-info",
+      "description": "Анализ структуры макета табличного документа (MXL) — области, параметры, наборы колонок. Используй при разработке печати — получить области и заполняемые параметры макета",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/mxl-info.ps1",
+        "scripts/mxl-info.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "mxl-validate",
+      "description": "Валидация макета табличного документа (MXL). Используй после создания или модификации макета для проверки корректности",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/mxl-validate.ps1",
+        "scripts/mxl-validate.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "role-compile",
+      "description": "Создание роли 1С из описания прав. Используй когда нужно создать новую роль с набором прав на объекты",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/role-compile.ps1",
+        "scripts/role-compile.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "role-edit",
+      "description": "Точечное редактирование существующей роли 1С. Используй когда нужно добавить, снять или запретить права, настроить RLS-ограничения и шаблоны, изменить свойства роли без потери прочих прав и UUID",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/role-edit.ps1",
+        "scripts/role-edit.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "role-info",
+      "description": "Компактная сводка прав роли 1С из Rights.xml — объекты, права, RLS, шаблоны ограничений. Используй для аудита прав — какие объекты и действия доступны, ограничения RLS",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/role-info.ps1",
+        "scripts/role-info.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "role-validate",
+      "description": "Валидация роли 1С. Используй после создания или модификации роли для проверки корректности",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/role-validate.ps1",
+        "scripts/role-validate.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "skd-compile",
+      "description": "Компиляция схемы компоновки данных 1С (СКД) из компактного JSON-определения. Используй когда нужно создать СКД с нуля",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/skd-compile.ps1",
+        "scripts/skd-compile.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "skd-decompile",
+      "description": "Декомпиляция схемы компоновки данных 1С (СКД) в JSON-черновик в формате skd-compile. Используй для scaffold нового отчёта по образцу или структурного рефакторинга. Не для точечных правок",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/skd-decompile.ps1",
+        "scripts/skd-decompile.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "skd-edit",
+      "description": "Точечное редактирование схемы компоновки данных 1С (СКД). Используй когда нужно модифицировать существующую СКД — добавить поля, итоги, фильтры, параметры, изменить текст запроса",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/skd-edit.ps1",
+        "scripts/skd-edit.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "skd-info",
+      "description": "Анализ структуры схемы компоновки данных 1С (СКД) — наборы, поля, параметры, варианты. Используй для понимания отчёта — источник данных (запрос), доступные поля, параметры",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/skd-info.ps1",
+        "scripts/skd-info.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "skd-validate",
+      "description": "Валидация схемы компоновки данных 1С (СКД). Используй после создания или модификации СКД для проверки корректности",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/skd-validate.ps1",
+        "scripts/skd-validate.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "subsystem-compile",
+      "description": "Создать подсистему 1С — XML-исходники из JSON-определения. Используй когда нужно добавить подсистему (раздел) в конфигурацию",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/subsystem-compile.ps1",
+        "scripts/subsystem-compile.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "subsystem-edit",
+      "description": "Точечное редактирование подсистемы 1С. Используй когда нужно добавить или удалить объекты из подсистемы, управлять дочерними подсистемами или изменить свойства",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/subsystem-edit.ps1",
+        "scripts/subsystem-edit.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "subsystem-info",
+      "description": "Анализ структуры подсистемы 1С из XML-выгрузки — состав, дочерние подсистемы, командный интерфейс, дерево иерархии. Используй для изучения структуры подсистем и навигации по конфигурации",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/subsystem-info.ps1",
+        "scripts/subsystem-info.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "subsystem-validate",
+      "description": "Валидация подсистемы 1С. Используй после создания или модификации подсистемы для проверки корректности",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/subsystem-validate.ps1",
+        "scripts/subsystem-validate.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "support-edit",
+      "description": "Переключение состояния поддержки типовой конфигурации 1С. Используй когда нужно включить возможность редактирования конфигурации или конкретного объекта на поддержке («на замке»)",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/support-edit.ps1",
+        "scripts/support-edit.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "template-add",
+      "description": "Добавить пустой макет к объекту 1С. Используй когда нужно создать у объекта новый макет",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/add-template.ps1",
+        "scripts/add-template.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Edit",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "template-remove",
+      "description": "Удалить макет из объекта 1С (обработка, отчёт, справочник, документ и др.)",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/remove-template.ps1",
+        "scripts/remove-template.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Edit",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "v8-xsd-fetch",
+      "description": "Загрузка XSD-схем формата XML-выгрузки 1С по версиям формата в каталог проекта. Используй когда нужно скачать или обновить схемы платформы для проверки выгрузки по XSD, или узнать, какие версии схем доступны",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/v8-xsd-fetch.ps1",
+        "scripts/v8-xsd-fetch.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "web-info",
+      "description": "Статус Apache и веб-публикаций 1С — запущен ли сервер, какие базы опубликованы, ошибки. Используй когда пользователь спрашивает про статус веб-сервера, опубликованные базы, работает ли Apache",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/web-info.ps1",
+        "scripts/web-info.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "web-publish",
+      "description": "Публикация информационной базы 1С через Apache. Используй когда пользователь просит опубликовать базу, сервисы, настроить веб-доступ, веб-клиент, открыть в браузере",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/web-publish.ps1",
+        "scripts/web-publish.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "web-stop",
+      "description": "Остановка Apache HTTP Server. Используй когда пользователь просит остановить веб-сервер, Apache, прекратить веб-публикацию",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/web-stop.ps1",
+        "scripts/web-stop.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "web-test",
+      "description": "Тестирование 1С через веб-клиент — автоматизация действий в браузере. Используй когда пользователь просит проверить, протестировать, автоматизировать действия в 1С через браузер",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/browser.mjs",
+        "scripts/cli/commands",
+        "scripts/cli/exec-context.mjs",
+        "scripts/cli/server.mjs",
+        "scripts/cli/session.mjs",
+        "scripts/cli/test-runner",
+        "scripts/cli/util.mjs",
+        "scripts/dom.mjs",
+        "scripts/dom/_shared.mjs",
+        "scripts/dom/edd.mjs",
+        "scripts/dom/edit-state.mjs",
+        "scripts/dom/errors-stack.mjs",
+        "scripts/dom/errors.mjs",
+        "scripts/dom/filter.mjs",
+        "scripts/dom/form-state.mjs",
+        "scripts/dom/forms.mjs",
+        "scripts/dom/grid-edit.mjs",
+        "scripts/dom/grid.mjs",
+        "scripts/dom/nav.mjs",
+        "scripts/dom/row-state.mjs",
+        "scripts/dom/submenu.mjs",
+        "scripts/engine/core",
+        "scripts/engine/forms",
+        "scripts/engine/nav",
+        "scripts/engine/recording",
+        "scripts/engine/spreadsheet",
+        "scripts/engine/table",
+        "scripts/package-lock.json",
+        "scripts/package.json",
+        "scripts/run.mjs"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Write",
+        "Glob",
+        "Grep"
+      ],
+      "reason": "Upstream web-test runners drive a browser via Node/Playwright. Not installed and not connected to the JARVIS browser workbench."
+    },
+    {
+      "id": "web-unpublish",
+      "description": "Удаление веб-публикации 1С из Apache. Используй когда пользователь просит убрать публикацию, удалить веб-доступ к базе",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/web-unpublish.ps1",
+        "scripts/web-unpublish.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob",
+        "AskUserQuestion"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "xdto-compile",
+      "description": "Создание пакета XDTO 1С из XML-схемы (XSD). Используй когда нужно добавить в конфигурацию пакет XDTO — под обмен, интеграцию, веб-сервис или внешний XML-формат",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/xdto-compile.ps1",
+        "scripts/xdto-compile.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "xdto-decompile",
+      "description": "Выгрузка пакета XDTO 1С в XML-схему (XSD). Используй когда нужно получить схему существующего пакета — чтобы переработать её целиком, отдать контрагенту или перенести пакет в другую конфигурацию",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/xdto-decompile.ps1",
+        "scripts/xdto-decompile.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "xdto-edit",
+      "description": "Точечное редактирование пакета XDTO 1С. Используй когда нужно добавить, изменить или удалить тип или свойство в существующем пакете, переименовать пакет, сменить пространство имён",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/xdto-edit.ps1",
+        "scripts/xdto-edit.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "xdto-info",
+      "description": "Анализ структуры пакета XDTO 1С — типы, свойства, точки входа. Используй как подготовительный шаг при написании кода, создающего и заполняющего объект XDTO, при разборе входящего XML, а также чтобы узнать, какие пакеты есть в конфигурации",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/xdto-info.ps1",
+        "scripts/xdto-info.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    },
+    {
+      "id": "xdto-validate",
+      "description": "Валидация пакета XDTO 1С. Используй после создания или модификации пакета XDTO для проверки корректности",
+      "execution": "docs-only",
+      "upstreamScripts": [
+        "scripts/xdto-validate.ps1",
+        "scripts/xdto-validate.py"
+      ],
+      "declaredTools": [
+        "Bash",
+        "Read",
+        "Glob"
+      ],
+      "reason": "Upstream PowerShell/Python scripts call 1C Designer, ibcmd, or rewrite configuration files. Not installed. Not a JARVIS runbook."
+    }
+  ],
+  "excluded": [
+    {
+      "path": ".claude/skills/*/scripts/**",
+      "reason": "PowerShell and Python entrypoints for 1C Designer, ibcmd, file rewrite, and EPF/CF load. Not mapped to a JARVIS runbook and not given shell access."
+    },
+    {
+      "path": ".claude/skills/web-test/scripts/**",
+      "reason": "Node/Playwright automation of a 1C web client, including session control and screen recording. Not connected to the JARVIS browser workbench."
+    },
+    {
+      "path": "hooks/**",
+      "reason": "Claude Code PreToolUse/PostToolUse hooks spawn node (support-guard.mjs, skill-suggester.mjs)."
+    },
+    {
+      "path": "scripts/switch.py",
+      "reason": "Installer that copies or symlinks skills into an agent configuration directory."
+    },
+    {
+      "path": "scripts/switch-to-powershell.py",
+      "reason": "Rewrites the pack onto the PowerShell runtime."
+    },
+    {
+      "path": "scripts/switch-to-python.py",
+      "reason": "Rewrites the pack onto the Python runtime."
+    },
+    {
+      "path": "tests/**",
+      "reason": "Upstream test harness, not operator knowledge."
+    },
+    {
+      "path": ".v8-xsd/**",
+      "reason": "Platform schema payload. The fetch skill text is kept; the fetch script is not."
+    },
+    {
+      "path": "requirements.txt",
+      "reason": "Dependencies for the excluded Python scripts."
+    },
+    {
+      "path": "docs/python-porting-guide.md",
+      "reason": "How to port and execute the skill scripts. Execution guidance is out of scope."
+    }
+  ]
+}

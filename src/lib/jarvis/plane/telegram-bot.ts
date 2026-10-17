@@ -1,3 +1,4 @@
+import { effectiveExecutionMode } from "../server/mode";
 import { timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -315,9 +316,7 @@ export async function dispatchTelegram(
   if (!parsed.update.voiceFileId && parsed.update.text?.trim() && env.JARVIS_AI_AGENT_ENABLED === "1") {
     const session = sessionForTelegram(parsed.update.userId, actors, opts.now?.getTime());
     if (!session) return { code: "ACTOR_DENIED", sent: false, attachmentStored };
-    const mode = env.EXECUTION_MODE === "real" || env.EXECUTION_MODE === "mock"
-      ? env.EXECUTION_MODE
-      : "dry-run";
+    const mode = effectiveExecutionMode(env).mode;
     const hybrid = await runHybridTurn(parsed.update.text, {
       session,
       stateDir: opts.stateDir,

@@ -5,8 +5,10 @@ import { useJarvis } from "@/lib/jarvis/store";
 import { bargeIn, MIN_SPEECH_MS, PRE_ROLL_MS } from "@/lib/jarvis/voice/gate";
 import {
   LISTEN_INITIAL,
+  MAX_CLIENT_UTTERANCE_MS,
   SPEECH_RMS,
   concatFloats,
+  limitVoiceSamples,
   downsampleAverage,
   encodeWavPcm16,
   rmsOf,
@@ -14,12 +16,8 @@ import {
   type ListenState,
 } from "@/lib/jarvis/voice/endpoint";
 
-export type VoiceCallHandle = {
-  stream: MediaStream | null;
-  context: AudioContext | null;
-  error: string | null;
-  released: boolean;
-};
+import type { VoiceCallHandle } from "@/lib/jarvis/voice/call-handle";
+
 
 type Phase = "listening" | "thinking" | "speaking";
 
@@ -34,57 +32,13 @@ class JarvisCapture extends AudioWorkletProcessor {
 registerProcessor("jarvis-capture", JarvisCapture);
 `;
 
-function micError(error: unknown): string {
-  if (!window.isSecureContext) return "Микрофон доступен только по HTTPS.";
-  const name = error instanceof DOMException ? error.name : "";
-  if (name === "NotAllowedError" || name === "SecurityError") return "Нет доступа к микрофону. Разрешите запись в браузере и повторите.";
-  if (name === "NotFoundError") return "Микрофон не найден.";
-  if (name === "NotReadableError") return "Микрофон занят другим приложением.";
-  return "Не удалось открыть микрофон.";
-}
 
-export async function beginVoiceCall(): Promise<VoiceCallHandle> {
-  if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-    return { stream: null, context: null, error: "Этот браузер не даёт доступ к микрофону.", released: false };
-  }
-  if (!window.isSecureContext) {
-    return { stream: null, context: null, error: "Микрофон доступен только по HTTPS.", released: false };
-  }
-  let context: AudioContext | null = null;
-  try {
-    try {
-      context = new AudioContext({ sampleRate: 16_000 });
-    } catch {
-      context = new AudioContext();
-    }
-    const resumed = context.resume();
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "OverconstrainedError") {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      } else {
-        throw error;
-      }
-    }
-    await resumed;
-    return { stream, context, error: null, released: false };
-  } catch (error) {
-    void context?.close().catch(() => undefined);
-    return { stream: null, context: null, error: micError(error), released: false };
-  }
+function confidenceLabel(value: number | null): string {
+  if (value === null) return "";
+  if (value >= 0.8) return "высокая";
+  if (value >= 0.5) return "средняя";
+  return "низкая";
 }
-
-export function releaseVoiceCall(handle: VoiceCallHandle | null): void {
-  if (!handle || handle.released) return;
-  handle.released = true;
-  handle.stream?.getTracks().forEach((track) => track.stop());
-  void handle.context?.close().catch(() => undefined);
-}
-
 function failText(code: string): string {
   if (code === "AUTH_REQUIRED") return "Нужна сессия. Войдите и повторите.";
   if (code === "ACTOR_DENIED") return "Эта учётка не оператор. Ничего не запускал.";
@@ -117,6 +71,8 @@ export function VoiceCall({
   const [sentence, setSentence] = useState(0);
   const [sentenceCount, setSentenceCount] = useState(0);
   const [levels, setLevels] = useState<number[]>(() => Array.from({ length: 12 }, () => 0.15));
+  const [confidence, _setConfidence] = useState<number | null>(null);
+  void confidenceLabel(confidence); // display helper
   const startedRef = useRef(0);
   const dialogRef = useRef<HTMLDivElement>(null);
   const controls = useRef({ interrupt: () => undefined, mute: () => undefined });
@@ -244,10 +200,9 @@ export function VoiceCall({
           return;
         }
         setTranscript(heard.text);
-        const turn = await postVoiceTurn(heard.text, `voice-${crypto.randomUUID()}`);
-        if (!alive) return;
+        const turn = await postVoiceTurn(heard.text, `voice-${crypto.randomUUID()}`, hearCtrl.signal);
+        if (!alive || ticket !== gen) return;
         showVoiceResult(turn, heard.raw && heard.raw !== heard.text ? heard.raw : undefined);
-        if (ticket !== gen) return;
         if (!turn.spoken) {
           setNote(failText(turn.code));
           phaseNow = "listening";
@@ -329,7 +284,7 @@ export function VoiceCall({
         prerollSamples -= preroll[0].length;
         preroll.shift();
       }
-      const stepped = stepListen(listen, rms, 30);
+      const stepped = stepListen(listen, rms, 30, { maxUtteranceMs: MAX_CLIENT_UTTERANCE_MS });
       listen = stepped.state;
       if (stepped.event === "start") {
         uttered = preroll.map((chunk) => chunk.slice());
@@ -341,7 +296,7 @@ export function VoiceCall({
       }
       if (stepped.event === "endpoint" || stepped.event === "max") {
         uttered.push(down);
-        const pcm = concatFloats(uttered);
+        const pcm = limitVoiceSamples(concatFloats(uttered));
         uttered = [];
         preroll = [];
         prerollSamples = 0;
@@ -408,21 +363,32 @@ export function VoiceCall({
       sink.connect(context.destination);
     };
 
-    const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
-    void context.audioWorklet.addModule(url).then(() => {
-      URL.revokeObjectURL(url);
-      if (stopped || closed) return;
-      worklet = new AudioWorkletNode(context, "jarvis-capture");
-      worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
-        if (event.data) pushNative(event.data);
-      };
-      source.connect(worklet);
-      worklet.connect(sink);
-      sink.connect(context.destination);
-    }).catch(() => {
-      URL.revokeObjectURL(url);
-      if (!stopped && !closed) attachProcessor();
-    });
+    // AudioWorklet may be unavailable or disabled by browser policy.
+    // Always leave a ScriptProcessor fallback rather than a silent "listening" screen.
+    if (!context.audioWorklet?.addModule) {
+      attachProcessor();
+    } else {
+      const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
+      try {
+        void context.audioWorklet.addModule(url).then(() => {
+          URL.revokeObjectURL(url);
+          if (stopped || closed) return;
+          worklet = new AudioWorkletNode(context, "jarvis-capture");
+          worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
+            if (event.data) pushNative(event.data);
+          };
+          source.connect(worklet);
+          worklet.connect(sink);
+          sink.connect(context.destination);
+        }).catch(() => {
+          URL.revokeObjectURL(url);
+          if (!stopped && !closed) attachProcessor();
+        });
+      } catch {
+        URL.revokeObjectURL(url);
+        if (!stopped && !closed) attachProcessor();
+      }
+    }
 
     return () => {
       stopped = true;
@@ -556,3 +522,4 @@ export function VoiceCall({
     </div>
   );
 }
+export type { VoiceCallHandle } from "@/lib/jarvis/voice/call-handle";

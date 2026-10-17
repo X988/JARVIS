@@ -9,7 +9,7 @@ export type PolicyName =
 export type Runbook = {
   id: string;
   title: string;
-  executor: "mock" | "powershell" | "ssh" | "sql" | "routeros" | "docker" | "github" | "onec-file";
+  executor: "mock" | "powershell" | "ssh" | "sql" | "mysql" | "postgres" | "routeros" | "docker" | "github" | "onec-file";
   risk: 0 | 1 | 2 | 3;
   mutates: boolean;
   policy: PolicyName;
@@ -144,6 +144,96 @@ const BOOKS: Runbook[] = [
     inputSchema: ["database inventory id"],
     timeoutSec: 30,
     verification: "latest full backup metadata returned from msdb",
+  }),
+  readOnly({
+    id: "mysql.health",
+    title: "Состояние MySQL",
+    executor: "mysql",
+    targets: ["mysql01"],
+    inputSchema: ["database inventory id"],
+    timeoutSec: 30,
+    verification: "SELECT 1",
+  }),
+  readOnly({
+    id: "postgres.health",
+    title: "Состояние PostgreSQL",
+    executor: "postgres",
+    targets: ["postgres01"],
+    inputSchema: ["database inventory id"],
+    timeoutSec: 30,
+    verification: "SELECT 1",
+  }),
+  readOnly({
+    id: "mysql.sessions",
+    title: "Сессии MySQL",
+    executor: "mysql",
+    targets: ["mysql01"],
+    inputSchema: ["database inventory id"],
+    timeoutSec: 30,
+    verification: "Threads_connected",
+  }),
+  readOnly({
+    id: "mysql.locks",
+    title: "Блокировки MySQL",
+    executor: "mysql",
+    targets: ["mysql01"],
+    inputSchema: ["database inventory id"],
+    timeoutSec: 30,
+    verification: "innodb_trx count",
+  }),
+  readOnly({
+    id: "mysql.size",
+    title: "Размер базы MySQL",
+    executor: "mysql",
+    targets: ["mysql01"],
+    inputSchema: ["database inventory id"],
+    timeoutSec: 30,
+    verification: "data+index size in MB",
+  }),
+  readOnly({
+    id: "mysql.status",
+    title: "Статус MySQL",
+    executor: "mysql",
+    targets: ["mysql01"],
+    inputSchema: ["database inventory id"],
+    timeoutSec: 30,
+    verification: "Uptime",
+  }),
+  readOnly({
+    id: "postgres.sessions",
+    title: "Сессии PostgreSQL",
+    executor: "postgres",
+    targets: ["postgres01"],
+    inputSchema: ["database inventory id"],
+    timeoutSec: 30,
+    verification: "pg_stat_activity count",
+  }),
+  readOnly({
+    id: "postgres.locks",
+    title: "Блокировки PostgreSQL",
+    executor: "postgres",
+    targets: ["postgres01"],
+    inputSchema: ["database inventory id"],
+    timeoutSec: 30,
+    verification: "pg_locks count",
+  }),
+  readOnly({
+    id: "postgres.size",
+    title: "Размер базы PostgreSQL",
+    executor: "postgres",
+    targets: ["postgres01"],
+    inputSchema: ["database inventory id"],
+    timeoutSec: 30,
+    verification: "pg_database_size",
+  }),
+  readOnly({
+    id: "postgres.status",
+    title: "Статус PostgreSQL",
+    executor: "postgres",
+    targets: ["postgres01"],
+    inputSchema: ["database inventory id"],
+    timeoutSec: 30,
+    verification: "uptime",
   }),
   readOnly({
     id: "mailcow.health",
@@ -558,6 +648,8 @@ const RUNBOOK_BY_INTENT: Record<string, string> = {
   trace_1c: "onec.read",
   patch_1c: "onec.patch",
   onec_dev: "onec.form",
+  check_mysql: "mysql.health",
+  check_postgres: "postgres.health",
 };
 
 export function runbookById(id: string): Runbook | null {

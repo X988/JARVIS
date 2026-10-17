@@ -4,12 +4,21 @@ export type PolicyRuntime = {
   mode: "dry-run" | "mock" | "real";
   elevated?: boolean;
   maintenanceWindow?: boolean;
+  ring?: 0 | 1 | 2 | 3; // 0=read, 1=approved, 2=elevated, 3=admin
 };
 
 export type PolicyGate =
   | { code: "ALLOW" }
   | { code: "APPROVAL_REQUIRED" }
   | { code: "DENY"; reason: string };
+
+/** Execution rings: higher number = more privilege. Default deny. */
+export function requiredRing(policy: PolicyName, mutates: boolean): 0 | 1 | 2 | 3 {
+  if (policy === "DENY_ALWAYS") return 3;
+  if (policy === "ELEVATION_REQUIRED") return 2;
+  if (mutates || policy === "APPROVAL_REQUIRED") return 1;
+  return 0;
+}
 
 export function evaluateRuntimePolicy(policy: PolicyName, runtime: PolicyRuntime): PolicyGate {
   if (policy === "DENY_ALWAYS") return { code: "DENY", reason: "DENY_ALWAYS нельзя отменить approval." };
@@ -78,4 +87,9 @@ export function maintenanceWindowOpen(
   if (from === to) return false;
   if (from < to) return current >= from && current < to;
   return current >= from || current < to;
+}
+
+/** Global kill switch. When true, all mutating execution is denied. */
+export function isKillSwitchActive(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.JARVIS_KILL_SWITCH === "1" || env.JARVIS_KILL_SWITCH === "true";
 }

@@ -3,7 +3,6 @@ import { increment, observeDuration } from "../metrics.ts";
 import { appendAudit, externalSinkLabel, recordAuditIntegrityAlert, verifyAudit } from "../audit-log.ts";
 import { createLockProvider } from "../locks.ts";
 import { OPERATORS, evaluate, type Decision } from "../model.ts";
-import { configProblems } from "./config.ts";
 import { defaultRealExecute } from "./adapters.ts";
 import { attachApprovalAudit, createApproval, parameterHash, settleApproval, takeApproval } from "./approvals.ts";
 import { rememberRequest } from "./idempotency.ts";
@@ -11,6 +10,7 @@ import { matchTarget, targetById, unknownLatinToken, type Target } from "./inven
 import { runbookById, runbookForIntent, type Runbook } from "./runbooks.ts";
 import { evaluateRuntimePolicy, maintenanceWindowOpen } from "./policy.ts";
 import { canExecute, canRead, sessionUsable, type Session } from "./session.ts";
+import { modeOf as sharedModeOf } from "./mode";
 
 export type Mode = "dry-run" | "mock" | "real";
 
@@ -91,11 +91,7 @@ function approvalHash(
 }
 
 function modeOf(explicit?: Mode): Mode {
-  if (explicit) return explicit;
-  const raw = process.env.EXECUTION_MODE;
-  if (raw === "real" && configProblems().length > 0) return "dry-run";
-  if (raw === "real" || raw === "mock" || raw === "dry-run") return raw;
-  return "dry-run";
+  return sharedModeOf(explicit);
 }
 
 function denyShell(text: string, reason: string, risk: 0 | 1 | 2 | 3 = 3): Decision {

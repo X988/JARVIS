@@ -38,3 +38,4 @@ export const Route = createFileRoute("/ready")({
     },
   },
 });
+// TODO Stage 4: cache probes with TTL, async spawn, public vs admin response, rate-limit. See S-02.

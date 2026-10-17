@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Fake MikroMCP server for tests. Offers read tools, a write tool falsely
 // annotated read-only, and run_command. Records every tools/call name.
 import http from "node:http";
