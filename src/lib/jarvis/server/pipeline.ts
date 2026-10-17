@@ -10,7 +10,7 @@ import { matchTarget, targetById, unknownLatinToken, type Target } from "./inven
 import { runbookById, runbookForIntent, type Runbook } from "./runbooks.ts";
 import { evaluateRuntimePolicy, maintenanceWindowOpen } from "./policy.ts";
 import { canExecute, canRead, sessionUsable, type Session } from "./session.ts";
-import { modeOf as sharedModeOf } from "./mode";
+import { modeOf as sharedModeOf } from "./mode.ts";
 
 export type Mode = "dry-run" | "mock" | "real";
 

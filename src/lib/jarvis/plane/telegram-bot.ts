@@ -1,4 +1,4 @@
-import { effectiveExecutionMode } from "../server/mode";
+import { effectiveExecutionMode } from "../server/mode.ts";
 import { timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";

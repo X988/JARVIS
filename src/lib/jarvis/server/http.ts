@@ -10,7 +10,7 @@ import { processCommand } from "./pipeline.ts";
 import { validRequestId } from "./idempotency.ts";
 import { runHybridTurn } from "../plane/hybrid.ts";
 import { readJsonBodyBounded } from "./request-body.ts";
-import { effectiveExecutionMode } from "./mode";
+import { effectiveExecutionMode } from "./mode.ts";
 import { circuitStatus } from "../plane/llm-circuit.ts";
 import { listPendingApprovals } from "./approvals.ts";
 import { diagnosticTool } from "../plane/diagnostics.ts";

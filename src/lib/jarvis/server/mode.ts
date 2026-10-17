@@ -1,4 +1,4 @@
-import { configProblems } from "./config";
+import { configProblems } from "./config.ts";
 
 
 export type Mode = "dry-run" | "mock" | "real";
