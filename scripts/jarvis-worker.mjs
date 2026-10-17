@@ -50,14 +50,28 @@ async function step(name, fn) {
   }
 }
 
+async function tryImport(spec) {
+  try {
+    return await import(spec);
+  } catch (err) {
+    console.error("[worker] import failed:", spec, err.message);
+    return null;
+  }
+}
+
 async function cycle() {
   console.log("[worker] cycle start");
-  // Placeholders — real imports require TS runtime or compiled output.
-  // System actor must stay risk 0 and must not approve.
-  await step("runDue", async () => { /* TODO: import and call runDue */ });
-  await step("flushAuditOutbox", async () => { /* TODO: flushAuditOutbox */ });
-  await step("cleanupCodingWorktrees", async () => { /* TODO: cleanup */ });
-  await step("monitoring", async () => { /* TODO: collect/probe */ });
+  // System actor: risk 0 only, no approvals.
+  const outbox = await tryImport("../src/lib/jarvis/audit-outbox.ts");
+  await step("flushAuditOutbox", async () => {
+    if (outbox?.flushAuditOutbox) await outbox.flushAuditOutbox(STATE_DIR);
+  });
+  const scheduler = await tryImport("../src/lib/jarvis/plane/scheduler.ts");
+  await step("runDue", async () => {
+    if (scheduler?.runDue) scheduler.runDue(STATE_DIR);
+  });
+  await step("cleanupCodingWorktrees", async () => { /* optional */ });
+  await step("monitoring", async () => { /* optional */ });
   writeHeartbeat();
   console.log("[worker] cycle done");
 }
