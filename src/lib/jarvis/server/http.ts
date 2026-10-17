@@ -11,6 +11,7 @@ import { validRequestId } from "./idempotency.ts";
 import { runHybridTurn } from "../plane/hybrid.ts";
 import { readJsonBodyBounded } from "./request-body.ts";
 import { effectiveExecutionMode } from "./mode";
+import { circuitStatus } from "../plane/llm-circuit.ts";
 
 function stateDir(): string {
   return process.env.JARVIS_STATE_DIR || process.cwd()+"/data";
@@ -119,6 +120,7 @@ export async function handleSession(request:Request):Promise<Response>{
     channel:auth.channel,
     executionMode:executionMode(),
     effective:effectiveExecutionMode(),
+    circuits:circuitStatus(),
     profile:process.env.JARVIS_PROFILE==="production-infra"?"production-infra":"demo",
     adapters:adapterStatus(),
     monitoring: monitoringStatus(),
