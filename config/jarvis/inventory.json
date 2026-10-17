@@ -118,8 +118,7 @@
       "aliases": ["mail01", "mailcow", "мейлкау", "майлков", "почта", "почтовый сервер"],
       "voiceCanonical": "mailcow",
       "enabled": true,
-      "allowedRunbooks": ["server.health", "disk.check", "mailcow.health"]
-      "allowedRunbooks": [
+            "allowedRunbooks": [
         "server.health",
         "disk.check",
         "mailcow.health",
@@ -139,8 +138,7 @@
       "aliases": ["rb5009", "mikrotik", "микротик", "микрот", "router", "ccr1009", "mikrotik-kp", "роутер"],
       "voiceCanonical": "mikrotik",
       "enabled": true,
-      "allowedRunbooks": ["mikrotik.status", "mikrotik.interfaces", "mikrotik.routes", "mikrotik.dhcp", "mikrotik.firewall.counters", "mikrotik.wan.status", "mikrotik.logs"]
-      "allowedRunbooks": [
+            "allowedRunbooks": [
         "mikrotik.status",
         "mikrotik.interfaces",
         "mikrotik.routes",
@@ -199,8 +197,7 @@
       "aliases": ["postgres", "postgres01", "постгрес"],
       "voiceCanonical": "postgres",
       "enabled": true,
-      "allowedRunbooks": ["postgres.health", "postgres.sessions", "postgres.locks", "postgres.size", "postgres.status"]
-      "allowedRunbooks": [
+            "allowedRunbooks": [
         "sql.health",
         "sql.backup",
         "sql.database.size",
