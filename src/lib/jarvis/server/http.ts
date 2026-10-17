@@ -118,6 +118,7 @@ export async function handleSession(request:Request):Promise<Response>{
     role:auth.session.role,
     channel:auth.channel,
     executionMode:executionMode(),
+    effective:effectiveExecutionMode(),
     profile:process.env.JARVIS_PROFILE==="production-infra"?"production-infra":"demo",
     adapters:adapterStatus(),
     monitoring: monitoringStatus(),

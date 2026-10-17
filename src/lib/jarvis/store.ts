@@ -62,6 +62,7 @@ type JarvisState = {
   sessionReady: boolean;
   dryRun: boolean;
   serverMode: string;
+  effectiveMode: { mode: string; requested: string; degraded: boolean; reasons: string[] } | null;
   profile: string;
   role: string | null;
   adapters: Record<string, string> | null;
@@ -128,6 +129,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
   sessionReady: false,
   dryRun: true,
   serverMode: "dry-run",
+  effectiveMode: null,
   profile: "demo",
   role: null,
   adapters: null,
@@ -146,6 +148,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
       const session = await ensureServerSession();
       set({
         serverMode: session.executionMode,
+        effectiveMode: session.effective ?? null,
         profile: session.profile ?? "demo",
         role: session.role ?? null,
         adapters: session.adapters ?? null,
@@ -158,6 +161,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     } catch {
       set({
         serverMode: "dry-run",
+  effectiveMode: null,
         dryRun: true,
         actorId: "unauthenticated",
         authCode: "AUTH_REQUIRED",

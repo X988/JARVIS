@@ -67,6 +67,7 @@ export async function ensureServerSession(): Promise<{
   ok: boolean;
   code: string;
   executionMode: string;
+  effective?: { mode: string; requested: string; degraded: boolean; reasons: string[] };
   role?: string;
   actorId?: string;
   userId?: string;
@@ -76,6 +77,7 @@ export async function ensureServerSession(): Promise<{
   const response = await fetch("/api/session", { credentials: "include" });
   const body = (await response.json()) as {
     executionMode?: string;
+    effective?: { mode: string; requested: string; degraded: boolean; reasons: string[] };
     role?: string;
     actorId?: string;
     code?: string;
@@ -88,6 +90,7 @@ export async function ensureServerSession(): Promise<{
     ok: response.ok && code === "OK",
     code,
     executionMode: body.executionMode || "dry-run",
+    effective: body.effective,
     role: body.role,
     actorId: body.actorId,
     userId: body.userId,

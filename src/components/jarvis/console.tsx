@@ -323,6 +323,7 @@ function TurnCard({ turn, now }: { turn: Turn; now: number }) {
 
 function SitePanel() {
   const serverMode = useJarvis((state) => state.serverMode);
+  const effectiveMode = useJarvis((state) => state.effectiveMode);
   const adapters = useJarvis((state) => state.adapters);
   return (
     <div className="flex flex-col gap-6">
@@ -524,6 +525,7 @@ const SIDE: { id: SideTab; label: string }[] = [
 let started = false;
 
 export function Console() {
+  const effectiveMode = useJarvis((state) => state.effectiveMode);
   const turns = useJarvis((state) => state.turns);
   const now = useJarvis((state) => state.now);
   const busy = useJarvis((state) => state.busy);
@@ -1083,11 +1085,16 @@ export function Console() {
         <>
           <Hud
             phase={listening ? "listening" : voiceOpen ? "thinking" : "idle"}
-            modeInfo={{
+            modeInfo={effectiveMode ? {
+              mode: (effectiveMode.mode === "real" || effectiveMode.mode === "mock" || effectiveMode.mode === "dry-run") ? effectiveMode.mode : "dry-run",
+              requested: (effectiveMode.requested === "real" || effectiveMode.requested === "mock" || effectiveMode.requested === "dry-run") ? effectiveMode.requested : "dry-run",
+              degraded: effectiveMode.degraded,
+              reasons: effectiveMode.reasons,
+            } : {
               mode: serverMode === "real" ? "real" : serverMode === "mock" ? "mock" : "dry-run",
-              requested: serverMode === "real" ? "real" : serverMode === "mock" ? "mock" : "dry-run",
-              degraded: serverMode !== "real" && serverMode !== "mock",
-              reasons: serverMode === "dry-run" ? ["эффективный режим dry-run"] : [],
+              requested: serverMode === "real" ? "real" : "dry-run",
+              degraded: false,
+              reasons: [],
             }}
             transcript={live || hearing || null}
           />
