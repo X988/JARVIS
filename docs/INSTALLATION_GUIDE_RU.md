@@ -23,7 +23,7 @@ JARVIS — серверный control plane для задач системног
 Базовый локальный запуск:
 
 - Git;
-- Node.js 22;
+- Node.js 24;
 - npm;
 - доступ к репозиторию.
 
@@ -97,7 +97,7 @@ openssl rand -hex 32
 4. Добавьте этот ID в серверное окружение:
 
 ```env
-JARVIS_WEB_ACTORS_JSON={"<user-id>":{"actorId":"admin1","role":"operator"}}
+JARVIS_WEB_ACTORS_JSON={\"<user-id>\":{\"actorId\":\"admin1\",\"role\":\"operator\"}}
 ```
 
 5. Перезапустите сервер и проверьте вход.
