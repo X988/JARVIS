@@ -1082,14 +1082,14 @@ export function Console() {
       {callHandle ? (
         <>
           <Hud
-            phase={listening ? "listening" : "idle"}
+            phase={listening ? "listening" : voiceOpen ? "thinking" : "idle"}
             modeInfo={{
               mode: serverMode === "real" ? "real" : serverMode === "mock" ? "mock" : "dry-run",
-              requested: serverMode === "real" ? "real" : "dry-run",
-              degraded: false,
-              reasons: [],
+              requested: serverMode === "real" ? "real" : serverMode === "mock" ? "mock" : "dry-run",
+              degraded: serverMode !== "real" && serverMode !== "mock",
+              reasons: serverMode === "dry-run" ? ["эффективный режим dry-run"] : [],
             }}
-            transcript={live || null}
+            transcript={live || hearing || null}
           />
           <VoiceCall
             handle={callHandle}
