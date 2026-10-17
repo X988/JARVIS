@@ -17,6 +17,7 @@ import {
   retrieveKnowledge,
   type Hit,
 } from "../knowledge/rag.ts";
+import { mergeOnecSkillHits } from "../knowledge/onec-skills.ts";
 
 export type AgentObservation = {
   tool: string;
@@ -194,7 +195,20 @@ type AgentTurnOptions = {
     retriever?: Retriever;
     requestId?: string;
     replan?: (input: { request: string; observations: AgentObservation[]; target: string }) => AgentPlanStep | null;
-    team?: unknown;
+    team?: (input: {
+      request: string;
+      objective: string;
+      observations: AgentObservation[];
+    }) => Promise<{
+      ok: boolean;
+      answer?: string;
+      code?: string;
+      detail?: string;
+      evidenceIds?: string[];
+      roles?: string[];
+      provider?: string;
+      model?: string;
+    }>;
 };
 
 async function runAgentTurnInner(text: string, opts: AgentTurnOptions): Promise<AgentTurnResult> {
@@ -245,7 +259,8 @@ async function runAgentTurnInner(text: string, opts: AgentTurnOptions): Promise<
     };
   }
 
-  const hits = await (opts.retriever ?? retrieveKnowledge)(text, { env, stateDir: opts.stateDir }).catch(() => [] as Hit[]);
+  let hits = await (opts.retriever ?? retrieveKnowledge)(text, { env, stateDir: opts.stateDir }).catch(() => [] as Hit[]);
+  hits = mergeOnecSkillHits(text, hits, env);
   const sources = [...new Set(hits.map((hit) => hit.source))];
 
   // Informational "how/what/where" questions with a strong knowledge hit are answered
@@ -349,25 +364,54 @@ async function runAgentTurnInner(text: string, opts: AgentTurnOptions): Promise<
   const allDryRun = observations.length > 0 && observations.every((item) => item.code === "DRY_RUN");
   const timedOut = loop.phase === "failed";
 
+  let code: string = loop.cancelled
+    ? "AGENT_CANCELLED"
+    : blockedMutation
+      ? "MUTATION_REQUIRES_APPROVAL"
+      : timedOut
+        ? "AGENT_TIMEOUT"
+        : hasFailure
+          ? observations.some((item) => item.code === "OK" || item.code === "MOCK")
+            ? "AGENT_PARTIAL"
+            : "INSUFFICIENT_EVIDENCE"
+          : allDryRun
+            ? "DRY_RUN"
+            : "OK";
+  let answer = humanizeTargets(loop.answer, observations.map((item) => item.target));
+  let provider = planned.provider;
+  let model = planned.model;
+
+  // Analyst team: only after verified read-only evidence, never for mutations or failures.
+  if (
+    env.JARVIS_ANALYST_TEAM_ENABLED === "1" &&
+    typeof opts.team === "function" &&
+    code === "OK" &&
+    observations.length > 0 &&
+    observations.length <= 8 &&
+    observations.every((item) => item.code === "OK" && item.executionCalled && item.auditId)
+  ) {
+    const teamResult = await opts.team({
+      request: text,
+      objective: planned.plan.objective,
+      observations,
+    });
+    if (teamResult && teamResult.ok && typeof teamResult.answer === "string" && teamResult.answer.trim()) {
+      answer = teamResult.answer;
+      if (teamResult.provider) provider = teamResult.provider;
+      if (teamResult.model) model = teamResult.model;
+    } else {
+      code = "AGENT_PARTIAL";
+      answer = `${answer}\n\nАналитическая команда не подтвердила вывод.`;
+    }
+  }
+
   return {
-    code: loop.cancelled
-      ? "AGENT_CANCELLED"
-      : blockedMutation
-        ? "MUTATION_REQUIRES_APPROVAL"
-        : timedOut
-          ? "AGENT_TIMEOUT"
-          : hasFailure
-            ? observations.some((item) => item.code === "OK" || item.code === "MOCK")
-              ? "AGENT_PARTIAL"
-              : "INSUFFICIENT_EVIDENCE"
-            : allDryRun
-              ? "DRY_RUN"
-              : "OK",
-    answer: humanizeTargets(loop.answer, observations.map((item) => item.target)),
+    code,
+    answer,
     plan: { ...planned.plan, steps: loop.steps },
     observations,
-    provider: planned.provider,
-    model: planned.model,
+    provider,
+    model,
     phase: loop.phase,
     cause: loop.cause,
     replanned: loop.replanned,
