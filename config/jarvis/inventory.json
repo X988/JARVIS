@@ -127,6 +127,18 @@
       "allowedRunbooks": ["mysql.health", "mysql.sessions", "mysql.locks", "mysql.size", "mysql.status"]
     },
     {
+      "id": "postgres01",
+      "displayName": "PostgreSQL database",
+      "type": "database",
+      "environment": "production",
+      "roles": ["postgres-database"],
+      "reference": "postgres01",
+      "aliases": ["postgres", "postgres01", "постгрес"],
+      "voiceCanonical": "postgres",
+      "enabled": true,
+      "allowedRunbooks": ["postgres.health", "postgres.sessions", "postgres.locks", "postgres.size", "postgres.status"]
+    },
+    {
       "id": "jarvis-dev",
       "displayName": "JarvisDev 1C export",
       "type": "repo",

@@ -4,6 +4,7 @@ import { INVENTORY, targetById } from "./inventory.ts";
 import { FileOnecExecutor } from "../onec/executor.ts";
 import { sqlDatabase, runSql } from "./sql.ts";
 import { runMysql } from "./mysql.ts";
+import { runPostgres } from "./postgres.ts";
 import { runSshProbe, runWindowsProbe } from "./host-probes.ts";
 import { runRouterOs } from "./routeros.ts";
 import { runMailcow } from "./mailcow.ts";
@@ -78,6 +79,24 @@ export class MySQLExecutor implements Executor {
     if (!mode) return missing("mysql", "NOT_CONFIGURED", "Для этой цели нет фиксированного MySQL-запроса.");
     const database = call.target === "mysql01" ? (process.env.JARVIS_MYSQL_DATABASE || "") : "";
     return runMysql(mode, database);
+  }
+}
+export class PostgresExecutor implements Executor {
+  readonly type = "postgres" as const;
+  execute(call: ExecCall): ExecResult {
+    const blocked = configured("JARVIS_POSTGRES_HOST", "JARVIS_POSTGRES_USER", "postgres", "База берётся только из inventory.");
+    if (blocked) return blocked;
+    if (!process.env.JARVIS_POSTGRES_PASSWORD) return missing("postgres", "CREDENTIAL_UNAVAILABLE", "JARVIS_POSTGRES_PASSWORD не задан.");
+    const mode = {
+      "postgres.health": "health",
+      "postgres.sessions": "sessions",
+      "postgres.locks": "locks",
+      "postgres.size": "size",
+      "postgres.status": "status",
+    }[call.runbook] as import("./postgres.ts").PostgresMode | undefined;
+    if (!mode) return missing("postgres", "NOT_CONFIGURED", "Для этой цели нет фиксированного PostgreSQL-запроса.");
+    const database = call.target === "postgres01" ? (process.env.JARVIS_POSTGRES_DATABASE || "") : "";
+    return runPostgres(mode, database);
   }
 }
 export class RouterOSExecutor implements Executor { readonly type = "routeros" as const; execute(call: ExecCall): ExecResult { return runRouterOs(call); } }
@@ -220,6 +239,7 @@ export function executorFor(kind: ExecutorKind, call: ExecCall): Executor {
   if (kind === "ssh") return new SSHExecutor();
   if (kind === "sql") return new SQLExecutor();
   if (kind === "mysql") return new MySQLExecutor();
+  if (kind === "postgres") return new PostgresExecutor();
   if (kind === "routeros") return new RouterOSExecutor();
   if (kind === "docker") return new DockerExecutor();
   if (kind === "github") return new GithubExecutor();
@@ -266,6 +286,7 @@ export function adapterStatus(env: NodeJS.ProcessEnv = process.env): Record<stri
     ssh: !sshTarget ? "NOT_CONFIGURED" : !has(env,"JARVIS_SSH_USER") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
     sql: !has(env,"JARVIS_SQL_HOST") ? "NOT_CONFIGURED" : !has(env,"JARVIS_SQL_USER") || !has(env,"JARVIS_SQL_PASSWORD") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
     mysql: !has(env,"JARVIS_MYSQL_HOST") ? "NOT_CONFIGURED" : !has(env,"JARVIS_MYSQL_USER") || !has(env,"JARVIS_MYSQL_PASSWORD") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
+    postgres: !has(env,"JARVIS_POSTGRES_HOST") ? "NOT_CONFIGURED" : !has(env,"JARVIS_POSTGRES_USER") || !has(env,"JARVIS_POSTGRES_PASSWORD") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
     routeros: !has(env,"JARVIS_MIKROTIK_HOST") ? "NOT_CONFIGURED" : !has(env,"JARVIS_MIKROTIK_USER") || !has(env,"JARVIS_MIKROTIK_PASSWORD") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
     docker: !has(env,"JARVIS_DOCKER_HOST") || !has(env,"JARVIS_MAILCOW_COMPOSE") ? "NOT_CONFIGURED" : !has(env,"JARVIS_DOCKER_USER") && !has(env,"JARVIS_SSH_USER") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
     github: !has(env,"JARVIS_GITHUB_TOKEN") ? "CREDENTIAL_UNAVAILABLE" : "CONFIGURED_UNPROBED",
