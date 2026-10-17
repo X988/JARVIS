@@ -1,6 +1,14 @@
-import { ENDPOINT_SILENCE_MS, MAX_UTTERANCE_MS, MIN_SPEECH_MS } from "./gate.ts";
+import { ENDPOINT_SILENCE_MS, MAX_UTTERANCE_MS, MIN_SPEECH_MS, PRE_ROLL_MS } from "./gate.ts";
 
 export const SPEECH_RMS = 0.02;
+
+// The browser adds PRE_ROLL_MS before VAD decides that speech has started.
+// Stop comfortably before the strict server-side JARVIS_STT_MAX_MS limit.
+export const MAX_CLIENT_UTTERANCE_MS = Math.max(
+  MIN_SPEECH_MS + 1000,
+  MAX_UTTERANCE_MS - PRE_ROLL_MS - 600,
+);
+
 
 export type ListenState = {
   phase: "idle" | "speech";
@@ -186,6 +194,12 @@ export function resamplePcm16(samples: Int16Array, fromRate: number, toRate: num
     out[index] = clamped < 0 ? Math.round(clamped * 0x8000) : Math.round(clamped * 0x7fff);
   }
   return out;
+}
+
+/** Extra safeguard against VAD/frame rounding sending an oversized WAV. */
+export function limitVoiceSamples(samples: Float32Array, sampleRate = 16_000): Float32Array {
+  const maxSamples = Math.floor((sampleRate * (MAX_UTTERANCE_MS - 250)) / 1000);
+  return samples.length > maxSamples ? samples.slice(0, maxSamples) : samples;
 }
 
 export function concatFloats(chunks: Float32Array[]): Float32Array {
