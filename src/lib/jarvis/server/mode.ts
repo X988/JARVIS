@@ -10,6 +10,13 @@ export interface EffectiveMode {
   reasons: string[];
 }
 
+
+/**
+ * Эффективный режим исполнения.
+ * Если запрошен real, но configProblems() не пуст — режим откатывается в dry-run
+ * (деградация). reasons содержит список причин. Явный режим из канала не может
+ * поднять эффективный режим выше (нельзя сделать real из dry-run).
+ */
 export function effectiveExecutionMode(env: NodeJS.ProcessEnv = process.env): EffectiveMode {
   const raw = env.EXECUTION_MODE;
   const requested: Mode = raw === "real" || raw === "mock" || raw === "dry-run" ? raw : "dry-run";

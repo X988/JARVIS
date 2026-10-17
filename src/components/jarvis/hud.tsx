@@ -28,6 +28,7 @@ function phaseText(phase: HudPhase): string {
   return "Ожидание";
 }
 
+// Показывает эффективный режим. При деградации: «Запрошен X, работает Y: причина».
 function modeLabel(info: EffectiveModeInfo): string {
   if (!info.degraded) {
     if (info.mode === "real") return "Режим: real";
