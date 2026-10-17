@@ -1,5 +1,6 @@
 import { routeModel, type LLMProviderId, type ModelJob } from "./llm.ts";
 import { sanitizeLlmText } from "./llm-safety.ts";
+import { circuitAllow, circuitFailure, circuitKey, circuitSuccess } from "./llm-circuit.ts";
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -308,10 +309,22 @@ export async function callJsonModel(
     };
   }
 
+  const key = circuitKey(route.provider, route.model);
+  if (!circuitAllow(key, Date.now(), env)) {
+    return {
+      ok: false,
+      code: "UPSTREAM_ERROR",
+      detail: "LLM circuit breaker is open",
+      provider: route.provider,
+      model: route.model,
+    };
+  }
   const response = await postJson(request.url, request.init, env, opts.fetch ?? fetch);
   if (!response.ok) {
+    circuitFailure(key, Date.now(), env);
     return { ...response, provider: route.provider, model: route.model };
   }
+  circuitSuccess(key);
   const text = request.extract(response.body);
   if (!text) {
     return {
