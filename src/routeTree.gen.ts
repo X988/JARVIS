@@ -16,11 +16,13 @@ import { Route as MetricsRouteImport } from './routes/metrics'
 import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as StatusRouteImport } from './routes/status'
 import { Route as AdminAuditRouteImport } from './routes/admin.audit'
+import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as ApiAgentRouteImport } from './routes/api/agent'
 import { Route as ApiAuditRouteImport } from './routes/api/audit'
 import { Route as ApiCommandsRouteImport } from './routes/api/commands'
 import { Route as ApiLocalAuthRouteImport } from './routes/api/local-auth'
 import { Route as ApiSessionRouteImport } from './routes/api/session'
+import { Route as ApiTasksRouteImport } from './routes/api/tasks'
 import { Route as ApiTelegramRouteImport } from './routes/api/telegram'
 import { Route as ApiVoiceRouteImport } from './routes/api/voice'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -55,6 +57,11 @@ const StatusRoute = StatusRouteImport.update({
   path: '/status',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TasksRoute = TasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminAuditRoute = AdminAuditRouteImport.update({
   id: '/admin/audit',
   path: '/admin/audit',
@@ -78,6 +85,11 @@ const ApiCommandsRoute = ApiCommandsRouteImport.update({
 const ApiLocalAuthRoute = ApiLocalAuthRouteImport.update({
   id: '/api/local-auth',
   path: '/api/local-auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTasksRoute = ApiTasksRouteImport.update({
+  id: '/api/tasks',
+  path: '/api/tasks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiSessionRoute = ApiSessionRouteImport.update({
@@ -109,11 +121,13 @@ export interface FileRoutesByFullPath {
   '/ready': typeof ReadyRoute
   '/status': typeof StatusRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/tasks': typeof TasksRoute
   '/api/agent': typeof ApiAgentRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/commands': typeof ApiCommandsRoute
   '/api/local-auth': typeof ApiLocalAuthRoute
   '/api/session': typeof ApiSessionRoute
+  '/api/tasks': typeof ApiTasksRoute
   '/api/telegram': typeof ApiTelegramRoute
   '/api/voice': typeof ApiVoiceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -126,11 +140,13 @@ export interface FileRoutesByTo {
   '/ready': typeof ReadyRoute
   '/status': typeof StatusRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/tasks': typeof TasksRoute
   '/api/agent': typeof ApiAgentRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/commands': typeof ApiCommandsRoute
   '/api/local-auth': typeof ApiLocalAuthRoute
   '/api/session': typeof ApiSessionRoute
+  '/api/tasks': typeof ApiTasksRoute
   '/api/telegram': typeof ApiTelegramRoute
   '/api/voice': typeof ApiVoiceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -144,11 +160,13 @@ export interface FileRoutesById {
   '/ready': typeof ReadyRoute
   '/status': typeof StatusRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/tasks': typeof TasksRoute
   '/api/agent': typeof ApiAgentRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/commands': typeof ApiCommandsRoute
   '/api/local-auth': typeof ApiLocalAuthRoute
   '/api/session': typeof ApiSessionRoute
+  '/api/tasks': typeof ApiTasksRoute
   '/api/telegram': typeof ApiTelegramRoute
   '/api/voice': typeof ApiVoiceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -227,6 +245,20 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tasks': {
+      id: '/tasks'
+      path: '/tasks'
+      fullPath: '/tasks'
+      preLoaderRoute: typeof TasksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/tasks': {
+      id: '/api/tasks'
+      path: '/api/tasks'
+      fullPath: '/api/tasks'
+      preLoaderRoute: typeof ApiTasksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'

@@ -24,6 +24,19 @@
       "aliases": ["dc01", "dc", "контроллер домена", "контроллер", "домен"],
       "enabled": true,
       "allowedRunbooks": ["server.health", "disk.check"]
+      "allowedRunbooks": [
+        "server.health",
+        "disk.check",
+        "windows.reachability",
+        "windows.services",
+        "windows.events",
+        "windows.dns",
+        "windows.memory",
+        "windows.time",
+        "windows.tasks",
+        "ad.replication",
+        "ad.accounts"
+      ]
     },
     {
       "id": "srv1c01",
@@ -37,6 +50,17 @@
       "aliases": ["srv1c01", "сервер 1с", "1с сервер", "1с", "1c"],
       "enabled": true,
       "allowedRunbooks": ["server.health", "disk.check"]
+      "allowedRunbooks": [
+        "server.health",
+        "disk.check",
+        "windows.reachability",
+        "windows.services",
+        "windows.events",
+        "windows.dns",
+        "windows.memory",
+        "windows.time",
+        "windows.tasks"
+      ]
     },
     {
       "id": "sql01",
@@ -50,6 +74,17 @@
       "aliases": ["sql01", "sql сервер", "sql server", "sql"],
       "enabled": true,
       "allowedRunbooks": ["server.health", "disk.check"]
+      "allowedRunbooks": [
+        "server.health",
+        "disk.check",
+        "windows.reachability",
+        "windows.services",
+        "windows.events",
+        "windows.dns",
+        "windows.memory",
+        "windows.time",
+        "windows.tasks"
+      ]
     },
     {
       "id": "fs01",
@@ -63,6 +98,17 @@
       "aliases": ["fs01", "файловый сервер"],
       "enabled": true,
       "allowedRunbooks": ["server.health", "disk.check"]
+      "allowedRunbooks": [
+        "server.health",
+        "disk.check",
+        "windows.reachability",
+        "windows.services",
+        "windows.events",
+        "windows.dns",
+        "windows.memory",
+        "windows.time",
+        "windows.tasks"
+      ]
     },
     {
       "id": "mail01",
@@ -77,6 +123,15 @@
       "voiceCanonical": "mailcow",
       "enabled": true,
       "allowedRunbooks": ["server.health", "disk.check", "mailcow.health"]
+      "allowedRunbooks": [
+        "server.health",
+        "disk.check",
+        "mailcow.health",
+        "linux.systemd",
+        "linux.docker",
+        "linux.filesystem",
+        "linux.http"
+      ]
     },
     {
       "id": "rb5009",
@@ -89,6 +144,18 @@
       "voiceCanonical": "mikrotik",
       "enabled": true,
       "allowedRunbooks": ["mikrotik.status", "mikrotik.interfaces", "mikrotik.routes", "mikrotik.dhcp", "mikrotik.firewall.counters", "mikrotik.wan.status", "mikrotik.logs"]
+      "allowedRunbooks": [
+        "mikrotik.status",
+        "mikrotik.interfaces",
+        "mikrotik.routes",
+        "mikrotik.dhcp",
+        "mikrotik.firewall.counters",
+        "mikrotik.wan.status",
+        "mikrotik.logs",
+        "mikrotik.resources",
+        "mikrotik.vlan",
+        "mikrotik.reachability"
+      ]
     },
     {
       "id": "wg",
@@ -137,6 +204,17 @@
       "voiceCanonical": "postgres",
       "enabled": true,
       "allowedRunbooks": ["postgres.health", "postgres.sessions", "postgres.locks", "postgres.size", "postgres.status"]
+      "allowedRunbooks": [
+        "sql.health",
+        "sql.backup",
+        "sql.database.size",
+        "sql.sessions",
+        "sql.blocking",
+        "sql.backup.status",
+        "sql.agent",
+        "sql.errors",
+        "sql.space"
+      ]
     },
     {
       "id": "jarvis-dev",

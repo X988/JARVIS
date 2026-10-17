@@ -1,6 +1,15 @@
 import { routeModel, type LLMProviderId, type ModelJob } from "./llm.ts";
 import { sanitizeLlmText } from "./llm-safety.ts";
 import { circuitAllow, circuitFailure, circuitKey, circuitSuccess } from "./llm-circuit.ts";
+import {
+  cloudContextAllowed,
+  contextLimit,
+  estimateTokens,
+  localOnly,
+  modelAttempts,
+  recordModelUse,
+  withModelSlot,
+} from "./model-router.ts";
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -20,7 +29,9 @@ export type LLMJsonResult =
         | "REQUEST_TOO_LARGE"
         | "UPSTREAM_TIMEOUT"
         | "UPSTREAM_ERROR"
-        | "INVALID_RESPONSE";
+        | "INVALID_RESPONSE"
+        | "LOCAL_ONLY"
+        | "CLOUD_CONTEXT_DENIED";
       detail: string;
       provider: LLMProviderId;
       model: string;
@@ -268,88 +279,117 @@ export async function callJsonModel(
 ): Promise<LLMJsonResult> {
   const env = opts.env ?? process.env;
   const route = routeModel(job, env);
-  if (!route.configured || route.provider === "unconfigured") {
-    return {
-      ok: false,
-      code: "NOT_CONFIGURED",
-      detail: `LLM provider for ${job} is not configured`,
-      provider: route.provider,
-      model: route.model,
-    };
-  }
-  if (!route.model || route.model === "unconfigured" || route.model === "local") {
-    return {
+  const started = Date.now();
+  const finish = (result: LLMJsonResult): LLMJsonResult => {
+    recordModelUse({
+      at: new Date().toISOString(),
+      job,
+      provider: result.provider,
+      model: result.model,
+      ok: result.ok,
+      durationMs: Date.now() - started,
+      estimatedTokens: estimateTokens(input.system + input.user),
+      code: result.ok ? "OK" : result.code,
+    });
+    return result;
+  };
+  const attempts = modelAttempts(job, env).filter(
+    (item) => item.model && item.model !== "unconfigured" && item.model !== "local",
+  );
+  if (attempts.length === 0) {
+    const localBlocked = localOnly(env) && !route.local;
+    if (localBlocked || (localOnly(env) && (!route.configured || route.provider === "unconfigured"))) {
+      return finish({
+        ok: false,
+        code: "LOCAL_ONLY",
+        detail: "LOCAL_ONLY: локальная модель недоступна, облако не используется",
+        provider: route.provider,
+        model: route.model,
+      });
+    }
+    if (!route.configured || route.provider === "unconfigured") {
+      return finish({
+        ok: false,
+        code: "NOT_CONFIGURED",
+        detail: `LLM provider for ${job} is not configured`,
+        provider: route.provider,
+        model: route.model,
+      });
+    }
+    return finish({
       ok: false,
       code: "MODEL_UNAVAILABLE",
       detail: `LLM model for ${job} is not configured`,
       provider: route.provider,
       model: route.model,
-    };
+    });
+  }
+  const usable = attempts.filter((item) => cloudContextAllowed(job, item.local, env));
+  if (usable.length === 0) {
+    return finish({
+      ok: false,
+      code: "CLOUD_CONTEXT_DENIED",
+      detail: "Инфраструктурный контекст не отправляется в облако без JARVIS_LLM_CLOUD_INFRA=1",
+      provider: route.provider,
+      model: route.model,
+    });
   }
   const safeSystem = sanitizeLlmText(input.system);
   const safeUser = sanitizeLlmText(input.user);
-  if (safeSystem.text.length + safeUser.text.length > maxPromptChars(env)) {
-    return {
+  if (safeSystem.text.length + safeUser.text.length > Math.min(maxPromptChars(env), contextLimit(env))) {
+    return finish({
       ok: false,
       code: "REQUEST_TOO_LARGE",
       detail: "LLM prompt exceeds configured character limit",
       provider: route.provider,
       model: route.model,
-    };
+    });
   }
 
-  const request = providerRequest(route.provider, route.model, safeSystem.text, safeUser.text, input.schema, env);
-  if (!request) {
-    return {
-      ok: false,
-      code: "NOT_CONFIGURED",
-      detail: `Credentials for ${route.provider} are unavailable`,
-      provider: route.provider,
-      model: route.model,
-    };
+  let last: LLMJsonResult = {
+    ok: false,
+    code: "NOT_CONFIGURED",
+    detail: "LLM provider is not configured",
+    provider: route.provider,
+    model: route.model,
+  };
+  for (const attempt of usable) {
+    const request = providerRequest(attempt.provider, attempt.model, safeSystem.text, safeUser.text, input.schema, env);
+    if (!request) continue;
+    const response = await withModelSlot(env, () => postJson(request.url, request.init, env, opts.fetch ?? fetch));
+    if (!response.ok) {
+      last = { ...response, provider: attempt.provider, model: attempt.model };
+      if (response.code === "UPSTREAM_TIMEOUT" || response.code === "UPSTREAM_ERROR") continue;
+      return finish(last);
+    }
+    const text = request.extract(response.body);
+    if (!text) {
+      last = {
+        ok: false,
+        code: "INVALID_RESPONSE",
+        detail: "LLM response did not contain text",
+        provider: attempt.provider,
+        model: attempt.model,
+      };
+      continue;
+    }
+    try {
+      return finish({
+        ok: true,
+        provider: attempt.provider,
+        model: attempt.model,
+        value: parseJsonText(text),
+        requestId: response.requestId,
+      });
+    } catch {
+      last = {
+        ok: false,
+        code: "INVALID_RESPONSE",
+        detail: "LLM response was not valid JSON",
+        provider: attempt.provider,
+        model: attempt.model,
+      };
+    }
   }
-
-  const key = circuitKey(route.provider, route.model);
-  if (!circuitAllow(key, Date.now(), env)) {
-    return {
-      ok: false,
-      code: "UPSTREAM_ERROR",
-      detail: "LLM circuit breaker is open",
-      provider: route.provider,
-      model: route.model,
-    };
-  }
-  const response = await postJson(request.url, request.init, env, opts.fetch ?? fetch);
-  if (!response.ok) {
-    circuitFailure(key, Date.now(), env);
-    return { ...response, provider: route.provider, model: route.model };
-  }
-  circuitSuccess(key);
-  const text = request.extract(response.body);
-  if (!text) {
-    return {
-      ok: false,
-      code: "INVALID_RESPONSE",
-      detail: "LLM response did not contain text",
-      provider: route.provider,
-      model: route.model,
-    };
-  }
-  try {
-    return {
-      ok: true,
-      provider: route.provider,
-      model: route.model,
-      value: parseJsonText(text),
-      requestId: response.requestId,
-    };
-  } catch {
-    return {
-      ok: false,
-      code: "INVALID_RESPONSE",
-      detail: "LLM response was not valid JSON",
-      provider: route.provider,
-      model: route.model,
-    };
-  }
+  return finish(last);
 }

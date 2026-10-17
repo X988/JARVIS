@@ -46,3 +46,5 @@ Single-node mode uses explicit filesystem-backed abstractions:
 `createFileStateStores()` creates the filesystem implementations. Execution history persists only bounded metadata and hashes the actor identifier before storage. Corrupted security state fails closed.
 
 Redis/PostgreSQL backends are **not implemented** and therefore are not reported as available. The existing Redis lock placeholder continues to return `NOT_CONFIGURED` / `ADAPTER_DISABLED` rather than granting a lock. PostgreSQL/Redis are the intended multi-instance backends after real clients and integration tests are added.
+
+Блок 2 (ветка `jarvis/p1-agent-intelligence`) зависит от незамёрженного Блока 1, `jarvis/p0-secure-integration` / PR #5. Новый цикл агента не открывает второй шлюз. Описание: `docs/AGENT_RUNTIME.md`, `docs/MODEL_ROUTING.md`, `docs/MEMORY_ARCHITECTURE.md`, `docs/RAG.md`, `docs/INFRASTRUCTURE_DIAGNOSTICS.md`, `docs/TASK_ENGINE.md`, `docs/AGENT_TESTING.md`.

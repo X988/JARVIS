@@ -2,11 +2,8 @@ import { canExecute, sessionUsable, type Session } from "../server/session.ts";
 import {
   processRegisteredReadOnlyTool,
   type Mode,
-  type RegisteredToolResult,
 } from "../server/pipeline.ts";
 import { targetById } from "../server/inventory.ts";
-import { callJsonModel, type FetchLike } from "./llm-client.ts";
-import { planAgentTurn, type AgentPlan } from "./agent-planner.ts";
 import { mergeOnecSkillHits, ONEC_SKILL_PROMPT_RULE } from "../knowledge/onec-skills.ts";
 import {
   confirmKnowledge,
@@ -17,6 +14,10 @@ import {
   type Hit,
 } from "../knowledge/rag.ts";
 import { runAnalystTeam } from "./analyst-team.ts";
+import { callJsonModel, type FetchLike } from "./llm-client.ts";
+import { planAgentTurn, type AgentPlan, type AgentPlanStep } from "./agent-planner.ts";
+import { driveAgentLoop, type AgentRunState, type CauseStatus, type Understanding } from "./agent-loop.ts";
+import { searchMemory } from "./memory.ts";
 
 export type AgentObservation = {
   tool: string;
@@ -26,6 +27,7 @@ export type AgentObservation = {
   verification: string;
   executionCalled: boolean;
   auditId: string | null;
+  injection?: boolean;
 };
 
 export type AgentTurnResult = {
@@ -36,6 +38,11 @@ export type AgentTurnResult = {
   provider: string | null;
   model: string | null;
   sources?: string[];
+  phase?: AgentRunState["phase"];
+  cause?: CauseStatus;
+  replanned?: boolean;
+  runId?: string;
+  understanding?: Understanding;
 };
 
 type Planner = typeof planAgentTurn;
@@ -189,6 +196,8 @@ export async function runAgentTurn(
     toolRunner?: ToolRunner;
     retriever?: Retriever;
     team?: typeof runAnalystTeam; // deterministic test injection; never exposed over HTTP
+    requestId?: string;
+    replan?: (input: { request: string; observations: AgentObservation[]; target: string }) => AgentPlanStep | null;
   },
 ): Promise<AgentTurnResult> {
   const env = opts.env ?? process.env;
@@ -276,45 +285,49 @@ export async function runAgentTurn(
     };
   }
   if (planned.plan.responseMode === "answer") {
+    const recall = /уже была|похож|раньше|инцидент|повторя/i.test(text);
+    const hits = recall
+      ? searchMemory(opts.stateDir, text, { kinds: ["incident"], limit: 3, readerRole: opts.session.role })
+      : [];
+    const answer = recall
+      ? hits.length
+        ? [
+            "1. Что обнаружено.",
+            ...hits.map((hit) => `${hit.at} ${hit.source}: ${hit.snippet}`),
+            "2. Чем подтверждается.",
+            "Запись памяти с источником и временем. Это не новая диагностика.",
+            "3. Причина и предположения.",
+            "Повторная причина не подтверждается, пока нет нового наблюдения.",
+          ].join("\n")
+        : "В памяти нет подтверждённого похожего инцидента. Причина не установлена."
+      : planned.plan.message;
     return {
       code: "OK",
-      answer: planned.plan.message,
+      answer,
       plan: planned.plan,
       observations: [],
       provider: planned.provider,
       model: planned.model,
+      cause: recall && hits.length ? "hypothesis" : recall ? "unestablished" : undefined,
     };
   }
 
-  const observations: AgentObservation[] = [];
   const runner = opts.toolRunner ?? processRegisteredReadOnlyTool;
-  for (let index = 0; index < planned.plan.steps.length; index += 1) {
-    const step = planned.plan.steps[index];
-    // Every proposal, including a mutating one, is sent through the server
-    // admission layer so denials are audited. That layer never calls the
-    // executor for mutations.
-    const result: RegisteredToolResult = runner({
-      runbook: step.tool,
-      target: step.target,
-      requestId: `agent-${Date.now()}-${index}`,
-      session: opts.session,
-      stateDir: opts.stateDir,
-      now: opts.now,
-      mode: opts.mode,
-      channel: "agent",
-    });
-    observations.push({
-      tool: step.tool,
-      target: step.target,
-      code: result.code,
-      detail: result.detail,
-      verification: result.verification,
-      executionCalled: result.executionCalled,
-      auditId: result.auditId,
-    });
-
-    if (result.verdict === "deny" && result.code !== "DRY_RUN") break;
-  }
+  const loop = await driveAgentLoop({
+    request: text,
+    plan: planned.plan,
+    session: opts.session,
+    stateDir: opts.stateDir,
+    runId: opts.requestId,
+    now: opts.now,
+    mode: opts.mode,
+    env,
+    toolRunner: runner,
+    replan: opts.replan
+      ? (input) => opts.replan?.({ request: input.request, observations: input.observations, target: input.target }) ?? null
+      : undefined,
+  });
+  const observations: AgentObservation[] = loop.observations;
 
   const blockedMutation = observations.some((item) => item.code === "MUTATION_REQUIRES_APPROVAL");
   const hasFailure = observations.some(
@@ -349,19 +362,32 @@ export async function runAgentTurn(
         { env, fetch: opts.fetch },
       );
 
+  const timedOut = loop.phase === "failed";
+
   return {
-    code: blockedMutation
-      ? "MUTATION_REQUIRES_APPROVAL"
-      : hasFailure || (team !== null && !team.ok)
-        ? "AGENT_PARTIAL"
-        : allDryRun
-          ? "DRY_RUN"
-          : "OK",
-    answer: final.answer,
-    plan: planned.plan,
+    code: loop.cancelled
+      ? "AGENT_CANCELLED"
+      : blockedMutation
+        ? "MUTATION_REQUIRES_APPROVAL"
+        : timedOut
+          ? "AGENT_TIMEOUT"
+          : hasFailure
+            ? observations.some((item) => item.code === "OK" || item.code === "MOCK")
+              ? "AGENT_PARTIAL"
+              : "INSUFFICIENT_EVIDENCE"
+            : allDryRun
+              ? "DRY_RUN"
+              : "OK",
+    answer: loop.answer,
+    plan: { ...planned.plan, steps: loop.steps },
     observations,
-    provider: final.provider ?? planned.provider,
-    model: final.model ?? planned.model,
+    provider: planned.provider,
+    model: planned.model,
+    phase: loop.phase,
+    cause: loop.cause,
+    replanned: loop.replanned,
+    runId: loop.id,
+    understanding: loop.understanding,
   };
 }
 

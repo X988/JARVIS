@@ -58,6 +58,9 @@ export class SQLExecutor implements Executor {
       "sql.sessions": "sessions",
       "sql.blocking": "blocking",
       "sql.backup.status": "backup-status",
+      "sql.agent": "agent",
+      "sql.errors": "errors",
+      "sql.space": "space",
     }[call.runbook] as import("./sql.ts").SqlMode | undefined;
     if (!mode) return missing("sql","NOT_CONFIGURED","Для этой цели нет фиксированного SQL-запроса.");
     return runSql(mode, database);

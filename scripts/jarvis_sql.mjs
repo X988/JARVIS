@@ -63,7 +63,7 @@ if (mode === "backup") {
     process.exit(0);
   }
   backupFile = backupPath(backupDir, name);
-} else if (!["health", "database-size", "sessions", "blocking", "backup-status"].includes(mode)) {
+} else if (!["health", "database-size", "sessions", "blocking", "backup-status", "agent", "errors", "space"].includes(mode)) {
   out("NOT_CONFIGURED", "Неизвестный SQL-режим.");
   process.exit(0);
 }
@@ -186,6 +186,35 @@ async function backupStatus() {
   return finish("OK", `database=${name}; last_full_backup=${stamp}; bytes=${Number.isFinite(bytes) ? Math.trunc(bytes) : 0}; checksum=${checksum}`);
 }
 
+async function agentStatus() {
+  const rows = await query(
+    "SELECT SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled_jobs, SUM(CASE WHEN enabled = 0 THEN 1 ELSE 0 END) AS disabled_jobs FROM msdb.dbo.sysjobs",
+  );
+  const enabled = Number(rows[0]?.enabled_jobs ?? 0);
+  const disabled = Number(rows[0]?.disabled_jobs ?? 0);
+  if (!Number.isFinite(enabled) || !Number.isFinite(disabled)) return finish("VERIFICATION_FAILED", "SQL Agent jobs не подтверждены.");
+  return finish("OK", `enabled_jobs=${Math.trunc(enabled)}; disabled_jobs=${Math.trunc(disabled)}`);
+}
+
+async function errorStatus() {
+  const rows = await query(
+    "SELECT COUNT_BIG(*) AS failed_jobs FROM msdb.dbo.sysjobhistory WHERE run_status = 0 AND step_id <> 0",
+  );
+  const failed = Number(rows[0]?.failed_jobs ?? -1);
+  if (!Number.isFinite(failed) || failed < 0) return finish("VERIFICATION_FAILED", "История ошибок SQL Agent не подтверждена.");
+  return finish("OK", `failed_job_steps=${Math.trunc(failed)}`);
+}
+
+async function spaceStatus() {
+  const rows = await query(
+    "SELECT COALESCE(SUM(CAST(size AS bigint)) * 8192, 0) AS allocated_bytes FROM sys.master_files WHERE database_id = DB_ID(@name)",
+    [["name", name]],
+  );
+  const bytes = Number(rows[0]?.allocated_bytes ?? 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return finish("VERIFICATION_FAILED", "Место SQL не подтверждено.");
+  return finish("OK", `database=${name}; allocated_bytes=${Math.trunc(bytes)}`);
+}
+
 connection.on("connect", (error) => {
   if (error) {
     finish("CONNECT_FAILED", "SQL Server не принял соединение. Запрос не выполнен.");
@@ -205,7 +234,13 @@ connection.on("connect", (error) => {
             ? sessionStatus()
             : mode === "blocking"
               ? blockingStatus()
-              : backupStatus();
+              : mode === "agent"
+                ? agentStatus()
+                : mode === "errors"
+                  ? errorStatus()
+                  : mode === "space"
+                    ? spaceStatus()
+                    : backupStatus();
   job.catch(() => finish("VERIFICATION_FAILED", "SQL read/backup/verification завершились ошибкой. Успех не подменяется."));
 });
 

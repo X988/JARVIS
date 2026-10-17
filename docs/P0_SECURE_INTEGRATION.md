@@ -96,6 +96,8 @@ A broken audit file now stops the command API and the registered read-only tool 
 - External audit delivery is still an outbox. A replaced audit file is not anchored until a sink is configured.
 - The Grok preview injector and `vercel.json` remain because removing them would break the preview contract. They are not required for `npm run start:linux`.
 
+Блок 2 собирается поверх этого контура в `jarvis/p1-agent-intelligence` и не подменяет Execution Gateway. Пока PR #5 не влит и обязательные проверки GitHub не зелёные, новые диагностики остаются на тестовых адаптерах.
+
 ## Next block
 
 1. Exercise read-only SSH and RouterOS against a lab copy, with a pinned known_hosts file and a read-only RouterOS user.
