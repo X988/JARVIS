@@ -211,6 +211,23 @@ export default defineConfig(({ command, isPreview }) => ({
     strictPort: true,
   },
   resolve: { tsconfigPaths: true },
+  build: {
+    target: "es2022",
+    cssCodeSplit: true,
+    sourcemap: false,
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("react-dom") || id.includes("/react/")) return "react";
+          if (id.includes("@tanstack")) return "tanstack";
+          if (id.includes("lucide-react")) return "icons";
+          return "vendor";
+        },
+      },
+    },
+  },
   plugins: [
     pgliteBootstrapPlugin(),
     sttWarmupPlugin(),
