@@ -384,7 +384,7 @@ describe("analyst team runtime boundary", () => {
         detail: "cpu=7%",
         verification: "probe",
       }),
-      team: async (input: { observations: Array<{ auditId?: string }> }) => {
+      team: async (input: { observations: Array<{ auditId?: string | null }> }) => {
         invoked += 1;
         observedAudit = input.observations[0].auditId ?? "";
         return {
