@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUp, KeyRound, MessageSquare, Mic, Phone, ScrollText, Server, Square, X } from "lucide-react";
 import { VoiceCall, type VoiceCallHandle } from "@/components/jarvis/voice-call";
 import { Hud } from "@/components/jarvis/hud";
+import { captureScreen } from "@/lib/jarvis/screen/capture";
 import { beginVoiceCall, releaseVoiceCall } from "@/lib/jarvis/voice/call-handle";
 import {
   ACCOUNTS,
@@ -1097,6 +1098,11 @@ export function Console() {
               reasons: [],
             }}
             transcript={live || hearing || null}
+            onScreenCapture={async () => {
+              const result = await captureScreen();
+              console.info("[hud] screen capture:", result.ok ? "ok" : result.error);
+              pushNotice("screen-capture");
+            }}
             onModeRequest={(requested) => {
               // Server clamps via modeOf / effectiveExecutionMode.
               // Client cannot escalate above effective.

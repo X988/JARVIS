@@ -19,6 +19,7 @@ type Props = {
   confidence?: number | null;
   onClose?: () => void;
   onModeRequest?: (mode: "dry-run" | "mock" | "real") => void;
+  onScreenCapture?: () => void;
   children?: ReactNode;
 };
 
@@ -56,6 +57,7 @@ export function Hud({
   confidence,
   onClose,
   onModeRequest,
+  onScreenCapture,
   children,
 }: Props) {
   const left = approvalExpiresAt ? Math.max(0, Math.round((approvalExpiresAt - Date.now()) / 1000)) : null;
@@ -93,6 +95,16 @@ export function Hud({
               <p className="mt-1 text-[11px] leading-snug text-stone-400">
                 Система не перешла в real: есть проблемы конфигурации. Команды выполняются в dry-run.
               </p>
+            )}
+            {onScreenCapture && (
+              <button
+                type="button"
+                onClick={onScreenCapture}
+                className="mt-2 rounded border border-stone-600 px-2 py-0.5 text-[10px] hover:bg-stone-800"
+                title="Захватить экран как untrusted input (нужен флаг)"
+              >
+                Экран
+              </button>
             )}
             {onModeRequest && (
               <div className="mt-2 flex gap-1">
