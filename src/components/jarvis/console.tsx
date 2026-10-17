@@ -1081,7 +1081,16 @@ export function Console() {
       ) : null}
       {callHandle ? (
         <>
-          <Hud phase="idle" modeInfo={{ mode: serverMode === "real" ? "real" : serverMode === "mock" ? "mock" : "dry-run", requested: serverMode === "real" ? "real" : "dry-run", degraded: false, reasons: [] }} />
+          <Hud
+            phase={listening ? "listening" : "idle"}
+            modeInfo={{
+              mode: serverMode === "real" ? "real" : serverMode === "mock" ? "mock" : "dry-run",
+              requested: serverMode === "real" ? "real" : "dry-run",
+              degraded: false,
+              reasons: [],
+            }}
+            transcript={live || null}
+          />
           <VoiceCall
             handle={callHandle}
             approval={awaiting ? <ApprovalBox turn={awaiting} now={now} /> : null}

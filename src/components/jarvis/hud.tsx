@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Mic, MicOff, PhoneOff } from "lucide-react";
+import { Mic, MicOff, PhoneOff, Shield, Clock, Activity } from "lucide-react";
 
 export type HudPhase = "idle" | "listening" | "thinking" | "speaking";
 
@@ -15,9 +15,18 @@ type Props = {
   modeInfo: EffectiveModeInfo | null;
   approvalExpiresAt?: number | null;
   levels?: number[];
+  transcript?: string | null;
+  confidence?: number | null;
   onClose?: () => void;
   children?: ReactNode;
 };
+
+function phaseText(phase: HudPhase): string {
+  if (phase === "listening") return "Слушаю";
+  if (phase === "thinking") return "Обрабатываю";
+  if (phase === "speaking") return "Отвечаю";
+  return "Ожидание";
+}
 
 function modeLabel(info: EffectiveModeInfo): string {
   if (!info.degraded) {
@@ -29,15 +38,41 @@ function modeLabel(info: EffectiveModeInfo): string {
   return `Запрошен ${info.requested}, работает ${info.mode}: ${reason}`;
 }
 
-export function Hud({ phase, modeInfo, approvalExpiresAt, levels, onClose, children }: Props) {
+function confidenceText(value: number | null | undefined): string {
+  if (value == null) return "";
+  if (value >= 0.8) return "уверенность высокая";
+  if (value >= 0.5) return "уверенность средняя";
+  return "уверенность низкая";
+}
+
+export function Hud({
+  phase,
+  modeInfo,
+  approvalExpiresAt,
+  levels,
+  transcript,
+  confidence,
+  onClose,
+  children,
+}: Props) {
   const left = approvalExpiresAt ? Math.max(0, Math.round((approvalExpiresAt - Date.now()) / 1000)) : null;
+  const conf = confidenceText(confidence);
 
   return (
-    <div className="rounded-2xl border border-stone-700 bg-stone-900/80 p-4 text-stone-100 shadow-lg">
+    <div className="rounded-2xl border border-stone-700 bg-stone-900/90 p-4 text-stone-100 shadow-lg">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          {phase === "listening" ? <Mic className="h-5 w-5 text-emerald-400" /> : <MicOff className="h-5 w-5 text-stone-400" />}
-          <span className="text-sm font-medium capitalize">{phase}</span>
+          {phase === "listening" ? (
+            <Mic className="h-5 w-5 text-emerald-400" />
+          ) : phase === "thinking" ? (
+            <Activity className="h-5 w-5 text-amber-400" />
+          ) : (
+            <MicOff className="h-5 w-5 text-stone-400" />
+          )}
+          <div>
+            <div className="text-sm font-medium">{phaseText(phase)}</div>
+            <div className="text-[11px] text-stone-400">{phase}</div>
+          </div>
         </div>
         {onClose && (
           <button type="button" onClick={onClose} className="rounded p-1 hover:bg-stone-800" aria-label="Закрыть">
@@ -47,15 +82,27 @@ export function Hud({ phase, modeInfo, approvalExpiresAt, levels, onClose, child
       </div>
 
       {modeInfo && (
-        <p className="mt-2 text-xs text-stone-300">{modeLabel(modeInfo)}</p>
+        <div className="mt-3 flex items-start gap-2 text-xs">
+          <Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-stone-400" />
+          <span className={modeInfo.degraded ? "text-amber-300" : "text-stone-300"}>{modeLabel(modeInfo)}</span>
+        </div>
       )}
 
       {left !== null && (
-        <p className="mt-1 text-xs text-amber-300">Подтверждение: осталось {left} с</p>
+        <div className="mt-1 flex items-center gap-2 text-xs text-amber-300">
+          <Clock className="h-3.5 w-3.5" />
+          <span>Подтверждение: осталось {left} с</span>
+        </div>
       )}
 
+      {transcript && (
+        <p className="mt-2 line-clamp-2 text-xs text-stone-200">«{transcript}»</p>
+      )}
+
+      {conf && <p className="mt-1 text-[11px] text-stone-400">{conf}</p>}
+
       {levels && levels.length > 0 && (
-        <div className="mt-3 flex h-8 items-end gap-0.5">
+        <div className="mt-3 flex h-8 items-end gap-0.5" aria-hidden>
           {levels.map((v, i) => (
             <div
               key={i}
