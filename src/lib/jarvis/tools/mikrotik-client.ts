@@ -54,6 +54,7 @@ export function createMikrotikClient(config: MikrotikConfig): MikrotikClient {
       }
       const payload = call.body ? JSON.stringify(call.body) : null;
       const authorization = `Basic ${Buffer.from(`${config.user}:${config.password}`, "utf8").toString("base64")}`;
+      const rejectUnauthorized = config.tlsInsecure !== true;
       return new Promise((resolve, reject) => {
         const req = https.request(
           {
@@ -61,7 +62,7 @@ export function createMikrotikClient(config: MikrotikConfig): MikrotikClient {
             port: config.port,
             path: call.path,
             method: call.method,
-            rejectUnauthorized: !config.tlsInsecure,
+            rejectUnauthorized,
             timeout: 10000,
             headers: {
               accept: "application/json",
