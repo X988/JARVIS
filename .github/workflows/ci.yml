@@ -26,6 +26,17 @@ jobs:
       - name: Confirm Node 24
         run: node -v | grep -E '^v24\.'
       - run: npm ci
+      - name: Cache Vite
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules/.vite
+            .vercel/output
+          key: vite-${{ runner.os }}-${{ hashFiles('package-lock.json', 'vite.config.ts', 'src/**', 'server/**') }}
+          restore-keys: |
+            vite-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            vite-${{ runner.os }}-
+
       - name: Install ffmpeg for voice tests
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: npm run typecheck
@@ -50,6 +61,21 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Cache Vite
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules/.vite
+            .vercel/output
+          key: vite-${{ runner.os }}-${{ hashFiles('package-lock.json', 'vite.config.ts', 'src/**', 'server/**') }}
+          restore-keys: |
+            vite-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            vite-${{ runner.os }}-
+      - name: Cache Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e
         env:
