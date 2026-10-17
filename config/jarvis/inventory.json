@@ -23,7 +23,6 @@
       "reference": "dc01",
       "aliases": ["dc01", "dc", "контроллер домена", "контроллер", "домен"],
       "enabled": true,
-      "allowedRunbooks": ["server.health", "disk.check"]
       "allowedRunbooks": [
         "server.health",
         "disk.check",
@@ -49,7 +48,6 @@
       "reference": "srv1c01",
       "aliases": ["srv1c01", "сервер 1с", "1с сервер", "1с", "1c"],
       "enabled": true,
-      "allowedRunbooks": ["server.health", "disk.check"]
       "allowedRunbooks": [
         "server.health",
         "disk.check",
@@ -73,7 +71,6 @@
       "reference": "sql01",
       "aliases": ["sql01", "sql сервер", "sql server", "sql"],
       "enabled": true,
-      "allowedRunbooks": ["server.health", "disk.check"]
       "allowedRunbooks": [
         "server.health",
         "disk.check",
@@ -97,7 +94,6 @@
       "reference": "fs01",
       "aliases": ["fs01", "файловый сервер"],
       "enabled": true,
-      "allowedRunbooks": ["server.health", "disk.check"]
       "allowedRunbooks": [
         "server.health",
         "disk.check",
