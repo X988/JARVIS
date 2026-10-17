@@ -14,6 +14,24 @@ export type BslReport = {
 const DANGER =
   /Выполнить\s*\(|Вычислить\s*\(|ЗапуститьПриложение\s*\(|НачатьЗапускПриложения\s*\(|COMОбъект|WScript\.Shell|КопироватьФайл\s*\(|УдалитьФайлы\s*\(|HTTPСоединение|FTPСоединение/;
 
+
+function stripLine(line: string): string {
+  // Drop line comments and simple quoted strings so rules see code only.
+  let out = "";
+  let inStr = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (inStr) {
+      if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === "/" && line[i + 1] === "/") break;
+    out += ch;
+  }
+  return out;
+}
+
 export function checkBsl(source: string): BslReport {
   const lines = source.split(/\r?\n/);
   const hits: BslHit[] = [];
@@ -24,7 +42,8 @@ export function checkBsl(source: string): BslReport {
     const trimmed = line.trim();
     if (/^&НаКлиенте/i.test(trimmed)) context = "client";
     if (/^&НаСервере/i.test(trimmed)) context = "server";
-    if (DANGER.test(line)) {
+    const code = stripLine(line);
+    if (DANGER.test(code)) {
       hits.push({ rule: "dangerous-call", line: n, message: "Опасный вызов. В расширение его не кладём." });
     }
     if (/УстановитьПривилегированныйРежим\s*\(\s*Истина/i.test(line)) {
@@ -37,7 +56,7 @@ export function checkBsl(source: string): BslReport {
       if (prev) hits.push({ rule: "duplicate", line: n, message: `Имя «${named[2]}» уже есть на строке ${prev}.` });
       else procedures.set(key, n);
     }
-    if (context === "client" && /Записать\s*\(|Провести\s*\(|Удалить\s*\(|НачатьТранзакцию/.test(line)) {
+    if (context === "client" && /Записать\s*\(|Провести\s*\(|Удалить\s*\(|НачатьТранзакцию/.test(code)) {
       hits.push({ rule: "client-write", line: n, message: "Запись с клиента в этом контуре не принимается." });
     }
     if (trimmed.includes("\u0000")) hits.push({ rule: "syntax", line: n, message: "В строке нулевой байт." });
