@@ -17,6 +17,9 @@ function freshDir(): string {
 }
 
 function run(text: string, extra: Partial<Parameters<typeof processCommand>[0]> = {}) {
+  const previousMode = process.env.EXECUTION_MODE;
+  if (extra.mode) process.env.EXECUTION_MODE = extra.mode;
+  try {
   return processCommand({
     text,
     requestId: extra.requestId ?? `req-${Math.random().toString(16).slice(2)}`,
@@ -28,6 +31,10 @@ function run(text: string, extra: Partial<Parameters<typeof processCommand>[0]> 
     forged: extra.forged,
     approval: extra.approval,
   });
+  } finally {
+    if (previousMode === undefined) delete process.env.EXECUTION_MODE;
+    else process.env.EXECUTION_MODE = previousMode;
+  }
 }
 
 describe("server pipeline", () => {

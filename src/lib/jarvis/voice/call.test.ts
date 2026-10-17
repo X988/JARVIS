@@ -122,6 +122,8 @@ describe("voice conversation", () => {
     const session = testSession("admin1");
     const stateDir = dir();
     const seen: string[] = [];
+    const previousMode = process.env.EXECUTION_MODE;
+    process.env.EXECUTION_MODE = "real";
     const live = await runVoiceConversation("Проверь сервер", {
       session,
       stateDir,
@@ -137,6 +139,8 @@ describe("voice conversation", () => {
     assert.equal(live.code, "OK");
     const rows = fs.readFileSync(path.join(stateDir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     assert.ok(rows.some((r) => r.runbook === "server.health" && r.channel === "voice" && r.executor));
+    if (previousMode === undefined) delete process.env.EXECUTION_MODE;
+    else process.env.EXECUTION_MODE = previousMode;
     const dry = await runVoiceConversation("Проверь сервер", {
       session,
       stateDir: dir(),

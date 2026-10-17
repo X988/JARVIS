@@ -61,6 +61,8 @@ jobs:
           grep -q 'worker.lock' scripts/jarvis-worker.mjs
           grep -q 'worker.heartbeat' scripts/jarvis-worker.mjs
 
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Typecheck
         run: npm run typecheck
 

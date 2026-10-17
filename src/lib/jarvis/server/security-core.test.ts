@@ -26,18 +26,25 @@ function freshDir(): string {
 }
 
 function run(text: string, extra: Partial<Parameters<typeof processCommand>[0]> = {}) {
-  return processCommand({
-    text,
-    requestId: extra.requestId ?? `req-${Math.random().toString(16).slice(2)}`,
-    session: extra.session === undefined ? admin : extra.session,
-    now,
-    stateDir: extra.stateDir ?? freshDir(),
-    mode: extra.mode,
-    execute: extra.execute,
-    forged: extra.forged,
-    approval: extra.approval,
-    channel: extra.channel,
-  });
+  const previousMode = process.env.EXECUTION_MODE;
+  if (extra.mode) process.env.EXECUTION_MODE = extra.mode;
+  try {
+    return processCommand({
+      text,
+      requestId: extra.requestId ?? `req-${Math.random().toString(16).slice(2)}`,
+      session: extra.session === undefined ? admin : extra.session,
+      now,
+      stateDir: extra.stateDir ?? freshDir(),
+      mode: extra.mode,
+      execute: extra.execute,
+      forged: extra.forged,
+      approval: extra.approval,
+      channel: extra.channel,
+    });
+  } finally {
+    if (previousMode === undefined) delete process.env.EXECUTION_MODE;
+    else process.env.EXECUTION_MODE = previousMode;
+  }
 }
 
 async function authed(actor: string, expired = false): Promise<{ csrf: string; token: string }> {
