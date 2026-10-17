@@ -28,7 +28,7 @@ export function buildSshArgs(request: SshRequest): string[] {
     "-o",
     "IdentitiesOnly=yes",
     "-o",
-    "StrictHostKeyChecking=accept-new",
+    "StrictHostKeyChecking=yes",
     "-o",
     `UserKnownHostsFile=${request.knownHostsPath}`,
     "-o",
