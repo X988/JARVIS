@@ -539,6 +539,7 @@ export function Console() {
   const sessionReady = useJarvis((state) => state.sessionReady);
   const setWatch = useJarvis((state) => state.setWatch);
   const pushNotice = useJarvis((state) => state.pushNotice);
+  const setPreferredMode = useJarvis((state) => state.setPreferredMode);
   const ensureSession = useJarvis((state) => state.ensureSession);
   const submit = useJarvis((state) => state.submit);
   const tick = useJarvis((state) => state.tick);
@@ -1104,9 +1105,9 @@ export function Console() {
               pushNotice("screen-capture");
             }}
             onModeRequest={(requested) => {
-              // Server clamps via modeOf / effectiveExecutionMode.
-              // Client cannot escalate above effective.
-              console.info("[hud] mode request:", requested);
+              // Preference only. Server clamps via modeOf / effectiveExecutionMode.
+              setPreferredMode(requested);
+              console.info("[hud] preferred mode:", requested);
               pushNotice("mode-request");
             }}
           />

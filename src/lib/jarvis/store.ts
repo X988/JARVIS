@@ -63,6 +63,7 @@ type JarvisState = {
   dryRun: boolean;
   serverMode: string;
   effectiveMode: { mode: string; requested: string; degraded: boolean; reasons: string[] } | null;
+  preferredMode: "dry-run" | "mock" | "real" | null;
   profile: string;
   role: string | null;
   adapters: Record<string, string> | null;
@@ -77,6 +78,7 @@ type JarvisState = {
   setWatch: (value: boolean) => void;
   ensureSession: () => Promise<void>;
   pushNotice: (id: string) => void;
+  setPreferredMode: (mode: "dry-run" | "mock" | "real" | null) => void;
   submit: (raw: string, source: "text" | "voice", heard?: string) => Promise<void>;
   showVoiceResult: (payload: VoiceTurnResponse, heard?: string, source?: "text" | "voice") => void;
   reply: (turnId: string, phrase: string) => Promise<void>;
@@ -130,6 +132,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
   dryRun: true,
   serverMode: "dry-run",
   effectiveMode: null,
+  preferredMode: null,
   profile: "demo",
   role: null,
   adapters: null,
@@ -171,6 +174,7 @@ export const useJarvis = create<JarvisState>((set, get) => ({
     }
   },
 
+  setPreferredMode: (mode) => set({ preferredMode: mode }),
   pushNotice: (id) => {
     const state = get();
     // Demo watch fixtures are shown only when the server runs EXECUTION_MODE=mock.
