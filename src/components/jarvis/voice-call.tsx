@@ -30,6 +30,13 @@ class JarvisCapture extends AudioWorkletProcessor {
 registerProcessor("jarvis-capture", JarvisCapture);
 `;
 
+
+function confidenceLabel(value: number | null): string {
+  if (value === null) return "";
+  if (value >= 0.8) return "высокая";
+  if (value >= 0.5) return "средняя";
+  return "низкая";
+}
 function failText(code: string): string {
   if (code === "AUTH_REQUIRED") return "Нужна сессия. Войдите и повторите.";
   if (code === "ACTOR_DENIED") return "Эта учётка не оператор. Ничего не запускал.";
@@ -62,6 +69,8 @@ export function VoiceCall({
   const [sentence, setSentence] = useState(0);
   const [sentenceCount, setSentenceCount] = useState(0);
   const [levels, setLevels] = useState<number[]>(() => Array.from({ length: 12 }, () => 0.15));
+  const [confidence, _setConfidence] = useState<number | null>(null);
+  void confidenceLabel(confidence); // display helper
   const startedRef = useRef(0);
   const dialogRef = useRef<HTMLDivElement>(null);
   const controls = useRef({ interrupt: () => undefined, mute: () => undefined });
