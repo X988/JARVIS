@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUp, KeyRound, MessageSquare, Mic, Phone, ScrollText, Server, Square, X } from "lucide-react";
 import { VoiceCall, type VoiceCallHandle } from "@/components/jarvis/voice-call";
+import { Hud } from "@/components/jarvis/hud";
 import { beginVoiceCall, releaseVoiceCall } from "@/lib/jarvis/voice/call-handle";
 import {
   ACCOUNTS,
@@ -1079,11 +1080,14 @@ export function Console() {
         </div>
       ) : null}
       {callHandle ? (
-        <VoiceCall
-          handle={callHandle}
-          approval={awaiting ? <ApprovalBox turn={awaiting} now={now} /> : null}
-          onClose={closeCall}
-        />
+        <>
+          <Hud phase="idle" modeInfo={{ mode: "dry-run", requested: "dry-run", degraded: false, reasons: [] }} />
+          <VoiceCall
+            handle={callHandle}
+            approval={awaiting ? <ApprovalBox turn={awaiting} now={now} /> : null}
+            onClose={closeCall}
+          />
+        </>
       ) : null}
     </main>
   );
