@@ -6,9 +6,10 @@ describe("security policy static scan", () => {
   it("flags shell and transport safety regressions", () => {
     assert.deepEqual(scanSourceText("exec(userInput)"), []);
     assert.deepEqual(
-      scanSourceText('import { exec } from "node:child_process"; exec(userInput)'),
+      scanSourceText('import { exec } from "node:child_process"\nexec(userInput)'),
       ["child-process-exec"],
     );
+    assert.deepEqual(scanSourceText("child_process.exec(userInput)"), ["child-process-exec"]);
     assert.deepEqual(scanSourceText("spawn('x', [], { shell: true })"), ["shell-true"]);
     assert.deepEqual(
       scanSourceText("const option = 'StrictHostKeyChecking=no'"),
