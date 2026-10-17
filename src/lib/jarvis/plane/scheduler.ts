@@ -12,6 +12,9 @@ export type ScheduledTask = {
   runAt?: string;
   status: TaskStatus;
   history: { at: string; code: string }[];
+  /** Diagnostic schedules stay idle until an operator sets this. */
+  armed?: boolean;
+  ownerId?: string;
 };
 
 type LocalClock = {

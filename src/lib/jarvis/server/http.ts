@@ -5,11 +5,20 @@ import { adapterStatus } from "./adapters.ts";
 import { monitoringStatus } from "../monitoring.ts";
 import { requestOriginAllowed } from "../../public-origin.ts";
 import { authenticateRequest } from "./auth.ts";
-import { canExecute, type Session } from "./session.ts";
+import { canExecute, canRead, type Session } from "./session.ts";
 import { processCommand } from "./pipeline.ts";
 import { validRequestId } from "./idempotency.ts";
 import { runHybridTurn } from "../plane/hybrid.ts";
 import { readJsonBodyBounded } from "./request-body.ts";
+import { listPendingApprovals } from "./approvals.ts";
+import { diagnosticTool } from "../plane/diagnostics.ts";
+import {
+  cancelTaskJob,
+  enqueueTask,
+  listTasks,
+  recordTaskEvidence,
+  safeTaskReport,
+} from "../plane/task-engine.ts";
 
 function stateDir(): string {
   return process.env.JARVIS_STATE_DIR || process.cwd()+"/data";
@@ -63,7 +72,8 @@ function httpStatus(code:string):number{
   if(code==="SCHEMA_INVALID") return 400;
   if(code==="PLAN_INVALID" || code==="PLAN_REJECTED") return 422;
   if(code==="AGENT_DISABLED" || code==="LLM_UNAVAILABLE") return 503;
-  if(code==="DRY_RUN" || code==="CLARIFY" || code==="AGENT_PARTIAL") return 200;
+  if(code==="DRY_RUN" || code==="CLARIFY" || code==="AGENT_PARTIAL" || code==="INSUFFICIENT_EVIDENCE" || code==="AGENT_CANCELLED") return 200;
+  if(code==="AGENT_TIMEOUT" || code==="LOCAL_ONLY") return 503;
   if(code==="EXECUTION_DISABLED" || code==="NOT_CONFIGURED" || code==="CREDENTIAL_UNAVAILABLE" || code==="ADAPTER_DISABLED" || code==="SECURITY_STATE_UNAVAILABLE" || code==="AUDIT_INTEGRITY") return 503;
   if(code==="EXECUTION_TIMEOUT" || code==="VERIFICATION_FAILED") return 504;
   return 403;
@@ -244,6 +254,82 @@ export async function handleAgentCommand(request: Request): Promise<Response> {
     mode: executionMode(),
   });
   return json(result, httpStatus(result.code));
+}
+
+export async function handleTasks(request: Request): Promise<Response> {
+  const dir = stateDir();
+  if (request.method === "GET") {
+    const auth = await authenticateRequest(request);
+    if (!auth.session || auth.code !== "OK") return json({ code: auth.code, tasks: [], approvals: [] }, httpStatus(auth.code));
+    if (!canRead(auth.session.role)) return json({ code: "ACTOR_DENIED", tasks: [], approvals: [] }, 403);
+    return json({
+      code: "OK",
+      tasks: listTasks(dir, auth.session.accountId, auth.session.role),
+      approvals: listPendingApprovals(dir, auth.session.accountId, auth.session.role),
+    }, 200);
+  }
+  if (request.method !== "POST") return json({ code: "SCHEMA_INVALID" }, 405);
+  if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
+    return json({ code: "SCHEMA_INVALID" }, 400);
+  }
+  const guard = await guardWebPost(request, "tasks", 20);
+  if (!guard.ok) return guard.response;
+  let parsed: unknown;
+  try {
+    parsed = await request.json();
+  } catch {
+    return json({ code: "SCHEMA_INVALID" }, 400);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return json({ code: "SCHEMA_INVALID" }, 400);
+  const body = parsed as Record<string, unknown>;
+  const action = body.action;
+  const id = typeof body.id === "string" ? body.id.trim() : "";
+  if (action === "cancel") {
+    if (!/^[A-Za-z0-9._:-]{1,96}$/.test(id)) return json({ code: "SCHEMA_INVALID" }, 400);
+    const job = cancelTaskJob(dir, id, guard.session.accountId, guard.session.role);
+    return json({ code: job ? "OK" : "ACTOR_DENIED", id }, job ? 200 : 403);
+  }
+  if (action === "report") {
+    if (!/^[A-Za-z0-9._:-]{1,96}$/.test(id)) return json({ code: "SCHEMA_INVALID" }, 400);
+    const view = listTasks(dir, guard.session.accountId, guard.session.role).find((item) => item.id === id);
+    if (!view) return json({ code: "TARGET_NOT_FOUND" }, 404);
+    return json({ code: "OK", report: safeTaskReport(view) }, 200);
+  }
+  if (action === "rerun") {
+    if (!/^[A-Za-z0-9._:-]{1,96}$/.test(id)) return json({ code: "SCHEMA_INVALID" }, 400);
+    const view = listTasks(dir, guard.session.accountId, guard.session.role).find((item) => item.id === id);
+    if (!view) return json({ code: "TARGET_NOT_FOUND" }, 404);
+    const allowed = view.tools.length > 0 && view.tools.every((tool) => diagnosticTool(tool)?.risk === "read");
+    if (!allowed) return json({ code: "POLICY_DENIED" }, 403);
+    const nextId = `rerun-${id}`.slice(0, 96);
+    const job = enqueueTask(dir, {
+      id: nextId,
+      ownerId: guard.session.accountId,
+      idempotent: true,
+      dangerous: false,
+    });
+    for (const tool of view.tools) recordTaskEvidence(dir, job.id, { tool });
+    recordTaskEvidence(dir, job.id, {
+      model: view.model ?? undefined,
+      conclusion: "Повтор разрешённой диагностики поставлен в очередь. Live-проба из браузера не запускалась.",
+    });
+    return json({ code: "OK", id: job.id }, 200);
+  }
+  if (action === "enqueue") {
+    const text = typeof body.text === "string" ? body.text.trim() : "";
+    if (!text || text.length > 500) return json({ code: "SCHEMA_INVALID" }, 400);
+    const job = enqueueTask(dir, {
+      id: `task-${randomUUID()}`,
+      ownerId: guard.session.accountId,
+      idempotent: true,
+      dangerous: false,
+    });
+    recordTaskEvidence(dir, job.id, {
+      conclusion: "Запрос принят в очередь. Исполнение остаётся за worker и Execution Gateway.",
+    });
+    return json({ code: "OK", id: job.id }, 200);
+  }
+  return json({ code: "SCHEMA_INVALID" }, 400);
 }
 
 export async function guardWebPost(

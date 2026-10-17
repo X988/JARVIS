@@ -13,7 +13,7 @@ const password = process.env.JARVIS_MIKROTIK_PASSWORD ?? "";
 const port = Number(process.env.JARVIS_MIKROTIK_PORT || 443);
 const timeout = Number(process.env.JARVIS_ROUTEROS_TIMEOUT_MS || 15000);
 
-const READ_MODES = ["status", "interfaces", "routes", "dhcp", "wireguard", "firewall-counters", "wan-status", "logs"];
+const READ_MODES = ["status", "interfaces", "routes", "dhcp", "wireguard", "firewall-counters", "wan-status", "logs", "resources", "vlan", "reachability"];
 const CHANGE_MODES = ["backup", "interface-set"];
 if (![...READ_MODES, ...CHANGE_MODES].includes(mode)) {
   out("NOT_CONFIGURED", "Неизвестный режим. Произвольный REST path запрещён.");
@@ -44,6 +44,9 @@ const PATHS = {
   "firewall-counters": ["ip/firewall/filter"],
   "wan-status": ["interface", "ip/route"],
   logs: ["log"],
+  resources: ["system/resource"],
+  vlan: ["interface/vlan"],
+  reachability: ["interface", "ip/route"],
 };
 
 const ALLOWED_PATHS = new Set(Object.values(PATHS).flat());
@@ -147,6 +150,24 @@ try {
     }
     const disabled = rules.filter((row) => String(row.disabled) === "true").length;
     out("OK", `filter_rules=${rules.length}; disabled=${disabled}; packets=${Math.trunc(packets)}; bytes=${Math.trunc(bytes)}`);
+  } else if (mode === "resources") {
+    const sys = array(await get("system/resource"))[0] ?? {};
+    const cpu = sys["cpu-load"] ?? sys.cpuLoad ?? "unknown";
+    const free = sys["free-memory"] ?? sys.freeMemory ?? "unknown";
+    const total = sys["total-memory"] ?? sys.totalMemory ?? "unknown";
+    out("OK", `cpu_load=${cpu}; free_memory=${free}; total_memory=${total}`);
+  } else if (mode === "vlan") {
+    const vlans = array(await get("interface/vlan"));
+    const disabled = vlans.filter((row) => String(row.disabled) === "true").length;
+    out("OK", `vlans=${vlans.length}; disabled=${disabled}`);
+  } else if (mode === "reachability") {
+    const [interfaces, routes] = await Promise.all([get("interface"), get("ip/route")]);
+    const ifaces = array(interfaces);
+    const routeRows = array(routes);
+    const running = ifaces.filter((row) => String(row.running) === "true").length;
+    const defaults = routeRows.filter((row) => String(row["dst-address"] ?? row.dstAddress ?? "") === "0.0.0.0/0");
+    const activeDefaults = defaults.filter((row) => String(row.active) === "true").length;
+    out(activeDefaults > 0 ? "OK" : "VERIFICATION_FAILED", `interfaces_running=${running}/${ifaces.length}; active_defaults=${activeDefaults}; remote_ping=not_sent`);
   } else if (mode === "wan-status") {
     const [interfaces, routes] = await Promise.all([get("interface"), get("ip/route")]);
     const ifaces = array(interfaces);

@@ -785,6 +785,9 @@ export function Console() {
             <h1 className="text-xl font-semibold tracking-tight">JARVIS</h1>
           </div>
           <div className="flex shrink-0 gap-2">
+            <a href="/tasks" className="flex min-h-11 items-center rounded-md border border-line px-3 font-mono text-xs text-muted">
+              Задания
+            </a>
             <button
               type="button"
               aria-pressed={watch}

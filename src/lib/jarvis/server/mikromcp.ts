@@ -53,6 +53,35 @@ type Row = Record<string, unknown>;
 const truthy = (v: unknown) => v === true || v === "true";
 const arr = (s: Row | null, key: string): Row[] => (Array.isArray(s?.[key]) ? (s![key] as Row[]) : []);
 
+/**
+ * Log entries summarized by count and type, never dumped: totals, errors and
+ * warnings, the busiest topics, and the most frequent error kinds (MAC/IP-free).
+ */
+export function summarizeLog(entries: Row[], total?: unknown): string {
+  const topicsOf = (r: Row) => String(r.topics ?? "").split(",").map((t) => t.trim()).filter(Boolean);
+  const isError = (r: Row) => topicsOf(r).some((t) => t === "error" || t === "critical");
+  const isWarning = (r: Row) => topicsOf(r).includes("warning");
+  const byTopic = new Map<string, number>();
+  for (const r of entries) {
+    const main = topicsOf(r).filter((t) => !["info", "error", "warning", "critical", "debug"].includes(t)).join(",") || topicsOf(r)[0] || "other";
+    byTopic.set(main, (byTopic.get(main) ?? 0) + 1);
+  }
+  const kinds = new Map<string, number>();
+  for (const r of entries.filter((e) => isError(e) || isWarning(e))) {
+    const kind = String(r.message ?? "")
+      .replace(MAC, "")
+      .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, "")
+      .replace(/\d+/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 60);
+    if (kind) kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
+  }
+  const top = (m: Map<string, number>, n: number) =>
+    [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${k}:${v}`).join(",") || "none";
+  return `log_entries=${total ?? entries.length}; checked=${entries.length}; errors=${entries.filter(isError).length}; warnings=${entries.filter(isWarning).length}; by_topic=${top(byTopic, 4)}; error_kinds=${top(kinds, 3)}`;
+}
+
 export function summarize(runbook: string, structured: Row | null, text: string): string {
   const s = structured ?? {};
   if (runbook === "mikrotik.status") {
@@ -82,10 +111,7 @@ export function summarize(runbook: string, structured: Row | null, text: string)
     const rows = arr(s, "rules");
     return `filter_rules=${s.total ?? rows.length}; disabled=${rows.filter((r) => truthy(r.disabled)).length}`;
   }
-  if (runbook === "mikrotik.logs") {
-    const rows = arr(s, "entries").slice(0, 5).map((r) => `[${r.time}] ${String(r.topics)}: ${String(r.message).replace(MAC, "<mac>").slice(0, 120)}`);
-    return `log_entries=${s.total ?? "?"}; latest: ${rows.join(" | ")}`;
-  }
+  if (runbook === "mikrotik.logs") return summarizeLog(arr(s, "entries"), s.total);
   if (runbook === "mikrotik.wireguard" || runbook === "wireguard.status") {
     const rows = arr(s, "peers");
     return `wireguard_peers=${s.total ?? rows.length}`;

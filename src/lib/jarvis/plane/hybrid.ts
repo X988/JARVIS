@@ -1,4 +1,5 @@
 import { matchIntent } from "../model.ts";
+import { runbookForIntent } from "../server/runbooks.ts";
 import {
   processCommand,
   type Mode,
@@ -7,6 +8,9 @@ import {
 import type { Session } from "../server/session.ts";
 import {
   runAgentTurn,
+  humanizeAll,
+  isKnowledgeQuestion,
+  NETWORK_DIAG,
   type AgentTurnResult,
 } from "./agent-runtime.ts";
 import type { FetchLike } from "./llm-client.ts";
@@ -23,6 +27,33 @@ export function deterministicFirst(text: string): boolean {
   if (!clean) return true;
   if (SHORT_CONFIRM.test(clean) || DYNAMIC_ONEC.test(clean)) return true;
   return matchIntent(clean) !== "unknown";
+}
+
+/**
+ * Which path a turn takes. Question-form informational turns ("Как откатить…?",
+ * "Где работает…?") go to the agent, which answers them from the knowledge base.
+ * In real mode, intents without a registered runbook (demo-only commands such as
+ * rollback_project) are not offered at all.
+ */
+export function routeDeterministic(text: string, mode: string | undefined): boolean {
+  const clean = text.trim();
+  if (!clean) return true;
+  if (SHORT_CONFIRM.test(clean) || DYNAMIC_ONEC.test(clean)) return true;
+  if (isKnowledgeQuestion(clean) || NETWORK_DIAG.test(clean)) return false;
+  const intent = matchIntent(clean);
+  if (intent === "unknown") return false;
+  if (mode === "real" && !runbookForIntent(intent)) return false;
+  return true;
+}
+
+/** Display-only copy: internal target ids replaced by inventory display names. */
+function humanizeCommand(result: PipelineResult): PipelineResult {
+  const decision = { ...result.decision };
+  for (const key of ["reason", "title", "denyReason", "clarifyReason"] as const) {
+    const value = (decision as Record<string, unknown>)[key];
+    if (typeof value === "string") (decision as Record<string, unknown>)[key] = humanizeAll(value);
+  }
+  return { ...result, decision };
 }
 
 export async function runHybridTurn(
@@ -42,7 +73,8 @@ export async function runHybridTurn(
   const command = opts.command ?? processCommand;
   const agent = opts.agent ?? runAgentTurn;
 
-  if (deterministicFirst(text)) {
+  const mode = opts.mode ?? (opts.env ?? process.env).EXECUTION_MODE;
+  if (routeDeterministic(text, mode)) {
     const result = command({
       text,
       requestId: opts.requestId,
@@ -51,7 +83,7 @@ export async function runHybridTurn(
       now: opts.now,
       mode: opts.mode,
     });
-    return { kind: "command", ...result };
+    return { kind: "command", ...humanizeCommand(result) };
   }
 
   const ai = await agent(text, {

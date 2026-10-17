@@ -179,6 +179,28 @@ function readAll(dir: string): ApprovalRecord[] {
   }));
 }
 
+export function listPendingApprovals(
+  dir: string,
+  actorId: string,
+  role: "admin" | "operator" | "viewer" | "none",
+): Array<{ id: string; runbook: string; target: string; expiresAt: number; stage: 1 | 2 }> {
+  let rows: ApprovalRecord[];
+  try {
+    rows = readAll(dir);
+  } catch {
+    return [];
+  }
+  return rows
+    .filter((row) => row.status === "pending" && (role === "admin" || row.actorId === actorId))
+    .map((row) => ({
+      id: row.id,
+      runbook: row.runbook,
+      target: row.target,
+      expiresAt: row.expiresAt,
+      stage: row.stage,
+    }));
+}
+
 function writeAll(dir: string, rows: ApprovalRecord[]): void {
   if (!rows.every(validApproval)) {
     throw new Error("refusing to persist invalid approval state");

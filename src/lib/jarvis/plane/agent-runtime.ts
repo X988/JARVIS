@@ -2,11 +2,13 @@ import { canExecute, sessionUsable, type Session } from "../server/session.ts";
 import {
   processRegisteredReadOnlyTool,
   type Mode,
-  type RegisteredToolResult,
 } from "../server/pipeline.ts";
-import { targetById } from "../server/inventory.ts";
+import { INVENTORY, targetById } from "../server/inventory.ts";
 import { callJsonModel, type FetchLike } from "./llm-client.ts";
-import { planAgentTurn, type AgentPlan } from "./agent-planner.ts";
+import { planAgentTurn, type AgentPlan, type AgentPlanResult, type AgentPlanStep } from "./agent-planner.ts";
+import { runbookById } from "../server/runbooks.ts";
+import { driveAgentLoop, type AgentRunState, type CauseStatus, type Understanding } from "./agent-loop.ts";
+import { searchMemory } from "./memory.ts";
 import {
   confirmKnowledge,
   formatSources,
@@ -24,6 +26,7 @@ export type AgentObservation = {
   verification: string;
   executionCalled: boolean;
   auditId: string | null;
+  injection?: boolean;
 };
 
 export type AgentTurnResult = {
@@ -34,6 +37,11 @@ export type AgentTurnResult = {
   provider: string | null;
   model: string | null;
   sources?: string[];
+  phase?: AgentRunState["phase"];
+  cause?: CauseStatus;
+  replanned?: boolean;
+  runId?: string;
+  understanding?: Understanding;
 };
 
 type Planner = typeof planAgentTurn;
@@ -45,6 +53,51 @@ const LIVE_QUERY = /(загрузк|нагрузк|сейчас|текущ|ап�
 const NO_ANSWER = /(отсутству|нет (информац|данных|сведений)|не (знаю|указан|содержит))/iu;
 
 const INFO_QUESTION = /^(как|что|где|какой|какая|какое|какие|кто|зачем|почему|сколько|расскажи|объясни|how|what|where|which|who|why)(?=[\s,?!]|$)/iu;
+
+/** Question-form informational turn that should be answered from knowledge, not tools/commands. */
+export function isKnowledgeQuestion(text: string): boolean {
+  const clean = text.trim();
+  return INFO_QUESTION.test(clean) && !LIVE_QUERY.test(clean) && !RECALL_QUERY.test(clean);
+}
+
+/** "Проведи диагностику сети", "проверь сеть", "что с сетью" → fixed read-only router checks. */
+export const NETWORK_DIAG = /(диагност\S*\s+(?:\S+\s+)?сет|провер\S*\s+(?:\S+\s+)?сет[ьи]|что\s+с\s+сетью|сеть\s+(?:тормозит|не работает|глючит))/iu;
+
+export function networkDiagnosisPlan(): AgentPlanResult {
+  const router = runbookById("mikrotik.status")?.targets[0] ?? "rb5009";
+  const step = (tool: string, reason: string) => ({ tool, target: router, reason });
+  return {
+    ok: true,
+    provider: "rules",
+    model: "network-diagnosis",
+    requestId: null,
+    plan: {
+      objective: "Диагностика сети: роутер, интерфейсы, маршруты, журнал",
+      responseMode: "execute",
+      message: "",
+      steps: [
+        step("mikrotik.status", "загрузка и аптайм роутера"),
+        step("mikrotik.interfaces", "какие интерфейсы не подняты"),
+        step("mikrotik.routes", "есть ли активный маршрут по умолчанию"),
+        step("mikrotik.logs", "ошибки и предупреждения в журнале"),
+      ],
+    },
+  };
+}
+
+const RECALL_QUERY = /уже был|похож|раньше|инцидент|повторя/iu;
+const CHECK_NOW = /(проверь|покажи|диагност|посмотри)/iu;
+export const NO_INCIDENTS_ANSWER =
+  "Записей о похожих инцидентах пока нет. Могу проверить текущее состояние — скажите, например, «проверь роутер».";
+
+/** Every inventory id replaced by its display name; used on all user-facing agent text. */
+export function humanizeAll(text: string): string {
+  try {
+    return humanizeTargets(text, INVENTORY.map((t) => t.id));
+  } catch {
+    return text;
+  }
+}
 
 async function answerFromKnowledge(
   request: string,
@@ -100,12 +153,6 @@ function targetLabel(id: string): string {
   }
 }
 
-/** Data that came through MikroMCP must not be described with the REST runbook's verification text. */
-function verificationOf(detail: string, verification: string): string {
-  const via = /^mikromcp:([a-z_]+):/.exec(detail);
-  return via ? `MikroMCP ${via[1]} (read-only)` : verification;
-}
-
 /** Replace internal target ids (e.g. rb5009) with their display names in user-facing text. */
 export function humanizeTargets(text: string, ids: string[]): string {
   let out = text;
@@ -117,62 +164,25 @@ export function humanizeTargets(text: string, ids: string[]): string {
   return out;
 }
 
-function fallbackAnswer(observations: AgentObservation[], message: string): string {
-  if (observations.length === 0) return message || "Действия не выполнялись.";
-  const lines = observations.map(
-    (item) => `${item.tool}@${targetLabel(item.target)}: ${item.code} — ${redact(item.detail)}`,
-  );
-  return humanizeTargets([message, ...lines].filter(Boolean).join("\n"), observations.map((o) => o.target));
+export async function runAgentTurn(text: string, opts: AgentTurnOptions): Promise<AgentTurnResult> {
+  const result = await runAgentTurnInner(text, opts);
+  return { ...result, answer: humanizeAll(result.answer) };
 }
 
-async function synthesize(
-  request: string,
-  objective: string,
-  observations: AgentObservation[],
-  message: string,
-  opts: { env: NodeJS.ProcessEnv; fetch?: FetchLike },
-): Promise<{ answer: string; provider: string | null; model: string | null }> {
-  const safeObservations = observations.map((item) => ({
-    tool: item.tool,
-    target: targetLabel(item.target),
-    code: item.code,
-    detail: redact(item.detail),
-    verification: redact(verificationOf(item.detail, item.verification)),
-    executionCalled: item.executionCalled,
-  }));
-  const result = await callJsonModel(
-    "sensitive",
-    {
-      system: [
-        "You are the response layer of JARVIS infrastructure control plane.",
-        "Use only the supplied observations. Never invent host state, execution success, causes, credentials, or commands.",
-        "Clearly distinguish OK, MOCK and DRY_RUN from real verified execution.",
-        "If a step failed, state that it failed and do not infer a successful result.",
-        "Do not output secrets. Keep the answer concise and technical.",
-      ].join("\n"),
-      user: JSON.stringify({
-        request,
-        objective: humanizeTargets(objective, observations.map((o) => o.target)),
-        message: humanizeTargets(message, observations.map((o) => o.target)),
-        observations: safeObservations,
-      }),
-      schema: ANSWER_SCHEMA,
-    },
-    { env: opts.env, fetch: opts.fetch },
-  );
-  if (!result.ok || !result.value || typeof result.value !== "object") {
-    return { answer: fallbackAnswer(observations, message), provider: null, model: null };
-  }
-  const answer = (result.value as { answer?: unknown }).answer;
-  if (typeof answer !== "string" || !answer.trim() || answer.length > 4000) {
-    return { answer: fallbackAnswer(observations, message), provider: null, model: null };
-  }
-  return { answer: humanizeTargets(answer.trim(), observations.map((o) => o.target)), provider: result.provider, model: result.model };
+function memoryRecallAnswer(hits: { at: string; source: string; snippet: string }[]): string {
+  return hits.length
+    ? [
+        "1. Что обнаружено.",
+        ...hits.map((hit) => `${hit.at} ${hit.source}: ${hit.snippet}`),
+        "2. Чем подтверждается.",
+        "Запись памяти с источником и временем. Это не новая диагностика.",
+        "3. Причина и предположения.",
+        "Повторная причина не подтверждается, пока нет нового наблюдения.",
+      ].join("\n")
+    : NO_INCIDENTS_ANSWER;
 }
 
-export async function runAgentTurn(
-  text: string,
-  opts: {
+type AgentTurnOptions = {
     session: Session | null;
     stateDir: string;
     env?: NodeJS.ProcessEnv;
@@ -182,8 +192,11 @@ export async function runAgentTurn(
     planner?: Planner;
     toolRunner?: ToolRunner;
     retriever?: Retriever;
-  },
-): Promise<AgentTurnResult> {
+    requestId?: string;
+    replan?: (input: { request: string; observations: AgentObservation[]; target: string }) => AgentPlanStep | null;
+};
+
+async function runAgentTurnInner(text: string, opts: AgentTurnOptions): Promise<AgentTurnResult> {
   const env = opts.env ?? process.env;
   if (env.JARVIS_AI_AGENT_ENABLED !== "1") {
     return {
@@ -216,20 +229,36 @@ export async function runAgentTurn(
     return { code: result.code, answer: result.answer, plan: null, observations: [], provider: null, model: null };
   }
 
+  // "Такое уже было раньше?" without a request to check now: answer from incident
+  // memory only, plainly, and never with a clarifying question.
+  if (RECALL_QUERY.test(text) && !CHECK_NOW.test(text)) {
+    const remembered = searchMemory(opts.stateDir, text, { kinds: ["incident"], limit: 3, readerRole: opts.session.role });
+    return {
+      code: "OK",
+      answer: memoryRecallAnswer(remembered),
+      plan: null,
+      observations: [],
+      provider: null,
+      model: null,
+      cause: remembered.length ? "hypothesis" : "unestablished",
+    };
+  }
+
   const hits = await (opts.retriever ?? retrieveKnowledge)(text, { env, stateDir: opts.stateDir }).catch(() => [] as Hit[]);
   const sources = [...new Set(hits.map((hit) => hit.source))];
 
   // Informational "how/what/where" questions with a strong knowledge hit are answered
   // from the knowledge base directly, without running tools.
   const directScore = Number(env.JARVIS_KNOWLEDGE_DIRECT_SCORE) || 0.55;
-  if (INFO_QUESTION.test(text.trim()) && !LIVE_QUERY.test(text) && hits.length > 0 && hits[0].score >= directScore) {
+  if (!NETWORK_DIAG.test(text) && INFO_QUESTION.test(text.trim()) && !LIVE_QUERY.test(text) && hits.length > 0 && hits[0].score >= directScore) {
     const grounded = await answerFromKnowledge(text, hits, "", { env, fetch: opts.fetch });
     if (grounded && !NO_ANSWER.test(grounded.answer)) {
       return { code: "OK", answer: grounded.answer, plan: null, observations: [], provider: grounded.provider, model: grounded.model, sources };
     }
   }
 
-  const planner = opts.planner ?? planAgentTurn;
+  const network = NETWORK_DIAG.test(text);
+  const planner = network ? async () => networkDiagnosisPlan() : (opts.planner ?? planAgentTurn);
   const planned = await planner(text, { env, fetch: opts.fetch });
   if (!planned.ok) {
     return {
@@ -268,73 +297,80 @@ export async function runAgentTurn(
     };
   }
   if (planned.plan.responseMode === "answer") {
+    const recall = /уже была|похож|раньше|инцидент|повторя/i.test(text);
+    const hits = recall
+      ? searchMemory(opts.stateDir, text, { kinds: ["incident"], limit: 3, readerRole: opts.session.role })
+      : [];
+    const answer = recall
+      ? hits.length
+        ? [
+            "1. Что обнаружено.",
+            ...hits.map((hit) => `${hit.at} ${hit.source}: ${hit.snippet}`),
+            "2. Чем подтверждается.",
+            "Запись памяти с источником и временем. Это не новая диагностика.",
+            "3. Причина и предположения.",
+            "Повторная причина не подтверждается, пока нет нового наблюдения.",
+          ].join("\n")
+        : NO_INCIDENTS_ANSWER
+      : planned.plan.message;
     return {
       code: "OK",
-      answer: planned.plan.message,
+      answer,
       plan: planned.plan,
       observations: [],
       provider: planned.provider,
       model: planned.model,
+      cause: recall && hits.length ? "hypothesis" : recall ? "unestablished" : undefined,
     };
   }
 
-  const observations: AgentObservation[] = [];
   const runner = opts.toolRunner ?? processRegisteredReadOnlyTool;
-  for (let index = 0; index < planned.plan.steps.length; index += 1) {
-    const step = planned.plan.steps[index];
-    // Every proposal, including a mutating one, is sent through the server
-    // admission layer so denials are audited. That layer never calls the
-    // executor for mutations.
-    const result: RegisteredToolResult = runner({
-      runbook: step.tool,
-      target: step.target,
-      requestId: `agent-${Date.now()}-${index}`,
-      session: opts.session,
-      stateDir: opts.stateDir,
-      now: opts.now,
-      mode: opts.mode,
-      channel: "agent",
-    });
-    observations.push({
-      tool: step.tool,
-      target: step.target,
-      code: result.code,
-      detail: result.detail,
-      verification: result.verification,
-      executionCalled: result.executionCalled,
-      auditId: result.auditId,
-    });
-
-    if (result.verdict === "deny" && result.code !== "DRY_RUN") break;
-  }
+  const loop = await driveAgentLoop({
+    request: text,
+    plan: planned.plan,
+    session: opts.session,
+    stateDir: opts.stateDir,
+    runId: opts.requestId,
+    now: opts.now,
+    mode: opts.mode,
+    env,
+    toolRunner: runner,
+    replan: opts.replan
+      ? (input) => opts.replan?.({ request: input.request, observations: input.observations, target: input.target }) ?? null
+      : undefined,
+  });
+  const observations: AgentObservation[] = loop.observations;
 
   const blockedMutation = observations.some((item) => item.code === "MUTATION_REQUIRES_APPROVAL");
   const hasFailure = observations.some(
     (item) => !["OK", "MOCK", "DRY_RUN", "MUTATION_REQUIRES_APPROVAL"].includes(item.code),
   );
   const allDryRun = observations.length > 0 && observations.every((item) => item.code === "DRY_RUN");
-
-  const final = await synthesize(
-    text,
-    planned.plan.objective,
-    observations,
-    planned.plan.message,
-    { env, fetch: opts.fetch },
-  );
+  const timedOut = loop.phase === "failed";
 
   return {
-    code: blockedMutation
-      ? "MUTATION_REQUIRES_APPROVAL"
-      : hasFailure
-        ? "AGENT_PARTIAL"
-        : allDryRun
-          ? "DRY_RUN"
-          : "OK",
-    answer: final.answer,
-    plan: planned.plan,
+    code: loop.cancelled
+      ? "AGENT_CANCELLED"
+      : blockedMutation
+        ? "MUTATION_REQUIRES_APPROVAL"
+        : timedOut
+          ? "AGENT_TIMEOUT"
+          : hasFailure
+            ? observations.some((item) => item.code === "OK" || item.code === "MOCK")
+              ? "AGENT_PARTIAL"
+              : "INSUFFICIENT_EVIDENCE"
+            : allDryRun
+              ? "DRY_RUN"
+              : "OK",
+    answer: humanizeTargets(loop.answer, observations.map((item) => item.target)),
+    plan: { ...planned.plan, steps: loop.steps },
     observations,
-    provider: final.provider ?? planned.provider,
-    model: final.model ?? planned.model,
+    provider: planned.provider,
+    model: planned.model,
+    phase: loop.phase,
+    cause: loop.cause,
+    replanned: loop.replanned,
+    runId: loop.id,
+    understanding: loop.understanding,
   };
 }
-

@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { appendAudit } from "../audit-log.ts";
 import { mark } from "../metrics.ts";
-import { runAgentTurn, type AgentTurnResult } from "../plane/agent-runtime.ts";
+import { sanitizeSpeakable, spokenSummary } from "./speech-summary.ts";
+import { humanizeAll, runAgentTurn, type AgentTurnResult } from "../plane/agent-runtime.ts";
 import { runHybridTurn, type HybridTurnResult } from "../plane/hybrid.ts";
 import type { FetchLike } from "../plane/llm-client.ts";
 import {
@@ -266,13 +267,13 @@ export async function runVoiceConversation(
   }
 
   if (result.kind === "command") {
-    const spoken = voiceLine(result.code, result.decision.reason, result.approval?.id, {
+    const spoken = sanitizeSpeakable(humanizeAll(voiceLine(result.code, result.decision.reason, result.approval?.id, {
       mode: result.mode,
       executionCalled: result.executionCalled,
       target: result.trace.target,
       runbook: result.trace.runbook,
       execution: result.trace.execution,
-    });
+    })));
     return {
       code: result.code,
       spoken,
@@ -286,7 +287,12 @@ export async function runVoiceConversation(
     };
   }
 
-  const spoken = spokenAgent(result);
+  // Voice speaks a short human summary; the full report goes to the screen.
+  const hasReport = (result.observations ?? []).length > 0 && !["PLAN_REJECTED", "PLAN_INVALID"].includes(result.code);
+  const spoken = hasReport
+    ? humanizeAll(await spokenSummary(result, { env, fetch: opts.fetch, request: text }))
+    : sanitizeSpeakable(humanizeAll(spokenAgent(result)));
+  const screen = hasReport ? humanizeAll(result.answer) : spoken;
   appendAudit(
     {
       at: (opts.now ?? new Date()).toISOString(),
@@ -318,7 +324,7 @@ export async function runVoiceConversation(
     mode: opts.mode ?? "dry-run",
     tts: ttsConfigured(env),
     command: null,
-    answer: spoken,
+    answer: screen,
   };
 }
 
@@ -327,7 +333,9 @@ export function readSpokenWav(
   env: NodeJS.ProcessEnv = process.env,
 ): { bytes: Buffer; text: string } | { code: "NOT_CONFIGURED" | "TTS_FAILED" | "AUDIO_ENCODE_FAILED" } {
   sweepAudio(audioRoot(env), 60 * 60_000);
-  const hit = synthesizeWav(text, env);
+  const speakable = sanitizeSpeakable(text, 600);
+  if (!speakable) return { code: "TTS_FAILED" };
+  const hit = synthesizeWav(speakable, env);
   if ("code" in hit) return hit;
   try {
     const bytes = fs.readFileSync(hit.wav);
