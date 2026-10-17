@@ -783,7 +783,7 @@ export function Console() {
       <header className="border-b border-line">
         <div className="flex items-center justify-between gap-3 px-4 pt-3">
           <div>
-            <p className="font-mono text-xs text-moss">{modeLabel(serverMode, profile)}</p>
+            <p className="font-mono text-xs text-moss">{modeLabel(serverMode, profile)}{serverMode !== "real" ? " (эффективный)" : ""}</p>
             <h1 className="text-xl font-semibold tracking-tight">JARVIS</h1>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -1081,7 +1081,7 @@ export function Console() {
       ) : null}
       {callHandle ? (
         <>
-          <Hud phase="idle" modeInfo={{ mode: "dry-run", requested: "dry-run", degraded: false, reasons: [] }} />
+          <Hud phase="idle" modeInfo={{ mode: serverMode === "real" ? "real" : serverMode === "mock" ? "mock" : "dry-run", requested: serverMode === "real" ? "real" : "dry-run", degraded: false, reasons: [] }} />
           <VoiceCall
             handle={callHandle}
             approval={awaiting ? <ApprovalBox turn={awaiting} now={now} /> : null}
