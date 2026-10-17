@@ -23,6 +23,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Confirm Node 22
+        run: node -v | grep -E '^v22\.'
       - run: npm ci
       - name: Install ffmpeg for voice tests
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
