@@ -4,10 +4,13 @@ import { fileURLToPath } from "node:url";
 
 const SOURCE_ROOTS = ["src"];
 const SOURCE_RULES = [
-  { id: "child-process-exec", pattern: /\bexec(?:Sync)?\s*\(/ },
+  // Only real child_process.exec/execSync, not RegExp.exec or pg.exec
+  { id: "child-process-exec", pattern: /(?:from\s+["']node:child_process["']|require\s*\(\s*["']node:child_process["']\)|child_process\.)[^;]*\bexec(?:Sync)?\s*\(/ },
   { id: "shell-true", pattern: /\bshell\s*:\s*true\b/ },
   { id: "ssh-hostkey-disabled", pattern: /StrictHostKeyChecking\s*=\s*no/i },
+  { id: "ssh-hostkey-accept-new", pattern: /StrictHostKeyChecking\s*=\s*accept-new/i },
   { id: "tls-verification-disabled", pattern: /rejectUnauthorized\s*:\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*["']?0/i },
+  { id: "tls-insecure-config", pattern: /rejectUnauthorized\s*:\s*!\s*config\.tlsInsecure/ },
   { id: "direct-main-push", pattern: /\bgit\s+push\b[^\n]*(?:\bmain\b|\bmaster\b)/i },
 ];
 

@@ -10,6 +10,7 @@ import { processCommand } from "./pipeline.ts";
 import { validRequestId } from "./idempotency.ts";
 import { runHybridTurn } from "../plane/hybrid.ts";
 import { readJsonBodyBounded } from "./request-body.ts";
+import { effectiveExecutionMode } from "./mode";
 
 function stateDir(): string {
   return process.env.JARVIS_STATE_DIR || process.cwd()+"/data";
@@ -48,8 +49,7 @@ function json(body:unknown,code:number,cookies:string[]=[]):Response{
 }
 
 export function executionMode():"dry-run"|"mock"|"real"{
-  const raw=process.env.EXECUTION_MODE;
-  return raw==="real" || raw==="mock" ? raw : "dry-run";
+  return effectiveExecutionMode().mode;
 }
 
 function httpStatus(code:string):number{

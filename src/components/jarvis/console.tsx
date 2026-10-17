@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUp, KeyRound, MessageSquare, Mic, Phone, ScrollText, Server, Square, X } from "lucide-react";
-import { VoiceCall, beginVoiceCall, releaseVoiceCall, type VoiceCallHandle } from "@/components/jarvis/voice-call";
+import { VoiceCall, type VoiceCallHandle } from "@/components/jarvis/voice-call";
+import { beginVoiceCall, releaseVoiceCall } from "@/lib/jarvis/voice/call-handle";
 import {
   ACCOUNTS,
   ONEC_DEV,

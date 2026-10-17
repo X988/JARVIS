@@ -32,5 +32,6 @@
   "include": [
     "src",
     "server"
-  ]
+  ],
+  "exclude": ["src/lib/jarvis/server/testdata"]
 }
