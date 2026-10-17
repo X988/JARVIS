@@ -85,7 +85,14 @@ export function Hud({
       {modeInfo && (
         <div className="mt-3 flex items-start gap-2 text-xs">
           <Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-stone-400" />
-          <span className={modeInfo.degraded ? "text-amber-300" : "text-stone-300"}>{modeLabel(modeInfo)}</span>
+          <div>
+            <span className={modeInfo.degraded ? "text-amber-300" : "text-stone-300"}>{modeLabel(modeInfo)}</span>
+            {modeInfo.degraded && (
+              <p className="mt-1 text-[11px] leading-snug text-stone-400">
+                Система не перешла в real: есть проблемы конфигурации. Команды выполняются в dry-run.
+              </p>
+            )}
+          </div>
         </div>
       )}
 
