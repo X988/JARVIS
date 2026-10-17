@@ -3,6 +3,8 @@
  * States: closed → open (after N failures) → half-open (after cooldown) → closed.
  */
 
+import { increment } from "../metrics.ts";
+
 export type CircuitState = "closed" | "open" | "half-open";
 
 export type CircuitBreakerOptions = {
@@ -54,7 +56,7 @@ export function circuitAllow(key: string, now = Date.now(), env: NodeJS.ProcessE
   const state = circuitState(key, now, env);
   const b = bucket(key);
   const { halfOpenMax } = opts(env);
-  if (state === "open") return false;
+  if (state === "open") { increment("jarvis_llm_circuit_reject_total"); return false; }
   if (state === "half-open") {
     if (b.halfOpenInFlight >= halfOpenMax) return false;
     b.halfOpenInFlight += 1;
@@ -79,9 +81,14 @@ export function circuitFailure(key: string, now = Date.now(), env: NodeJS.Proces
     b.state = "open";
     b.openedAt = now;
     b.failures = 0;
+    increment("jarvis_llm_circuit_open_total");
   }
 }
 
 export function resetCircuits(): void {
   buckets.clear();
+}
+
+export function circuitStatus(): Array<{ key: string; state: CircuitState; failures: number }> {
+  return [...buckets.entries()].map(([key, b]) => ({ key, state: b.state, failures: b.failures }));
 }
