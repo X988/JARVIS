@@ -1,0 +1,16 @@
+[Unit]
+Description=JARVIS background worker
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/jarvis
+ExecStart=/usr/bin/node /opt/jarvis/scripts/jarvis-worker.mjs
+Restart=on-failure
+RestartSec=10
+EnvironmentFile=-/etc/jarvis.env
+User=jarvis
+Group=jarvis
+
+[Install]
+WantedBy=multi-user.target

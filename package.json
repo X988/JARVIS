@@ -26,7 +26,8 @@
     "security:secrets": "node scripts/check-secrets.mjs",
     "security:audit": "npm audit --audit-level=critical",
     "sbom": "npm sbom --sbom-format=cyclonedx --sbom-type=application",
-    "security:policy": "node scripts/security-policy-scan.mjs"
+    "security:policy": "node scripts/security-policy-scan.mjs",
+    "worker": "node scripts/jarvis-worker.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",
