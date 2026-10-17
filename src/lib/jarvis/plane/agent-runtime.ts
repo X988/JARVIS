@@ -17,7 +17,7 @@ import {
   retrieveKnowledge,
   type Hit,
 } from "../knowledge/rag.ts";
-import { mergeOnecSkillHits } from "../knowledge/onec-skills.ts";
+import { mergeOnecSkillHits, ONEC_SKILL_PROMPT_RULE } from "../knowledge/onec-skills.ts";
 
 export type AgentObservation = {
   tool: string;
@@ -104,18 +104,20 @@ async function answerFromKnowledge(
   request: string,
   hits: Hit[],
   draft: string,
-  opts: { env: NodeJS.ProcessEnv; fetch?: FetchLike },
+  opts: { env: NodeJS.ProcessEnv; fetch?: FetchLike; extraSystem?: string },
 ): Promise<{ answer: string; provider: string | null; model: string | null } | null> {
   const context = hits.map((hit) => ({ source: hit.source, section: hit.heading, text: redact(hit.text) }));
+  const systemParts = [
+    "You are JARVIS, an infrastructure assistant. Answer in Russian, concisely.",
+    "Answer ONLY from the supplied knowledge snippets. If they do not contain the answer, say you don't know.",
+    "Never invent IPs, hosts, commands or credentials. Never output secrets.",
+    "End the answer with the source file name(s) in the form: Источник: <file>.",
+  ];
+  if (opts.extraSystem) systemParts.push(opts.extraSystem);
   const result = await callJsonModel(
     "sensitive",
     {
-      system: [
-        "You are JARVIS, an infrastructure assistant. Answer in Russian, concisely.",
-        "Answer ONLY from the supplied knowledge snippets. If they do not contain the answer, say you don't know.",
-        "Never invent IPs, hosts, commands or credentials. Never output secrets.",
-        "End the answer with the source file name(s) in the form: Источник: <file>.",
-      ].join("\n"),
+      system: systemParts.join("\n"),
       user: JSON.stringify({ question: request, knowledge: context, draftAnswer: draft }),
       schema: ANSWER_SCHEMA,
     },
@@ -267,7 +269,8 @@ async function runAgentTurnInner(text: string, opts: AgentTurnOptions): Promise<
   // from the knowledge base directly, without running tools.
   const directScore = Number(env.JARVIS_KNOWLEDGE_DIRECT_SCORE) || 0.55;
   if (!NETWORK_DIAG.test(text) && INFO_QUESTION.test(text.trim()) && !LIVE_QUERY.test(text) && hits.length > 0 && hits[0].score >= directScore) {
-    const grounded = await answerFromKnowledge(text, hits, "", { env, fetch: opts.fetch });
+    const extraSystem = hits.some((h) => h.source.includes("cc-1c-skills")) ? ONEC_SKILL_PROMPT_RULE : undefined;
+    const grounded = await answerFromKnowledge(text, hits, "", { env, fetch: opts.fetch, extraSystem });
     if (grounded && !NO_ANSWER.test(grounded.answer)) {
       return { code: "OK", answer: grounded.answer, plan: null, observations: [], provider: grounded.provider, model: grounded.model, sources };
     }
@@ -288,7 +291,8 @@ async function runAgentTurnInner(text: string, opts: AgentTurnOptions): Promise<
   }
 
   if ((planned.plan.responseMode === "answer" || planned.plan.responseMode === "clarify") && hits.length > 0) {
-    const grounded = await answerFromKnowledge(text, hits, planned.plan.message, { env, fetch: opts.fetch });
+    const extraSystem = hits.some((h) => h.source.includes("cc-1c-skills")) ? ONEC_SKILL_PROMPT_RULE : undefined;
+      const grounded = await answerFromKnowledge(text, hits, planned.plan.message, { env, fetch: opts.fetch, extraSystem });
     if (grounded) {
       return {
         code: "OK",
