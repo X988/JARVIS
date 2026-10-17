@@ -1,0 +1,205 @@
+> JARVIS_ONEC_SKILL_DOCS_ONLY: scripts are not installed and must not be run. Mutations stay on the JARVIS policy pipeline and require approval.
+> Source: cc-1c-skills `24429b462509` (guide). Copyright (c) 2025-2026 Nick Shirokov. MIT — see vendor/cc-1c-skills/LICENSE.
+> Adapted for JARVIS: command blocks and credential examples removed. This file is prompt context only.
+# Расширения конфигурации (CFE)
+
+Навыки группы `/cfe-*` позволяют создавать, заимствовать объекты, перехватывать методы, проверять и анализировать расширения конфигурации 1С.
+
+## Навыки
+
+| Навык | Параметры | Описание |
+|-------|-----------|----------|
+| `/cfe-init` | `<Name> [-Purpose Patch\|Customization\|AddOn] [-CompatibilityMode]` | Создание расширения (scaffold XML-исходников) |
+| `/cfe-borrow` | `-ExtensionPath <path> -ConfigPath <path> -Object "Type.Name" [-BorrowMainAttribute]` | Заимствование объектов из конфигурации |
+| `/cfe-patch-method` | `-ExtensionPath <path> -ModulePath "Type.Name.Module" -MethodName "X" -InterceptorType Before` | Генерация перехватчика метода |
+| `/cfe-validate` | `<ExtensionPath> [-MaxErrors 30]` | Валидация структурной корректности (9 проверок) |
+| `/cfe-diff` | `-ExtensionPath <path> -ConfigPath <path> [-Mode A\|B]` | Анализ расширения и проверка переноса |
+
+## Рабочий цикл
+
+```
+cf-info (версия, совместимость)
+    ↓
+/cfe-init → scaffold расширения
+    ↓
+/cfe-borrow → заимствование объектов из конфигурации
+    ↓
+/cfe-patch-method → перехват методов
+    ↓
+/cfe-validate → проверка корректности
+    ↓
+/cfe-diff Mode A → обзор изменений
+```
+
+## Типичные сценарии
+
+### Создание расширения для исправления бага
+
+```
+> Создай расширение для исправления бага в справочнике Контрагенты,
+  конфигурация ERP в C:\cfsrc\erp
+```
+
+Claude выполнит:
+1. `/cf-info C:\cfsrc\erp -Mode brief` — получить версию и режим совместимости
+2. `/cfe-init` — создать расширение с нужным `CompatibilityMode`
+3. `/cfe-borrow` — заимствовать `Catalog.Контрагенты`
+4. `/cfe-patch-method` — создать перехватчик нужного метода
+5. `/cfe-validate` — проверить результат
+
+### Добавление реквизита в объект и вывод на форму
+
+```
+> Добавь реквизит "ОсновнойПоставщик" (тип СправочникСсылка.Партнеры)
+  в справочник Номенклатура и выведи на форму элемента.
+  Конфигурация ERP в C:\cfsrc\erp
+```
+
+Claude выполнит:
+1. `/cfe-init` — создать расширение
+2. `/cfe-borrow -Object "Catalog.Номенклатура.Form.ФормаЭлемента" -BorrowMainAttribute` — заимствовать форму с реквизитами объекта
+3. `/meta-edit` — добавить новый реквизит `Расш1_ОсновнойПоставщик` в Номенклатура
+4. `/form-edit` — вывести реквизит на форму
+5. `/cfe-validate` — проверить результат
+
+### Анализ существующего расширения
+
+```
+> Покажи что изменено в расширении src/
+```
+
+Claude вызовет `/cfe-diff -Mode A` и покажет: заимствованные объекты, перехватчики, собственные объекты.
+
+### Проверка переноса изменений
+
+```
+> Проверь, все ли изменения из расширения перенесены в конфигурацию
+```
+
+Claude вызовет `/cfe-diff -Mode B` — найдёт блоки `#Вставка` и проверит их наличие в конфигурации.
+
+## cfe-init — создание расширения
+
+Параметры:
+
+| Параметр | Описание | По умолчанию |
+|----------|----------|--------------|
+| `Name` | Имя расширения (обязат.) | — |
+| `Synonym` | Синоним | = Name |
+| `NamePrefix` | Префикс собственных объектов | = Name + "_" |
+| `OutputDir` | Каталог | `src` |
+| `Purpose` | Назначение | `Customization` |
+| `Version` | Версия | — |
+| `Vendor` | Поставщик | — |
+| `CompatibilityMode` | Режим совместимости | `Version8_3_24` |
+| `NoRole` | Без основной роли | false |
+
+Создаёт:
+```
+<OutputDir>/
+├── Configuration.xml         # Свойства расширения
+├── Languages/
+│   └── Русский.xml           # Язык (Adopted)
+└── Roles/                    # Если не -NoRole
+    └── <Prefix>ОсновнаяРоль.xml
+```
+
+Назначение расширения (`Purpose`):
+- `Patch` — исправление ошибок (минимальные изменения, только перехватчики)
+- `Customization` — доработка (реквизиты, формы, модули)
+- `AddOn` — дополнение (полноценный функционал)
+
+## cfe-borrow — заимствование объектов
+
+Заимствует объекты из основной конфигурации в расширение. Создаёт минимальные XML-файлы с `ObjectBelonging=Adopted` и `ExtendedConfigurationObject`.
+
+Формат `-Object`:
+- `Catalog.Контрагенты` — справочник
+- `CommonModule.РаботаСФайлами` — общий модуль
+- `Enum.ВидыОплат` — перечисление
+- `Document.Заказ ;; Catalog.Товары` — несколько объектов через `;;`
+
+Поддерживаемые типы: Catalog, Document, Enum, CommonModule, Report, DataProcessor, ExchangePlan, InformationRegister, AccumulationRegister, AccountingRegister, CalculationRegister, ChartOfAccounts, ChartOfCharacteristicTypes, ChartOfCalculationTypes, BusinessProcess, Task, и другие (44 типа).
+
+### Заимствование формы с реквизитами объекта (-BorrowMainAttribute)
+
+При добавлении нового реквизита на заимствованную форму нужна опция `-BorrowMainAttribute`:
+- Без неё форма заимствуется "пустой" — только визуальные элементы, без привязки к данным
+- С ней — форма сохраняет `DataPath` привязки к реквизитам объекта (`Объект.XXX`)
+
+Два режима:
+- `Form` (по умолчанию) — заимствует только реквизиты, выведенные на форму
+- `All` — заимствует все реквизиты объекта (включая не выведенные на форму)
+
+Каскадно заимствует зависимые объекты по типам реквизитов (справочники, перечисления, определяемые типы) как оболочки. Если зависимый объект уже заимствован с содержимым — не перезаписывает его.
+
+## cfe-patch-method — перехват методов
+
+Генерирует `.bsl` файл с декоратором перехвата для заимствованного объекта.
+
+Параметры:
+
+| Параметр | Описание |
+|----------|----------|
+| `ModulePath` | `Catalog.X.ObjectModule`, `CommonModule.Y`, `Catalog.X.Form.Z` |
+| `MethodName` | Имя перехватываемого метода |
+| `InterceptorType` | `Before` / `After` / `ModificationAndControl` |
+| `Context` | `НаСервере` / `НаКлиенте` / `НаСервереБезКонтекста` |
+| `IsFunction` | Добавить `Возврат` |
+
+Типы перехватчиков:
+
+| Тип | Декоратор | Когда использовать |
+|-----|-----------|-------------------|
+| `Before` | `&Перед` | Выполнить код до вызова оригинального метода |
+| `After` | `&После` | Выполнить код после вызова оригинального метода |
+| `ModificationAndControl` | `&ИзменениеИКонтроль` | Полная замена тела метода с маркерами `#Вставка`/`#Удаление` |
+
+Пример генерируемого кода (`Before`):
+```bsl
+&НаСервере
+&Перед("ПриЗаписи")
+Процедура Расш1_ПриЗаписи()
+	// TODO: код перед вызовом оригинального метода
+КонецПроцедуры
+```
+
+## cfe-validate — проверки
+
+| # | Проверка | Уровень |
+|---|----------|---------|
+| 1 | XML well-formedness, MetaDataObject/Configuration, version | ERROR |
+| 2 | InternalInfo: 7 ContainedObject, валидные ClassId | ERROR |
+| 3 | Extension properties: ObjectBelonging=Adopted, Name, Purpose, NamePrefix, KeepMapping | ERROR |
+| 4 | Enum-значения (4 свойства) | ERROR |
+| 5 | ChildObjects: валидные типы, нет дубликатов, порядок | ERROR/WARN |
+| 6 | DefaultLanguage ссылается на существующий Language | ERROR |
+| 7 | Файлы языков существуют | WARN |
+| 8 | Каталоги объектов существуют | WARN |
+| 9 | Заимствованные объекты: ObjectBelonging=Adopted, ExtendedConfigurationObject UUID | ERROR/WARN |
+
+## cfe-diff — режимы
+
+### Mode A — обзор расширения
+
+Для каждого объекта показывает:
+- `[BORROWED]` — заимствованный: перехватчики, собственные реквизиты/формы
+- `[OWN]` — собственный: количество реквизитов, ТЧ, форм
+
+### Mode B — проверка переноса
+
+Для каждого `&ИзменениеИКонтроль` проверяет, перенесены ли блоки `#Вставка` в конфигурацию:
+- `[TRANSFERRED]` — код найден в конфигурации
+- `[NOT_TRANSFERRED]` — код не найден
+- `[NEEDS_REVIEW]` — нет блоков `#Вставка` или модуль конфигурации не найден
+
+## Связь с другими навыками
+
+- `/cf-info` — получение версии и совместимости конфигурации перед `cfe-init`
+- `/meta-compile` — создание собственных объектов расширения (реквизиты, ТЧ)
+- `/form-compile`, `/form-edit` — создание и модификация форм расширения
+- `/cfe-validate` — всегда проверяйте расширение после изменений
+
+## Спецификации
+
+- [1c-extension-spec.md](1c-extension-spec.md) — XML-формат выгрузки расширений конфигурации (CFE)
