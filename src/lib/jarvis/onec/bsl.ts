@@ -36,14 +36,15 @@ export function checkBsl(source: string): BslReport {
       const prev = procedures.get(key);
       if (prev) hits.push({ rule: "duplicate", line: n, message: `Имя «${named[2]}» уже есть на строке ${prev}.` });
       else procedures.set(key, n);
-      if (context === "client" && /Записать\s*\(|Провести\s*\(/.test(trimmed)) {
-        hits.push({ rule: "client-write", line: n, message: "Запись с клиента в этом контуре не принимается." });
-      }
+    }
+    if (context === "client" && /Записать\s*\(|Провести\s*\(|Удалить\s*\(|НачатьТранзакцию/.test(line)) {
+      hits.push({ rule: "client-write", line: n, message: "Запись с клиента в этом контуре не принимается." });
     }
     if (trimmed.includes("\u0000")) hits.push({ rule: "syntax", line: n, message: "В строке нулевой байт." });
   });
-  const opens = (source.match(/\bПроцедура\b|\bФункция\b/g) ?? []).length;
-  const closes = (source.match(/\bКонецПроцедуры\b|\bКонецФункции\b/g) ?? []).length;
+  // Unicode-aware count (\b does not work with Cyrillic)
+  const opens = (source.match(/(?:^|\s)(Процедура|Функция)\b/gmi) ?? []).length;
+  const closes = (source.match(/(?:^|\s)(КонецПроцедуры|КонецФункции)\b/gmi) ?? []).length;
   if (opens !== closes) {
     hits.push({ rule: "syntax", line: lines.length, message: "Число процедур и концов не сходится." });
   }
