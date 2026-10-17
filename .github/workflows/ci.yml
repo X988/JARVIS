@@ -21,10 +21,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
-      - name: Confirm Node 22
-        run: node -v | grep -E '^v22\.'
+      - name: Confirm Node 24
+        run: node -v | grep -E '^v24\.'
       - run: npm ci
       - name: Install ffmpeg for voice tests
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
