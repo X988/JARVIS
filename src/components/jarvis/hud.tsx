@@ -18,6 +18,7 @@ type Props = {
   transcript?: string | null;
   confidence?: number | null;
   onClose?: () => void;
+  onModeRequest?: (mode: "dry-run" | "mock" | "real") => void;
   children?: ReactNode;
 };
 
@@ -54,6 +55,7 @@ export function Hud({
   transcript,
   confidence,
   onClose,
+  onModeRequest,
   children,
 }: Props) {
   const left = approvalExpiresAt ? Math.max(0, Math.round((approvalExpiresAt - Date.now()) / 1000)) : null;
@@ -91,6 +93,21 @@ export function Hud({
               <p className="mt-1 text-[11px] leading-snug text-stone-400">
                 Система не перешла в real: есть проблемы конфигурации. Команды выполняются в dry-run.
               </p>
+            )}
+            {onModeRequest && (
+              <div className="mt-2 flex gap-1">
+                {(["dry-run", "mock", "real"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => onModeRequest(m)}
+                    className="rounded border border-stone-600 px-2 py-0.5 text-[10px] hover:bg-stone-800"
+                    title="Запросить режим (сервер не позволит поднять выше эффективного)"
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         </div>

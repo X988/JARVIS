@@ -1097,6 +1097,12 @@ export function Console() {
               reasons: [],
             }}
             transcript={live || hearing || null}
+            onModeRequest={(requested) => {
+              // Server clamps via modeOf / effectiveExecutionMode.
+              // Client cannot escalate above effective.
+              console.info("[hud] mode request:", requested);
+              pushNotice("mode-request");
+            }}
           />
           <VoiceCall
             handle={callHandle}
