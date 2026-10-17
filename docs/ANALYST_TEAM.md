@@ -50,7 +50,7 @@ rather than simple status checks.
 
 ## Tests
 
-Run on the supported Node.js 22 with dependencies installed:
+Run on the supported Node.js 24 with dependencies installed:
 
     npm ci
     npm run typecheck
