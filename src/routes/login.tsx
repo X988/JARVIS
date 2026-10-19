@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { GROK_PROVIDERS, authClient, authEnabled, signIn } from "@/lib/auth/client";
 import { minPasswordLength } from "@/lib/auth/email-password";
@@ -16,18 +16,34 @@ function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [brokerOn, setBrokerOn] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/local-auth", { cache: "no-store" })
+      .then((response) => response.json() as Promise<{ signUp?: boolean; broker?: boolean }>)
+      .then((body) => {
+        if (cancelled) return;
+        setBrokerOn(body.broker === true);
+        if (typeof body.signUp === "boolean") setSignUpOpen(body.signUp);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function resolveSignUp(): Promise<boolean> {
     if (signUpOpen !== null) return signUpOpen;
     try {
       const response = await fetch("/api/local-auth", { cache: "no-store" });
       const body = (await response.json()) as { signUp?: boolean };
-      const open = body.signUp !== false;
+      const open = body.signUp === true;
       setSignUpOpen(open);
       return open;
     } catch {
-      setSignUpOpen(true);
-      return true;
+      setSignUpOpen(false);
+      return false;
     }
   }
 
@@ -169,7 +185,7 @@ function Login() {
         ) : (
           <p className="mt-5 text-sm text-danger">Authentication disabled.</p>
         )}
-        {authEnabled ? (
+        {authEnabled && brokerOn ? (
           <div className="mt-5 flex flex-col gap-2 border-t border-line pt-4">
             <p className="text-xs text-subtle">Брокер Grok, если он доступен с этой машины</p>
             {GROK_PROVIDERS.map((provider) => (

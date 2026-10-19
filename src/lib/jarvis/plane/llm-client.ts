@@ -356,12 +356,25 @@ export async function callJsonModel(
   for (const attempt of usable) {
     const request = providerRequest(attempt.provider, attempt.model, safeSystem.text, safeUser.text, input.schema, env);
     if (!request) continue;
+    const key = circuitKey(attempt.provider, attempt.model);
+    if (!circuitAllow(key, Date.now(), env)) {
+      last = {
+        ok: false,
+        code: "UPSTREAM_ERROR",
+        detail: "LLM circuit breaker is open",
+        provider: attempt.provider,
+        model: attempt.model,
+      };
+      continue;
+    }
     const response = await withModelSlot(env, () => postJson(request.url, request.init, env, opts.fetch ?? fetch));
     if (!response.ok) {
+      circuitFailure(key, Date.now(), env);
       last = { ...response, provider: attempt.provider, model: attempt.model };
       if (response.code === "UPSTREAM_TIMEOUT" || response.code === "UPSTREAM_ERROR") continue;
       return finish(last);
     }
+    circuitSuccess(key);
     const text = request.extract(response.body);
     if (!text) {
       last = {

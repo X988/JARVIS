@@ -3,9 +3,13 @@ import { describe, it } from "node:test";
 import { emailSignUpDisabled, isEmailSignUpRequest, minPasswordLength } from "./email-password.ts";
 
 describe("email password policy", () => {
-  it("leaves sign-up open unless the env explicitly closes it", () => {
-    assert.equal(emailSignUpDisabled({}), false);
+  it("keeps sign-up closed unless the env explicitly opens it", () => {
+    assert.equal(emailSignUpDisabled({}), true);
+    assert.equal(emailSignUpDisabled({ JARVIS_EMAIL_SIGNUP: "" }), true);
+    assert.equal(emailSignUpDisabled({ JARVIS_EMAIL_SIGNUP: "maybe" }), true);
     assert.equal(emailSignUpDisabled({ JARVIS_EMAIL_SIGNUP: "1" }), false);
+    assert.equal(emailSignUpDisabled({ JARVIS_EMAIL_SIGNUP: " TRUE " }), false);
+    assert.equal(emailSignUpDisabled({ JARVIS_EMAIL_SIGNUP: "yes" }), false);
     assert.equal(emailSignUpDisabled({ JARVIS_EMAIL_SIGNUP: "0" }), true);
     assert.equal(emailSignUpDisabled({ JARVIS_EMAIL_SIGNUP: "false" }), true);
     assert.equal(emailSignUpDisabled({ JARVIS_EMAIL_SIGNUP: " OFF " }), true);
