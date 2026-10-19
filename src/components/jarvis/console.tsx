@@ -324,7 +324,6 @@ function TurnCard({ turn, now }: { turn: Turn; now: number }) {
 
 function SitePanel() {
   const serverMode = useJarvis((state) => state.serverMode);
-  const effectiveMode = useJarvis((state) => state.effectiveMode);
   const adapters = useJarvis((state) => state.adapters);
   return (
     <div className="flex flex-col gap-6">

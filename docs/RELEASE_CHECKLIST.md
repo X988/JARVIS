@@ -1,6 +1,6 @@
 # Release checklist JARVIS
 
-Текущий статус проекта — **pre-production**. Версия `0.1.0` не означает production verification.
+Текущий статус проекта — **pre-production**. Версия `0.2.0` не означает production verification.
 
 ## 1. Source and CI gate
 

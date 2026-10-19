@@ -24,7 +24,11 @@ test("unknown server actor is denied", async ({ page }) => {
 test("DENY_ALWAYS is rendered from the server", async ({ page }) => {
   await page.setExtraHTTPHeaders({ "x-jarvis-test-actor": "admin1" });
   await page.goto("/");
-  await page.getByRole("button", { name: "Удали базу", exact: true }).click();
+  // Destructive suggestion buttons are shown only in mock mode; dry-run hides them,
+  // so the command is typed and the server must still deny it.
+  await expect(page.getByRole("button", { name: "Удали базу", exact: true })).toHaveCount(0);
+  await page.getByRole("textbox", { name: "Команда" }).fill("Удали базу utp");
+  await page.getByRole("button", { name: "Отправить", exact: true }).click();
   await expect(page.getByText("Code: POLICY_DENIED")).toBeVisible();
   await expect(page.getByText("Policy: DENY_ALWAYS")).toBeVisible();
 });

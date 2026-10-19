@@ -5,8 +5,9 @@
  * / `authClient.signIn.email` from `@/lib/auth/client`. Registration does not
  * grant an operator role: that still comes only from `JARVIS_WEB_ACTORS_JSON`.
  *
- * Close registration after the first admin with `JARVIS_EMAIL_SIGNUP=0`.
- * Sign-in of existing accounts stays available. Restart the process after
+ * Registration is CLOSED by default. Open it only while creating the first
+ * accounts with `JARVIS_EMAIL_SIGNUP=1` (also `true`, `on`, `yes`), then unset it
+ * or set `0`. Sign-in of existing accounts stays available either way. Restart the process after
  * changing it — Better Auth reads `disableSignUp` when the server module loads,
  * and the `/api/auth` route checks the same flag on every request.
  *
@@ -20,7 +21,7 @@ export const minPasswordLength = 10;
 
 export function emailSignUpDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = env.JARVIS_EMAIL_SIGNUP?.trim().toLowerCase();
-  return raw === "0" || raw === "false" || raw === "off" || raw === "no";
+  return !(raw === "1" || raw === "true" || raw === "on" || raw === "yes");
 }
 
 /** True when this request is a Better Auth email registration call. */

@@ -328,6 +328,8 @@ EXECUTION_MODE=dry-run
 
 Страница `/login` принимает почту и пароль через Better Auth. Кнопки Google и X остаются для брокера Grok и на сервере без него не нужны.
 
+Регистрация новых учёток **по умолчанию закрыта** (с версии 0.2.0). Чтобы создать первого администратора, временно задайте `JARVIS_EMAIL_SIGNUP=1`, а после — уберите переменную или поставьте `0` и перезапустите. Если на сервере регистрация нужна, `JARVIS_EMAIL_SIGNUP=1` надо задать явно.
+
 Регистрация **не** делает человека оператором. Пока Better Auth user id нет в `JARVIS_WEB_ACTORS_JSON`, консоль отвечает `ACTOR_DENIED`. Права по-прежнему задаёт только эта карта (и Telegram-карта для бота).
 
 Сессия — cookie с префиксом `__Host-` и флагом `Secure`. Открывайте JARVIS по HTTPS (как Caddy на `https://192.168.0.184:9443`). По голому HTTP на LAN-IP браузер cookie не сохранит.
@@ -339,6 +341,7 @@ VITE_AUTH_ENABLED=true
 BETTER_AUTH_URL=https://192.168.0.184:9443
 BETTER_AUTH_SECRET=<openssl rand -hex 32>
 JARVIS_PGLITE_DIR=./data/pglite
+# только на время создания первой учётки:
 JARVIS_EMAIL_SIGNUP=1
 EXECUTION_MODE=dry-run
 ```
@@ -365,7 +368,7 @@ JARVIS_WEB_ACTORS_JSON={"<user-id>":{"actorId":"admin1","role":"operator"}}
 npm run users:web
 ```
 
-4. Закройте регистрацию, чтобы произвольный клиент LAN не создавал учётки, и снова перезапустите:
+4. Закройте регистрацию, чтобы произвольный клиент LAN не создавал учётки: уберите `JARVIS_EMAIL_SIGNUP` (по умолчанию она закрыта) или задайте явно и снова перезапустите:
 
 ```env
 JARVIS_EMAIL_SIGNUP=0
@@ -431,7 +434,7 @@ npm run db:migrate
 EXECUTION_MODE=dry-run npm run start:linux
 ```
 
-`start:linux` слушает `0.0.0.0:8080`. Это ещё не ввод в промышленную эксплуатацию: живые SSH, RouterOS, SQL и 1С в этом блоке не проверялись.
+`start:linux` слушает `0.0.0.0:8080` и запускается с `NODE_ENV=production` (тестовый заголовок `x-jarvis-test-actor` и `JARVIS_ALLOW_ANY_AUTHENTICATED_DEV` в этом режиме игнорируются). Это ещё не ввод в промышленную эксплуатацию: живые SSH, RouterOS, SQL и 1С в этом блоке не проверялись.
 
 Полная CI-проверка включает:
 
